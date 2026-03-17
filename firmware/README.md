@@ -1,0 +1,33 @@
+# Devotchi Firmware
+
+ESP32-S3 firmware for the Devotchi physical device. Written in C using ESP-IDF.
+
+This is built separately from the Node.js packages. Not part of the pnpm workspace.
+
+## Target hardware
+
+- **MCU:** ESP32-S3-MINI-1 (dual-core 240MHz, WiFi + BLE 5.0, integrated PCB antenna)
+- **Display:** SSD1351 1.5" 128x128 color OLED (SPI) — also supports SSD1327 grayscale variant
+- **Input:** 3 front buttons (approve/reject/action) + 1 side button (wake/power)
+- **Output:** status LED (PWM), vibration motor (GPIO via MOSFET)
+- **Power:** LiPo battery, TP4056 charger, ME6211 3.3V LDO, USB-C charging
+- **Communication:** WiFi (WebSocket to broker) + BLE (to phone PWA)
+
+## Build system
+
+Will use ESP-IDF (not Arduino framework) with CMake. PlatformIO may be used as an alternative build tool.
+
+## Firmware responsibilities
+
+1. Connect to WiFi and establish WebSocket connection to broker
+2. Register as a consumer with pairing code
+3. Receive protocol messages and render Tamagotchi character on OLED
+4. Handle button presses and send responses back via WebSocket
+5. Manage power states (active, idle, light sleep, deep sleep)
+6. Drive vibration motor and LED for notifications
+7. Optionally connect via BLE to phone PWA as a bridge
+8. Read battery level via ADC and report via device info
+
+## Status
+
+Not yet started. PCB design and component ordering are happening in parallel with the software stack (broker, MCP server, simulator). Firmware development will begin when the PCB arrives.
