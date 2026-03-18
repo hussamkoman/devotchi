@@ -1,4 +1,5 @@
-// Devotchi MCP server — exposes tools for AI coding agents
+// Devotchi MCP server — exposes voluntary tools for AI coding agents
+// Approvals/permissions are handled automatically via Claude Code hooks
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -62,11 +63,6 @@ let connected = false;
 let config: DevotchiConfig;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30_000;
-
-const pendingRequests = new Map<
-  string,
-  { resolve: (value: any) => void; timer: ReturnType<typeof setTimeout> }
->();
 
 let shutdownRequested = false;
 
@@ -136,50 +132,12 @@ function handleBrokerMessage(msg: DevotchiMessage): void {
     case "register_ack":
       log("info", `Registered as ${msg.role}, ${msg.connectedPeers} peer(s) connected`);
       break;
-    case "approval_response": {
-      const pending = pendingRequests.get(msg.id);
-      if (pending) {
-        clearTimeout(pending.timer);
-        pendingRequests.delete(msg.id);
-        pending.resolve({ approved: msg.approved });
-      }
-      break;
-    }
-    case "permission_response": {
-      const pending = pendingRequests.get(msg.id);
-      if (pending) {
-        clearTimeout(pending.timer);
-        pendingRequests.delete(msg.id);
-        pending.resolve({ granted: msg.granted });
-      }
-      break;
-    }
     case "error":
       log("error", `Broker error: ${msg.message} (${msg.code})`);
       break;
     default:
       log("debug", "Unhandled message type", msg.type);
   }
-}
-
-// --- Helpers ---
-
-function generateId(): string {
-  return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-}
-
-function waitForResponse(
-  id: string,
-  timeoutMs: number
-): Promise<{ approved?: boolean; granted?: boolean; reason?: string }> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      pendingRequests.delete(id);
-      resolve({ approved: false, granted: false, reason: "timeout" });
-    }, timeoutMs);
-
-    pendingRequests.set(id, { resolve, timer });
-  });
 }
 
 // --- MCP Server ---
@@ -213,114 +171,6 @@ server.tool(
         {
           type: "text" as const,
           text: JSON.stringify({ ok: true, brokerConnected: sent }),
-        },
-      ],
-    };
-  }
-);
-
-server.tool(
-  "request_approval",
-  "Request user approval for a destructive or risky action via the Devotchi device",
-  {
-    desc: z.string().max(200).describe("Short description of what needs approval"),
-    details: z.string().max(1000).optional().describe("Additional context"),
-    timeout: z
-      .number()
-      .optional()
-      .describe("Timeout in ms (default: 5 minutes)"),
-  },
-  async ({ desc, details, timeout }) => {
-    const timeoutMs = timeout ?? config.approvalTimeout;
-
-    if (!connected) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              approved: false,
-              reason: "broker_disconnected",
-            }),
-          },
-        ],
-      };
-    }
-
-    const id = generateId();
-    sendMessage({
-      type: "approval",
-      id,
-      desc,
-      details,
-      timeout: timeoutMs,
-      timestamp: new Date().toISOString(),
-    });
-
-    const result = await waitForResponse(id, timeoutMs);
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify({
-            approved: result.approved ?? false,
-            reason: result.reason,
-          }),
-        },
-      ],
-    };
-  }
-);
-
-server.tool(
-  "request_permission",
-  "Request user permission for a routine action via the Devotchi device",
-  {
-    action: z.string().max(200).describe("What permission is being requested"),
-    details: z.string().max(1000).optional().describe("Additional context"),
-    timeout: z
-      .number()
-      .optional()
-      .describe("Timeout in ms (default: 5 minutes)"),
-  },
-  async ({ action, details, timeout }) => {
-    const timeoutMs = timeout ?? config.approvalTimeout;
-
-    if (!connected) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              granted: false,
-              reason: "broker_disconnected",
-            }),
-          },
-        ],
-      };
-    }
-
-    const id = generateId();
-    sendMessage({
-      type: "permission",
-      id,
-      action,
-      details,
-      timeout: timeoutMs,
-      timestamp: new Date().toISOString(),
-    });
-
-    const result = await waitForResponse(id, timeoutMs);
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify({
-            granted: result.granted ?? false,
-            reason: result.reason,
-          }),
         },
       ],
     };
@@ -400,7 +250,6 @@ async function main(): Promise<void> {
   await server.connect(transport);
   log("info", "MCP server started on stdio");
 
-  // Clean shutdown when stdin closes (e.g. parent process exits)
   process.stdin.on("end", () => {
     shutdownRequested = true;
     if (ws) ws.close();

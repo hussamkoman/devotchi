@@ -33,7 +33,8 @@ claude mcp add devotchi -- node packages/mcp-server/dist/index.js
 
 - The broker is stateless — no database, just routes WebSocket messages by pairing code
 - The MCP server gracefully degrades if the broker is unreachable
-- Blocking tools (request_approval, request_permission) have a 5-minute timeout
+- Approvals are handled automatically via Claude Code hooks (http type) → broker HTTP endpoints — no AI involvement needed
+- The broker holds hook HTTP requests open until the device responds (long-polling pattern)
 - The protocol is intentionally simple — JSON over WebSocket, messages under 2KB
 - The display driver is abstracted so the same firmware runs on SSD1351 (color) and SSD1327 (grayscale)
 - Single PCB design — power and logic on one board
@@ -49,13 +50,22 @@ firmware/                         — ESP32 firmware (C, ESP-IDF)
 docs/                             — Architecture, protocol, hardware docs + datasheets
 ```
 
-## Devotchi MCP tool usage (for AI agents with Devotchi connected)
+## Commit message rules
+
+- Short subject line (under 72 chars)
+- No co-authored-by or AI attribution
+- Use conventional commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`
+- No body unless absolutely needed
+
+## Hooks (automatic — no AI action needed)
+
+Permission requests are handled automatically via Claude Code hooks configured in `.claude/settings.local.json`. When Claude Code shows a permission prompt, an HTTP hook POSTs to the broker, which forwards to the device. The user approves/rejects on the device and Claude Code proceeds or stops. Status updates are also sent automatically after Bash/Write/Edit tool use.
+
+## Devotchi MCP tool usage (voluntary — for AI agents with Devotchi connected)
 
 When this MCP server is registered in a Claude Code session, the agent should use the tools as follows:
 
 - Call `show_status` when starting a new task or subtask
-- Call `request_approval` before destructive actions: deleting files, dropping tables, deploying, large refactors
-- Call `request_permission` before installing packages, running unknown scripts, modifying config
 - Call `notify` when tests pass/fail, builds succeed/fail, or tasks complete
 - Call `set_mood` to reflect the overall project state
 
