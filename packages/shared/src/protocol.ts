@@ -103,6 +103,11 @@ export interface ErrorMessage {
   code: ErrorCode;
 }
 
+export interface DismissMessage {
+  type: "dismiss";
+  id: string;
+}
+
 // --- Union Type ---
 
 export type DevotchiMessage =
@@ -117,7 +122,8 @@ export type DevotchiMessage =
   | RegisterAck
   | PingMessage
   | PongMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | DismissMessage;
 
 // --- Constants ---
 

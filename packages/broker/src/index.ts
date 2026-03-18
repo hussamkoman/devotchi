@@ -323,7 +323,7 @@ async function handleHookPermission(
   sendToConsumers(code, msg);
   console.log(`[hook/permission] ${toolName} → ${code} (id=${id})`);
 
-  // Wait for consumer response
+  // Wait for consumer response or client disconnect
   const response = await new Promise<DevotchiMessage | null>((resolve) => {
     const timer = setTimeout(() => {
       pendingHookRequests.delete(id);
@@ -331,6 +331,19 @@ async function handleHookPermission(
     }, DEFAULT_APPROVAL_TIMEOUT);
 
     pendingHookRequests.set(id, { resolve, timer });
+
+    // If Claude Code answered via CLI, it drops the HTTP connection
+    req.on("close", () => {
+      const pending = pendingHookRequests.get(id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingHookRequests.delete(id);
+        // Tell consumers to dismiss the modal
+        sendToConsumers(code, { type: "dismiss", id });
+        console.log(`[hook/permission] ${id} → dismissed (client disconnected)`);
+        resolve(null);
+      }
+    });
   });
 
   if (response && response.type === "permission_response") {

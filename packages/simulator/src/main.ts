@@ -244,6 +244,13 @@ function handleMessage(msg: DevotchiMessage): void {
       addLog("mood", `${msg.mood}${msg.reason ? " — " + msg.reason : ""}`);
       break;
 
+    case "dismiss":
+      if (pendingRequestId === msg.id) {
+        hideModal();
+        addLog("system", "Request handled elsewhere");
+      }
+      break;
+
     case "error":
       addLog("error", `${msg.message} (${msg.code})`);
       break;
