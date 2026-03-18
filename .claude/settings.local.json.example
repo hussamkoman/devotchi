@@ -12,7 +12,7 @@
       {
         "hooks": [{
           "type": "http",
-          "url": "http://localhost:8080/hook/permission?code=666WQW",
+          "url": "http://localhost:8080/hook/permission?code=YOUR_PAIRING_CODE",
           "timeout": 310
         }]
       }
@@ -22,7 +22,7 @@
         "matcher": "Bash|Write|Edit",
         "hooks": [{
           "type": "http",
-          "url": "http://localhost:8080/hook/status?code=666WQW",
+          "url": "http://localhost:8080/hook/status?code=YOUR_PAIRING_CODE",
           "timeout": 5
         }]
       }
@@ -31,7 +31,7 @@
       {
         "hooks": [{
           "type": "http",
-          "url": "http://localhost:8080/hook/stop?code=666WQW",
+          "url": "http://localhost:8080/hook/stop?code=YOUR_PAIRING_CODE",
           "timeout": 5
         }]
       }

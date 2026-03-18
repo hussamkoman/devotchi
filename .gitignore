@@ -2,3 +2,8 @@ node_modules/
 dist/
 .env
 *.tgz
+*.log
+.DS_Store
+
+# User-specific Claude Code settings (contains pairing code)
+.claude/settings.local.json

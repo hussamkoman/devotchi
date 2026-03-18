@@ -9,5 +9,8 @@
     "mcp-server": "node packages/mcp-server/dist/index.js",
     "simulator:dev": "pnpm --filter @devotchi/simulator dev"
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=18"
+  }
 }

@@ -12,6 +12,7 @@ import {
   type PetMood,
   type StatusMood,
   generatePairingCode,
+  isValidPairingCode,
   DEFAULT_APPROVAL_TIMEOUT,
 } from "@devotchi/shared";
 
@@ -37,10 +38,28 @@ async function loadConfig(): Promise<DevotchiConfig> {
 
   try {
     const raw = await readFile(CONFIG_PATH, "utf-8");
-    return { ...defaults, ...JSON.parse(raw) };
+    const loaded = JSON.parse(raw);
+    const config = { ...defaults, ...loaded };
+
+    // Validate critical fields
+    if (typeof config.brokerUrl !== "string" || !config.brokerUrl.startsWith("ws")) {
+      config.brokerUrl = defaults.brokerUrl;
+    }
+    if (!isValidPairingCode(config.pairingCode)) {
+      config.pairingCode = defaults.pairingCode;
+    }
+    if (!["debug", "info", "error"].includes(config.logLevel)) {
+      config.logLevel = defaults.logLevel;
+    }
+
+    return config;
   } catch {
-    await mkdir(CONFIG_DIR, { recursive: true });
-    await writeFile(CONFIG_PATH, JSON.stringify(defaults, null, 2));
+    try {
+      await mkdir(CONFIG_DIR, { recursive: true });
+      await writeFile(CONFIG_PATH, JSON.stringify(defaults, null, 2));
+    } catch (writeErr) {
+      log("error", "Failed to write config file:", writeErr);
+    }
     return defaults;
   }
 }

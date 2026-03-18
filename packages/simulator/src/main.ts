@@ -1,7 +1,8 @@
-import type {
-  DevotchiMessage,
-  PetMood,
-  StatusMood,
+import {
+  type DevotchiMessage,
+  type PetMood,
+  type StatusMood,
+  isValidPairingCode,
 } from "@devotchi/shared";
 import "./style.css";
 
@@ -48,10 +49,16 @@ const MOOD_EMOJI: Record<string, string> = {
 
 // --- Logging ---
 
+function escapeHtml(str: string): string {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 function addLog(type: string, message: string): void {
   const li = document.createElement("li");
   const now = new Date().toLocaleTimeString();
-  li.innerHTML = `<span class="log-time">${now}</span><span class="log-type">[${type}]</span>${message}`;
+  li.innerHTML = `<span class="log-time">${escapeHtml(now)}</span><span class="log-type">[${escapeHtml(type)}]</span>${escapeHtml(message)}`;
   logList.prepend(li);
 
   // Keep last 10
@@ -142,7 +149,11 @@ function sendResponse(approved: boolean): void {
           timestamp: new Date().toISOString(),
         };
 
-  ws.send(JSON.stringify(msg));
+  try {
+    ws.send(JSON.stringify(msg));
+  } catch {
+    addLog("error", "Failed to send response");
+  }
   addLog("response", `${pendingRequestType} ${approved ? "approved" : "rejected"}`);
   hideModal();
 }
@@ -195,7 +206,7 @@ function connect(pairingCode: string): void {
 function handleMessage(msg: DevotchiMessage): void {
   switch (msg.type) {
     case "ping":
-      if (ws) ws.send(JSON.stringify({ type: "pong" }));
+      try { ws?.send(JSON.stringify({ type: "pong" })); } catch {}
       break;
 
     case "register_ack":
@@ -243,8 +254,10 @@ function handleMessage(msg: DevotchiMessage): void {
 
 connectBtn.addEventListener("click", () => {
   const code = pairingInput.value.trim().toUpperCase();
-  if (code.length === 6) {
+  if (isValidPairingCode(code)) {
     connect(code);
+  } else {
+    addLog("error", "Invalid pairing code");
   }
 });
 

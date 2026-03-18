@@ -103,7 +103,16 @@ function generateId(): string {
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_MESSAGE_SIZE) {
+        req.destroy();
+        reject(new Error("Body too large"));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString()));
     req.on("error", reject);
   });
@@ -372,7 +381,9 @@ function handleHookStatus(
         timestamp: new Date().toISOString(),
       });
     })
-    .catch(() => {})
+    .catch((err) => {
+      console.error("[hook/status] error:", err.message);
+    })
     .finally(() => {
       jsonResponse(res, 200, {});
     });
@@ -400,7 +411,9 @@ function handleHookStop(
 
   // Drain request body before responding
   readBody(req)
-    .catch(() => {})
+    .catch((err) => {
+      console.error("[hook/stop] error:", err.message);
+    })
     .finally(() => {
       jsonResponse(res, 200, {});
     });
@@ -497,6 +510,36 @@ const heartbeatInterval = setInterval(() => {
 }, HEARTBEAT_INTERVAL);
 
 wss.on("close", () => clearInterval(heartbeatInterval));
+
+// Graceful shutdown
+function shutdown(): void {
+  console.log("[shutdown] closing connections...");
+  clearInterval(heartbeatInterval);
+
+  // Reject all pending hook requests
+  for (const [id, pending] of pendingHookRequests) {
+    clearTimeout(pending.timer);
+    pendingHookRequests.delete(id);
+  }
+
+  // Close all WebSocket connections
+  for (const [ws] of clients) {
+    ws.close(1001, "server shutting down");
+  }
+
+  wss.close(() => {
+    server.close(() => {
+      console.log("[shutdown] done");
+      process.exit(0);
+    });
+  });
+
+  // Force exit after 5 seconds
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 server.listen(PORT, () => {
   console.log(`Devotchi broker listening on port ${PORT}`);
