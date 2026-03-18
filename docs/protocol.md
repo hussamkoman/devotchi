@@ -6,7 +6,7 @@ All messages between the MCP server, broker, and consumers are JSON objects sent
 
 ### Producer -> Consumer messages
 
-These are sent by the MCP server and forwarded by the broker to all paired consumers.
+These are sent by the MCP server (voluntary tools) or the broker (hook endpoints) and forwarded to all paired consumers.
 
 #### `status`
 Updates the pet's display with what the agent is currently doing.
@@ -258,6 +258,59 @@ Used in `notify` messages. Not enforced — any string is valid — but these ar
 - `details` / `detail` / `reason`: max 1000 characters
 - Total message size: max 2 KB
 - These limits are enforced by the broker. Oversized messages are rejected with `INVALID_MESSAGE`.
+
+---
+
+## Hook HTTP Endpoints
+
+The broker exposes HTTP endpoints for Claude Code hooks. These translate between Claude Code's hook JSON format and the Devotchi WebSocket protocol.
+
+### POST `/hook/permission?code=XXXXXX`
+
+Receives Claude Code `PermissionRequest` hook body, forwards as a `permission` message to consumers, waits for `permission_response`, and returns a hook decision.
+
+**Request body** (sent by Claude Code automatically):
+```json
+{
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "Bash",
+  "tool_input": { "command": "rm -rf dist" }
+}
+```
+
+**Response** (after user approves/rejects on device):
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PermissionRequest",
+    "decision": { "behavior": "allow" }
+  }
+}
+```
+
+- Long-polling: holds the HTTP connection until a consumer responds or timeout (5 minutes).
+- If no consumers are connected, returns `{}` immediately (allow by default).
+
+### POST `/hook/status?code=XXXXXX`
+
+Receives Claude Code `PostToolUse` hook body, sends a `status` message to consumers. Fire-and-forget.
+
+**Request body:**
+```json
+{
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Edit",
+  "tool_input": { "file_path": "/work/project/src/index.ts" }
+}
+```
+
+**Response:** `{}`
+
+### POST `/hook/stop?code=XXXXXX`
+
+Receives Claude Code `Stop` hook body, sends `notify` (task_complete) and `mood` (sleeping) to consumers.
+
+**Response:** `{}`
 
 ---
 

@@ -5,50 +5,47 @@
 Devotchi has 4 layers. The software stack covers Layers 1-3. Layer 4 (ESP32 firmware) is built separately in C.
 
 ```
-┌──────────┐  MCP     ┌──────────┐  WebSocket  ┌────────────┐
-│  Claude   │ <------> │  MCP     │ ----------> │            │
-│  Code     │  stdio   │  Server  │             │   Broker   │
-└──────────┘          └──────────┘             └─────┬──────┘
-   AI Agent            Layer 1                   Layer 2
-   (any MCP client)    (runs on your PC)         (deployable)
-                                                     │
-                              ┌───────────────────────┼────────────────┐
-                              v                       v                v
-                     ┌──────────────┐       ┌──────────────┐  ┌──────────────┐
-                     │  Simulator   │       │  ESP32       │  │  Phone PWA   │
-                     │  (browser)   │       │  (firmware)  │  │  (future)    │
-                     └──────────────┘       └──────────────┘  └──────────────┘
-                      Dev tool               Layer 4           Layer 3
-                                             (C, ESP-IDF)      (future)
+                                            ┌────────────────────────────────────┐
+┌──────────┐  Hook HTTP POST                │            Broker                  │
+│  Claude   │ ──────────────────────────────>│  /hook/permission (long-poll)      │
+│  Code     │ <─────────────────────────────│  /hook/status     (fire & forget)  │
+│           │  Hook JSON response            │  /hook/stop       (fire & forget)  │
+│           │                                │                                    │
+│           │  MCP stdio    ┌──────────┐ WS  │                                    │
+│           │ <──────────── │  MCP     │ ──> │   WebSocket router                 │
+│           │  (voluntary)  │  Server  │     │                                    │
+└──────────┘               └──────────┘     └──────────────┬─────────────────────┘
+   AI Agent                 Layer 1              Layer 2    │
+   (any MCP client)         (mood/status/notify) (deployable)
+                                                            │
+                              ┌──────────────────────────────┼────────────────┐
+                              v                              v                v
+                     ┌──────────────┐              ┌──────────────┐  ┌──────────────┐
+                     │  Simulator   │              │  ESP32       │  │  Phone PWA   │
+                     │  (browser)   │              │  (firmware)  │  │  (future)    │
+                     └──────────────┘              └──────────────┘  └──────────────┘
+                      Dev tool                      Layer 4           Layer 3
+                                                    (C, ESP-IDF)      (future)
 ```
 
 ## Layer 1: MCP Server (`packages/mcp-server/`)
 
-The bridge between the AI agent and the Devotchi ecosystem.
+Voluntary tools for AI-initiated actions (mood, status, notifications). Approvals are handled automatically via hooks — see "Claude Code Hooks" below.
 
 ### Responsibilities
-- Exposes 5 MCP tools via stdio transport
+- Exposes 3 MCP tools via stdio transport (voluntary, non-blocking)
 - Translates tool calls into protocol messages
-- Sends messages to the broker via WebSocket
-- Manages blocking request/response flow for approvals
+- Sends messages to the broker via WebSocket as a producer
 - Handles reconnection if the broker drops
 - Generates and stores pairing code
 
 ### Tools
 
-| Tool | Blocking | Returns |
-|---|---|---|
-| `show_status(message, mood?)` | No | `{ ok: true }` |
-| `request_approval(description, details?)` | **Yes** | `{ approved: boolean, timestamp: string }` |
-| `request_permission(action, details?)` | **Yes** | `{ granted: boolean, timestamp: string }` |
-| `notify(event, mood, detail?)` | No | `{ ok: true }` |
-| `set_mood(mood, reason?)` | No | `{ ok: true }` |
-
-### Blocking behavior
-- `request_approval` and `request_permission` create a Promise internally
-- The MCP server sends the request to the broker, then waits for a matching response (keyed by request ID)
-- Configurable timeout (default 5 minutes) — returns `{ approved: false, reason: "timeout" }` on expiry
-- The AI agent is blocked during this time, which is the desired behavior — it should wait for human input
+| Tool | Returns |
+|---|---|
+| `show_status(message, mood?)` | `{ ok: true }` |
+| `notify(event, mood, detail?)` | `{ ok: true }` |
+| `set_mood(mood, reason?)` | `{ ok: true }` |
 
 ### Configuration
 
@@ -62,15 +59,8 @@ Stored in `~/.devotchi/config.json`:
 }
 ```
 
-### CLI commands
-- `devotchi pair` — show or generate pairing code
-- `devotchi config` — show/edit config
-- `devotchi status` — check broker connection and paired clients
-- `devotchi test` — send a test notification
-
 ### Graceful degradation
-- If the broker is unreachable, non-blocking tools return immediately with `{ ok: true, brokerConnected: false }`
-- Blocking tools return `{ approved: false, reason: "broker_disconnected" }` immediately — the agent should not hang forever
+- If the broker is unreachable, tools return immediately with `{ ok: true, brokerConnected: false }`
 
 ---
 
@@ -99,14 +89,42 @@ A stateless WebSocket message router. Its only job is to match producers and con
 - Clean up disconnected clients automatically
 - Basic rate limiting to prevent flooding
 - HTTP health check endpoint: `GET /` returns `{ status: "ok", connections: N }`
+- HTTP hook endpoints for Claude Code hooks (see below)
 - Configurable port via `DEVOTCHI_BROKER_PORT` env var (default 8080)
 - Deployable to Railway, Render, Fly.io, or any Node.js host
 - CORS headers for browser WebSocket connections
 
 ### Message routing rules
 - Producer messages → forwarded to ALL consumers with the same pairing code
-- Consumer messages → forwarded to the ONE producer with the same pairing code
+- Consumer messages → first checked against pending hook requests (by ID), otherwise forwarded to producer
 - System messages (register, ping, pong, error) → handled by broker, never forwarded
+
+---
+
+## Claude Code Hooks
+
+Approvals and status updates are handled automatically via Claude Code `http` hooks — no AI involvement, zero context cost. Configured in `.claude/settings.local.json`.
+
+### How it works
+
+1. Claude Code fires a `PermissionRequest` hook → HTTP POST to broker's `/hook/permission?code=XXXXXX`
+2. Broker translates to a Devotchi `permission` message, sends to all consumers via WebSocket
+3. User approves/rejects on device/simulator
+4. Consumer sends `permission_response` back via WebSocket
+5. Broker returns hook JSON response: `{ decision: { behavior: "allow"|"deny" } }`
+6. Claude Code proceeds or blocks — all within one HTTP request/response cycle
+
+### Hook endpoints
+
+| Endpoint | Hook Event | Behavior |
+|---|---|---|
+| `POST /hook/permission?code=X` | `PermissionRequest` | Long-poll: waits for device response, returns allow/deny |
+| `POST /hook/status?code=X` | `PostToolUse` | Fire-and-forget: sends status update to device |
+| `POST /hook/stop?code=X` | `Stop` | Fire-and-forget: notifies device agent stopped |
+
+### Graceful degradation
+- If no consumers are connected, `/hook/permission` returns `{}` (allow) — the agent is not blocked when nobody is watching
+- `/hook/status` and `/hook/stop` always return `{}` immediately
 
 ---
 
@@ -143,7 +161,7 @@ See [hardware.md](hardware.md) for component details and pin assignments.
 A browser-based simulator that acts as a "device" consumer. Essential for testing the software stack without physical hardware.
 
 ### Implementation
-- Single `index.html` file — no build step, no framework
+- Vite + TypeScript app
 - Connects to broker via WebSocket
 - Shows Tamagotchi-style character (CSS/canvas based)
 - Clickable approve/reject buttons
@@ -155,35 +173,42 @@ A browser-based simulator that acts as a "device" consumer. Essential for testin
 
 ## Data Flow Examples
 
-### Status update (non-blocking)
+### Permission request via hook (automatic)
+```
+Claude Code wants to run "rm -rf dist"
+  → PermissionRequest hook fires
+  → HTTP POST to broker /hook/permission?code=A7X9K2
+  → Broker generates ID, sends {"type":"permission","id":"a1b2c3","action":"Bash",...} to consumers
+  → Device/simulator shows permission modal
+  → User presses Approve
+  → Device sends {"type":"permission_response","id":"a1b2c3","granted":true} to broker
+  → Broker returns { decision: { behavior: "allow" } } as HTTP response
+  → Claude Code proceeds with the command
+```
+
+### Status update via hook (automatic)
+```
+Claude Code finishes running a Bash command
+  → PostToolUse hook fires
+  → HTTP POST to broker /hook/status?code=A7X9K2
+  → Broker sends {"type":"status","msg":"echo hello world","mood":"working"} to consumers
+  → Device/simulator updates display
+  → Broker returns {} immediately
+```
+
+### Voluntary status update via MCP
 ```
 Claude Code calls show_status("Refactoring auth...", "focused")
-  → MCP Server receives tool call
   → MCP Server sends {"type":"status","msg":"Refactoring auth...","mood":"focused"} to broker
   → Broker forwards to all consumers
   → Device/simulator updates display
-  → MCP Server returns {ok: true} to Claude Code immediately
+  → MCP Server returns {ok: true} to Claude Code
 ```
 
-### Approval request (blocking)
+### Timeout on permission
 ```
-Claude Code calls request_approval("Delete 3 test files?", "test1.js, test2.js, test3.js")
-  → MCP Server receives tool call
-  → MCP Server generates ID "a1b2c3", sends {"type":"approval","id":"a1b2c3","desc":"Delete 3 test files?",...} to broker
-  → Broker forwards to all consumers
-  → Device shows approval modal, vibrates
-  → User presses Approve button
-  → Device sends {"type":"approval_response","id":"a1b2c3","approved":true} to broker
-  → Broker forwards to producer
-  → MCP Server resolves the pending Promise
-  → MCP Server returns {approved: true, timestamp: "..."} to Claude Code
-  → Claude Code proceeds with deletion
-```
-
-### Timeout on approval
-```
-(same as above, but user doesn't respond within 5 minutes)
-  → MCP Server's timeout fires
-  → MCP Server returns {approved: false, reason: "timeout"} to Claude Code
-  → Claude Code decides not to proceed (or asks again)
+(same as permission request, but user doesn't respond within 5 minutes)
+  → Broker's timeout fires
+  → Broker returns { decision: { behavior: "deny" } } as HTTP response
+  → Claude Code blocks the action
 ```
