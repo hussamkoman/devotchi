@@ -4,9 +4,49 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Devotchi Simulator</title>
+  <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-  <h1>Devotchi Simulator</h1>
-  <p>TBD</p>
+  <div id="app">
+    <header>
+      <h1>Devotchi</h1>
+      <div id="connection-bar">
+        <span id="status-dot" class="dot disconnected"></span>
+        <input id="pairing-input" type="text" placeholder="PAIRING CODE" maxlength="6" />
+        <button id="connect-btn">Connect</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="pet-area">
+        <div id="pet-character">😴</div>
+        <div id="pet-mood">sleeping</div>
+      </section>
+
+      <section id="status-bar">
+        <div id="status-text">Waiting for connection...</div>
+      </section>
+
+      <div id="modal" class="modal hidden">
+        <div class="modal-content">
+          <div id="modal-type" class="modal-type"></div>
+          <div id="modal-desc" class="modal-desc"></div>
+          <div id="modal-details" class="modal-details"></div>
+          <div id="modal-timer" class="modal-timer"></div>
+          <div class="modal-buttons">
+            <button id="modal-approve" class="btn-approve">Approve</button>
+            <button id="modal-reject" class="btn-reject">Reject</button>
+          </div>
+        </div>
+      </div>
+
+      <section id="event-log">
+        <h2>Event Log</h2>
+        <ul id="log-list"></ul>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

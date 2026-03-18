@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r run build",
-    "broker": "node packages/broker/dist/index.js"
+    "broker": "node packages/broker/dist/index.js",
+    "mcp-server": "node packages/mcp-server/dist/index.js",
+    "simulator:dev": "pnpm --filter @devotchi/simulator dev"
   },
   "packageManager": "pnpm@10.32.1"
 }
