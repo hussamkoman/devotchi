@@ -4,9 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import {
   type DevotchiMessage,
   type ClientRole,
+  type ErrorCode,
   isValidPairingCode,
   HEARTBEAT_INTERVAL,
-  HEARTBEAT_TIMEOUT,
   RATE_LIMIT_PER_MINUTE,
   MAX_MESSAGE_SIZE,
   DEFAULT_APPROVAL_TIMEOUT,
@@ -86,12 +86,8 @@ function sendToConsumers(code: string, msg: DevotchiMessage): void {
   }
 }
 
-function sendError(
-  ws: WebSocket,
-  message: string,
-  code: DevotchiMessage extends { code: infer C } ? C : string
-): void {
-  send(ws, { type: "error", message, code: code as any });
+function sendError(ws: WebSocket, message: string, code: ErrorCode): void {
+  send(ws, { type: "error", message, code });
 }
 
 // --- Helpers ---

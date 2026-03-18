@@ -26,7 +26,6 @@ const logList = document.getElementById("log-list")!;
 // --- State ---
 
 let ws: WebSocket | null = null;
-let currentMood: PetMood | StatusMood = "sleeping";
 let pendingRequestId: string | null = null;
 let pendingRequestType: "approval" | "permission" | null = null;
 let countdownInterval: ReturnType<typeof setInterval> | null = null;
@@ -70,7 +69,6 @@ function addLog(type: string, message: string): void {
 // --- Pet Display ---
 
 function updatePet(mood: PetMood | StatusMood): void {
-  currentMood = mood;
   petCharacter.textContent = MOOD_EMOJI[mood] || "🫥";
   petMoodEl.textContent = mood;
 
