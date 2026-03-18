@@ -100,13 +100,15 @@ function generateId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
+const MAX_HTTP_BODY = 64 * 1024; // 64KB — hook bodies can be larger than protocol messages
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on("data", (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_MESSAGE_SIZE) {
+      if (size > MAX_HTTP_BODY) {
         req.destroy();
         reject(new Error("Body too large"));
         return;
@@ -333,7 +335,7 @@ async function handleHookPermission(
     pendingHookRequests.set(id, { resolve, timer });
 
     // If Claude Code answered via CLI, it drops the HTTP connection
-    req.on("close", () => {
+    res.on("close", () => {
       const pending = pendingHookRequests.get(id);
       if (pending) {
         clearTimeout(pending.timer);
