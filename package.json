@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r run build",
+    "build:shared": "pnpm --filter @devotchi/shared build",
+    "build:broker": "pnpm --filter @devotchi/broker build",
+    "build:mcp": "pnpm --filter @devotchi/mcp-server build",
+    "build:sim": "pnpm --filter @devotchi/simulator build",
     "broker": "node packages/broker/dist/index.js",
     "mcp-server": "node packages/mcp-server/dist/index.js",
-    "simulator:dev": "pnpm --filter @devotchi/simulator dev"
+    "sim": "pnpm --filter @devotchi/simulator dev"
   },
   "packageManager": "pnpm@10.32.1",
   "engines": {

@@ -334,13 +334,15 @@ async function handleHookPermission(
 
     pendingHookRequests.set(id, { resolve, timer });
 
-    // If Claude Code answered via CLI, it drops the HTTP connection
+    // If Claude Code answered via CLI, it drops the HTTP connection.
+    // res.on("close") fires both on normal completion and on disconnect,
+    // so check writableEnded to distinguish.
     res.on("close", () => {
+      if (res.writableEnded) return; // Response was sent normally
       const pending = pendingHookRequests.get(id);
       if (pending) {
         clearTimeout(pending.timer);
         pendingHookRequests.delete(id);
-        // Tell consumers to dismiss the modal
         sendToConsumers(code, { type: "dismiss", id });
         console.log(`[hook/permission] ${id} → dismissed (client disconnected)`);
         resolve(null);

@@ -215,6 +215,11 @@ function handleMessage(msg: DevotchiMessage): void {
       break;
 
     case "status":
+      // If a status update arrives while a modal is open, the permission
+      // was already handled via CLI — the tool ran, so dismiss the modal
+      if (pendingRequestId) {
+        hideModal();
+      }
       statusText.textContent = msg.msg;
       if (msg.mood) updatePet(msg.mood);
       addLog("status", msg.msg);
@@ -247,6 +252,7 @@ function handleMessage(msg: DevotchiMessage): void {
     case "dismiss":
       if (pendingRequestId === msg.id) {
         hideModal();
+        updatePet("idle");
         addLog("system", "Request handled elsewhere");
       }
       break;
