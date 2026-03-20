@@ -152,7 +152,7 @@ Written in C using ESP-IDF (not Arduino). Runs on the physical device.
 - Manage power (deep sleep, wake on event)
 - Drive vibration motor and status LED
 
-See [hardware.md](hardware.md) for component details and pin assignments.
+See [hardware/README.md](../hardware/README.md) for component details and pin assignments.
 
 ---
 

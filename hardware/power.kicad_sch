@@ -1,0 +1,12 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "b357d40e-9296-461c-bf3d-5ce5771ea232")
+	(paper "A4")
+	(title_block
+		(title "Power")
+		(company "Hussam Koman")
+	)
+	(lib_symbols)
+)

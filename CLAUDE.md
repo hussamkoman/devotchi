@@ -13,7 +13,7 @@ Tamagotchi-style portable device for AI coding agents. Connects via MCP to show 
 
 See `docs/architecture.md` for the full system architecture.
 See `docs/protocol.md` for the wire protocol specification.
-See `docs/hardware.md` for hardware design and component details.
+See `hardware/README.md` for hardware design and component details.
 
 ## Commands
 

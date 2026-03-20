@@ -7,3 +7,9 @@ dist/
 
 # User-specific Claude Code settings (contains pairing code)
 .claude/settings.local.json
+
+# KiCad
+*.kicad_prl
+*-backups/
+fp-info-cache
+hardware/gerbers/

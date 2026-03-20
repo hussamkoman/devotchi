@@ -74,7 +74,7 @@ Open `http://localhost:5173` in your browser.
 
 - [Architecture](docs/architecture.md) — system overview, layers, data flow
 - [Protocol](docs/protocol.md) — wire protocol specification
-- [Hardware](docs/hardware.md) — components, pin assignments, PCB design notes
+- [Hardware](hardware/README.md) — components, pin assignments, PCB design notes
 
 ## License
 

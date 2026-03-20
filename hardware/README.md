@@ -42,8 +42,8 @@
 | Deep sleep current | ~8 uA (module level) |
 | Interface highlights | SPI, I2C, I2S, UART, USB OTG, PWM, ADC |
 
-**Datasheet:** [docs/mcu/ESP32-S3-MINI-1_datasheet.pdf](mcu/ESP32-S3-MINI-1_datasheet.pdf)
-**SoC datasheet:** [docs/mcu/ESP32-S3_SoC_datasheet.pdf](mcu/ESP32-S3_SoC_datasheet.pdf)
+**Datasheet:** [ESP32-S3-MINI-1 datasheet](../docs/mcu/ESP32-S3-MINI-1_datasheet.pdf)
+**SoC datasheet:** [ESP32-S3 SoC datasheet](../docs/mcu/ESP32-S3_SoC_datasheet.pdf)
 
 **Why this part:**
 - Integrated PCB antenna — no external antenna or custom antenna design needed
@@ -67,7 +67,7 @@
 | Sleep current | ~1 uA (display off command) |
 | Viewing angle | >160 degrees |
 
-**Datasheet:** [docs/display/SSD1351_datasheet.pdf](display/SSD1351_datasheet.pdf)
+**Datasheet:** [SSD1351 datasheet](../docs/display/SSD1351_datasheet.pdf)
 
 **Why this part:**
 - Full color makes the Tamagotchi character expressive (red angry, green happy, etc.)
@@ -87,7 +87,7 @@
 | Active current | ~10 mA typical |
 | Sleep current | ~1 uA |
 
-**Datasheet:** [docs/display/SSD1327_datasheet.pdf](display/SSD1327_datasheet.pdf)
+**Datasheet:** [SSD1327 datasheet](../docs/display/SSD1327_datasheet.pdf)
 
 **Why as alternative:**
 - Same physical size and resolution as SSD1351
@@ -108,7 +108,7 @@
 | Charge termination | Current drops below threshold |
 | Status outputs | 2 pins (charging / standby) |
 
-**Datasheet:** [docs/power/TP4056_datasheet.pdf](power/TP4056_datasheet.pdf)
+**Datasheet:** [TP4056 datasheet](../docs/power/TP4056_datasheet.pdf)
 
 **Design notes:**
 - Set charge current via PROG resistor (R_prog). For a small LiPo (300-500mAh), use 2.4k-4k ohm for 250-500mA charge rate.
@@ -127,7 +127,7 @@
 | Quiescent current | 40 uA typical |
 | Input voltage | 2.0 - 6.0V |
 
-**Datasheet:** [docs/power/ME6211_datasheet.pdf](power/ME6211_datasheet.pdf)
+**Datasheet:** [ME6211 datasheet](../docs/power/ME6211_datasheet.pdf)
 
 **Design notes:**
 - Input from LiPo battery (3.0 - 4.2V) → output 3.3V
