@@ -146,7 +146,7 @@ Written in C using ESP-IDF (not Arduino). Runs on the physical device.
 ### Responsibilities
 - Connect to WiFi and/or BLE
 - Receive protocol messages (via WebSocket over WiFi, or via BLE from phone)
-- Render Tamagotchi character on SSD1351/SSD1327 OLED display
+- Render Tamagotchi character on ST7789 TFT LCD display (320x240, SPI)
 - Handle button presses (approve/reject/action)
 - Send responses back
 - Manage power (deep sleep, wake on event)

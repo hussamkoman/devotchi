@@ -1,6 +1,6 @@
 # Devotchi
 
-Tamagotchi-style portable device for AI coding agents. Connects via MCP to show agent status, handle approvals, and reflect project mood on a physical OLED screen with buttons.
+Tamagotchi-style portable device for AI coding agents. Connects via MCP to show agent status, handle approvals, and reflect project mood on a physical TFT LCD screen with buttons.
 
 ## Project overview
 
@@ -36,7 +36,7 @@ claude mcp add devotchi -- node packages/mcp-server/dist/index.js
 - Approvals are handled automatically via Claude Code hooks (http type) → broker HTTP endpoints — no AI involvement needed
 - The broker holds hook HTTP requests open until the device responds (long-polling pattern)
 - The protocol is intentionally simple — JSON over WebSocket, messages under 2KB
-- The display driver is abstracted so the same firmware runs on SSD1351 (color) and SSD1327 (grayscale)
+- Display uses ST7789 TFT LCD (2.0", 320x240, color) with ESP-IDF `esp_lcd` driver + LovyanGFX for graphics
 - Single PCB design — power and logic on one board
 
 ## Directory structure

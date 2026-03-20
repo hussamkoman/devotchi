@@ -9,7 +9,7 @@
 		(rev "v0.1")
 		(company "Hussam Koman")
 		(comment 1 "Portable AI Agent Companion Device")
-		(comment 2 "ESP32-S3 + SSD1351 OLED")
+		(comment 2 "ESP32-S3 + ST7789 TFT LCD")
 	)
 	(lib_symbols)
 	(text "Devotchi\n"
@@ -183,7 +183,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6"
-					(page "5")
+					(page "4")
 				)
 			)
 		)
@@ -225,7 +225,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6"
-					(page "4")
+					(page "3")
 				)
 			)
 		)
@@ -309,7 +309,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6"
-					(page "6")
+					(page "5")
 				)
 			)
 		)
@@ -351,14 +351,14 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6"
-					(page "3")
+					(page "1")
 				)
 			)
 		)
 	)
 	(sheet_instances
 		(path "/"
-			(page "1")
+			(page "0")
 		)
 	)
 	(embedded_fonts no)

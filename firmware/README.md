@@ -7,7 +7,7 @@ This is built separately from the Node.js packages. Not part of the pnpm workspa
 ## Target hardware
 
 - **MCU:** ESP32-S3-MINI-1 (dual-core 240MHz, WiFi + BLE 5.0, integrated PCB antenna)
-- **Display:** SSD1351 1.5" 128x128 color OLED (SPI) — also supports SSD1327 grayscale variant
+- **Display:** HS20HS072RX 2.0" 320x240 color TFT LCD (ST7789, SPI, IPS)
 - **Input:** 3 front buttons (approve/reject/action) + 1 side button (wake/power)
 - **Output:** status LED (PWM), vibration motor (GPIO via MOSFET)
 - **Power:** LiPo battery, TP4056 charger, ME6211 3.3V LDO, USB-C charging
@@ -21,7 +21,7 @@ Will use ESP-IDF (not Arduino framework) with CMake. PlatformIO may be used as a
 
 1. Connect to WiFi and establish WebSocket connection to broker
 2. Register as a consumer with pairing code
-3. Receive protocol messages and render Tamagotchi character on OLED
+3. Receive protocol messages and render Tamagotchi character on TFT LCD
 4. Handle button presses and send responses back via WebSocket
 5. Manage power states (active, idle, light sleep, deep sleep)
 6. Drive vibration motor and LED for notifications
