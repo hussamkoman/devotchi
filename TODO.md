@@ -6,7 +6,7 @@
 - [ ] Test with broker on remote URL instead of localhost
 - [ ] Add LICENSE file (MIT)
 - [ ] Add CONTRIBUTING.md
-- [ ] ESP32 firmware — first prototype with OLED + 2 buttons
+- [ ] ESP32 firmware — first prototype with TFT LCD + buttons
 
 ## Soon
 

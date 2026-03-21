@@ -2,7 +2,7 @@
 
 ## Desktop Devotchi
 
-A larger touchscreen version that sits on your desk. Unlike the portable pocket device (1.5" OLED, 2 buttons), this would have a 3.5"–5" touchscreen with a UI similar to the browser simulator.
+A larger touchscreen version that sits on your desk. Unlike the portable pocket device (2.0" TFT LCD, 4 buttons), this would have a 3.5"–5" touchscreen with a UI similar to the browser simulator.
 
 **Multi-session management:** The killer feature. Power users run multiple Claude Code sessions across different projects. The desktop device shows all active sessions at once — each project gets its own pet with mood and status. Tap a project to see details, approve/reject pending requests.
 

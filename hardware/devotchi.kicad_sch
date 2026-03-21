@@ -8,8 +8,8 @@
 		(title "Devotchi")
 		(rev "v0.1")
 		(company "Hussam Koman")
-		(comment 1 "Portable AI Agent Companion Device")
-		(comment 2 "ESP32-S3 + ST7789 TFT LCD")
+		(comment 1 "Devotchi")
+		(comment 2 "Portable AI Agent Companion Device")
 	)
 	(lib_symbols)
 	(text "Devotchi\n"
@@ -18,6 +18,8 @@
 		(effects
 			(font
 				(size 7.62 7.62)
+				(thickness 1.524)
+				(bold yes)
 			)
 		)
 		(uuid "2f03c848-1f0b-4779-a4bf-5251769eec45")
@@ -38,7 +40,9 @@
 		(at 100.076 75.184 0)
 		(effects
 			(font
-				(size 1.27 1.27)
+				(size 1.778 1.778)
+				(thickness 0.254)
+				(bold yes)
 			)
 		)
 		(uuid "68e0e37e-881d-4d63-bebe-953b27cf40d8")
@@ -59,7 +63,9 @@
 		(at 177.8 107.188 0)
 		(effects
 			(font
-				(size 1.27 1.27)
+				(size 1.778 1.778)
+				(thickness 0.254)
+				(bold yes)
 			)
 		)
 		(uuid "7c72fe3c-d1a8-4099-b720-d67a4bc6a72a")
@@ -69,7 +75,9 @@
 		(at 176.784 75.184 0)
 		(effects
 			(font
-				(size 1.27 1.27)
+				(size 1.778 1.778)
+				(thickness 0.254)
+				(bold yes)
 			)
 		)
 		(uuid "8a327d85-f5c6-4071-85ec-a03f5340d780")
@@ -79,7 +87,9 @@
 		(at 101.6 106.934 0)
 		(effects
 			(font
-				(size 1.27 1.27)
+				(size 1.778 1.778)
+				(thickness 0.254)
+				(bold yes)
 			)
 		)
 		(uuid "95d9dd35-f8ab-424e-970c-2e5c5cf79f68")
@@ -166,7 +176,9 @@
 			(at 190.5 100.8884 0)
 			(effects
 				(font
-					(size 1.27 1.27)
+					(size 3.81 3.81)
+					(thickness 0.762)
+					(bold yes)
 				)
 				(justify left bottom)
 			)
@@ -208,7 +220,9 @@
 			(at 190.5 62.7884 0)
 			(effects
 				(font
-					(size 1.27 1.27)
+					(size 3.81 3.81)
+					(thickness 0.762)
+					(bold yes)
 				)
 				(justify left bottom)
 			)
@@ -250,7 +264,9 @@
 			(at 50.8 62.7884 0)
 			(effects
 				(font
-					(size 1.27 1.27)
+					(size 3.81 3.81)
+					(thickness 0.762)
+					(bold yes)
 				)
 				(justify left bottom)
 			)
@@ -292,7 +308,9 @@
 			(at 50.8 100.8884 0)
 			(effects
 				(font
-					(size 1.27 1.27)
+					(size 3.81 3.81)
+					(thickness 0.762)
+					(bold yes)
 				)
 				(justify left bottom)
 			)
@@ -334,7 +352,9 @@
 			(at 114.3 62.7884 0)
 			(effects
 				(font
-					(size 1.27 1.27)
+					(size 3.81 3.81)
+					(thickness 0.762)
+					(bold yes)
 				)
 				(justify left bottom)
 			)

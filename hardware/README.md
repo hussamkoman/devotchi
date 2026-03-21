@@ -126,16 +126,16 @@
 
 ### Backlight Dimming Circuit
 
-The display has no built-in backlight controller. Backlight is driven from battery voltage (VBAT, 3.7-4.2V) through a current-limiting resistor and switched by an N-channel MOSFET controlled by ESP32 PWM.
+The display has no built-in backlight controller. Backlight is driven from battery voltage (+BATT, 3.7-4.2V) through a current-limiting resistor and switched by an N-channel MOSFET controlled by ESP32 PWM.
 
-**Why VBAT instead of 3.3V:** The backlight LEDs have Vf = 3.0V typical. Running from 3.3V gives only 0.3V headroom — poor current regulation. Running from VBAT (~3.7-4.2V) gives 0.7-1.2V headroom for reliable regulation.
+**Why +BATT instead of 3.3V:** The backlight LEDs have Vf = 3.0V typical. Running from 3.3V gives only 0.3V headroom — poor current regulation. Running from +BATT (~3.7-4.2V) gives 0.7-1.2V headroom for reliable regulation.
 
 **Components:**
 
 | Ref | Part | Value | Purpose |
 |---|---|---|---|
 | Q_BL | AO3400A (C20917) | N-ch MOSFET, SOT-23 | Switches backlight cathode, PWM dimming |
-| R_BL | Resistor | 12Ω, 0603 | Current limiting (~80mA at VBAT=3.96V) |
+| R_BL | Resistor | 12Ω, 0603 | Current limiting (~80mA at +BATT=3.96V) |
 
 **MOSFET: AO3400A**
 
@@ -153,14 +153,14 @@ The display has no built-in backlight controller. Backlight is driven from batte
 
 **Circuit:**
 ```
-VBAT ─── R_BL (12Ω) ─── FPC Pin 10 (LED Anode)
++BATT ─── R_BL (12Ω) ─── FPC Pin 10 (LED Anode)
                           FPC Pin 11 (LED Cathode) ─── Q_BL Drain
                                                        Q_BL Source ─── GND
                                                        Q_BL Gate ─── ESP32 PWM GPIO
 ```
 
 **Resistor calculation:**
-- VBAT nominal = 3.7V, Vf = 3.0V, I = 80mA
+- +BATT nominal = 3.7V, Vf = 3.0V, I = 80mA
 - R = (3.7 - 3.0) / 0.08 = 8.75Ω → use 12Ω for safety margin
 - At 4.2V (full charge): I = (4.2 - 3.0) / 12 = 100mA (within 80mA abs max only briefly, PWM duty < 80% at full charge)
 - At 3.7V (nominal): I = (3.7 - 3.0) / 12 = 58mA (comfortable)
@@ -287,24 +287,24 @@ These are preliminary and will be finalized during schematic design.
 | Function | ESP32-S3 GPIO | Notes |
 |---|---|---|
 | **SPI Display** | | |
-| LCD SCLK | GPIO 12 | SPI clock |
-| LCD MOSI | GPIO 11 | SPI data |
-| LCD CS | GPIO 10 | Chip select |
-| LCD DC | GPIO 9 | Data/command select |
-| LCD RST | GPIO 8 | Reset |
-| LCD Backlight | GPIO 13 | PWM via MOSFET to backlight cathode |
+| DISP_SCLK | GPIO 12 | SPI clock |
+| DISP_MOSI | GPIO 11 | SPI data |
+| DISP_CS | GPIO 10 | Chip select |
+| DISP_DC | GPIO 9 | Data/command select |
+| DISP_RST | GPIO 8 | Reset |
+| DISP_BL | GPIO 13 | PWM via MOSFET to backlight cathode |
 | **Buttons** | | |
-| Approve | GPIO 4 | Pull-up, active low |
-| Reject | GPIO 5 | Pull-up, active low |
-| Action | GPIO 6 | Pull-up, active low |
-| Wake/Power | GPIO 7 | RTC-capable for deep sleep wake |
+| BTN_APPROVE | GPIO 4 | Pull-up, active low |
+| BTN_REJECT | GPIO 5 | Pull-up, active low |
+| BTN_ACTION | GPIO 6 | Pull-up, active low |
+| BTN_WAKE | GPIO 7 | RTC-capable for deep sleep wake |
 | **Feedback** | | |
-| LED | GPIO 38 | PWM for brightness control |
-| Vibration motor | GPIO 37 | Via N-channel MOSFET |
+| LED_PWM | GPIO 38 | PWM for brightness control |
+| MOTOR_EN | GPIO 37 | Via N-channel MOSFET |
 | **Power status** | | |
-| TP4056 CHRG | GPIO 18 | Low = charging |
-| TP4056 STDBY | GPIO 2 | Low = charge complete |
-| Battery ADC | GPIO 1 | Via voltage divider for battery level |
+| PWR_CHRG | GPIO 18 | Low = charging |
+| PWR_STDBY | GPIO 17 | Low = charge complete |
+| BAT_ADC | GPIO 1 | Via voltage divider for battery level |
 | **Future** | | |
 | I2S BCLK | GPIO 15 | For microphone (voice commands) |
 | I2S WS | GPIO 16 | For microphone |
@@ -346,7 +346,7 @@ Real-world usage will be a mix — display on for a few seconds when events arri
 - Display connects via 12-pin 0.5mm FPC cable (AFC01-S12FCA-00 connector)
 - USB-C connector: use 16-pin mid-mount type with data lines (D+/D-) connected to ESP32-S3 USB OTG pins for firmware updates and desktop serial communication
 - Battery connector: JST-PH 2-pin (standard for small LiPo)
-- Test points for: 3.3V, VBAT, GND, UART TX/RX
+- Test points for: 3.3V, +BATT, GND, UART TX/RX
 
 ---
 
