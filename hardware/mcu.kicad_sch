@@ -3071,8 +3071,8 @@
 			)
 		)
 	)
-	(global_label "MOTOR_EN"
-		(shape input)
+	(global_label "MOTOR_PWM"
+		(shape output)
 		(at 135.89 78.74 0)
 		(fields_autoplaced yes)
 		(effects
@@ -3083,7 +3083,7 @@
 		)
 		(uuid "7458c9a2-7114-43b5-a58c-0ccdc1377292")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 148.6723 78.74 0)
+			(at 150.3656 78.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3248,7 +3248,7 @@
 		)
 	)
 	(global_label "LED_PWM"
-		(shape input)
+		(shape output)
 		(at 154.94 81.28 0)
 		(fields_autoplaced yes)
 		(effects
@@ -3743,7 +3743,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A"
 			(at 195.58 101.6 0)
 			(effects
 				(font
