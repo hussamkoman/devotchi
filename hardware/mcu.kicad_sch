@@ -3384,7 +3384,7 @@
 		(at 135.89 49.53 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "00d185a7-76c4-4094-904f-083665a662cc")
@@ -3583,7 +3583,7 @@
 		(at 52.07 130.81 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "17174cbe-42e2-4462-b153-b1f5d76ade21")
@@ -3673,7 +3673,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric_Pad0.64x0.40mm_HandSolder"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric_Pad1.08x0.95mm_HandSolder"
 			(at 218.1352 104.14 0)
 			(effects
 				(font
@@ -3692,6 +3692,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 217.17 100.33 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C14663"
 			(at 217.17 100.33 0)
 			(effects
 				(font
@@ -3770,6 +3779,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" " C318884 "
+			(at 200.66 101.6 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "870c9386-09a4-4a10-acaa-a81fde315c8d")
 		)
@@ -3803,7 +3821,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "ESP32-S3-MINI-1"
+		(property "Value" "ESP32-S3-MINI-1-N4R2"
 			(at 113.9033 45.72 0)
 			(effects
 				(font
@@ -3832,6 +3850,15 @@
 		)
 		(property "Description" "RF Module, ESP32-S3 SoC, Wi-Fi 802.11b/g/n, Bluetooth, BLE, 32-bit, 3.3V, SMD, onboard antenna"
 			(at 111.76 33.02 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C3013941"
+			(at 111.76 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4048,7 +4075,7 @@
 		(at 132.08 78.74 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "3dbc7c12-bfc5-4aed-9a07-0eda731e72d3")
@@ -4115,7 +4142,7 @@
 		(at 46.99 123.19 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "42e733b5-e758-4631-838c-7fdd195fc1b8")
@@ -4182,7 +4209,7 @@
 		(at 120.65 113.03 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "4d629350-9d40-4163-86f0-d238298899c3")
@@ -4249,7 +4276,7 @@
 		(at 228.6 95.25 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "67b9d6bf-d625-4a78-80be-9d90c9d0fa73")
@@ -4316,7 +4343,7 @@
 		(at 49.53 127 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "73460aa9-f5fc-47ab-bf6e-1bb809f4f5b1")
@@ -4383,7 +4410,7 @@
 		(at 143.51 49.53 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "78515e1a-6805-40de-ac03-1ff7e1c6a167")
@@ -4473,7 +4500,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric_Pad0.64x0.40mm_HandSolder"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric_Pad1.08x0.95mm_HandSolder"
 			(at 221.9452 48.26 0)
 			(effects
 				(font
@@ -4492,6 +4519,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 220.98 44.45 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C14663"
 			(at 220.98 44.45 0)
 			(effects
 				(font
@@ -4718,7 +4754,7 @@
 		(at 44.45 118.11 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "bb3b0fa3-e442-4cd1-a515-4a1b0aacc51d")
@@ -4835,6 +4871,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C45783"
+			(at 208.28 44.45 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "a4851cda-90be-4c61-9fa3-83dc0d66f9f6")
 		)
@@ -4855,7 +4900,7 @@
 		(at 102.87 38.1 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "cfb95d57-3bfe-4d0c-abb6-04ff27882b03")
@@ -4988,7 +5033,7 @@
 		(at 151.13 81.28 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "dfa3d355-c5bd-432d-9047-ce7bcc97a456")
@@ -5105,6 +5150,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C25804"
+			(at 217.17 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "82290903-0176-46ed-a7ce-1145410b0415")
 		)
@@ -5125,7 +5179,7 @@
 		(at 57.15 138.43 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "f9040b92-c3e3-47bc-b4b4-4628cbdfe74d")
@@ -5192,7 +5246,7 @@
 		(at 54.61 134.62 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "fbe5872f-4aeb-4645-abe1-bee7d908e94e")

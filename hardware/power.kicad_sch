@@ -558,8 +558,8 @@
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
-			(property "Reference" "J"
-				(at 0 22.225 0)
+			(property "Reference" "J201"
+				(at 0 22.86 0)
 				(effects
 					(font
 						(size 1.27 1.27)
@@ -567,14 +567,14 @@
 				)
 			)
 			(property "Value" "USB_C_Receptacle_USB2.0_16P"
-				(at 0 19.685 0)
+				(at 0 20.32 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
 				)
 			)
-			(property "Footprint" ""
+			(property "Footprint" "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
 				(at 3.81 0 0)
 				(effects
 					(font
@@ -1026,7 +1026,7 @@
 						)
 					)
 				)
-				(pin passive line
+				(pin power_out line
 					(at 15.24 15.24 180)
 					(length 5.08)
 					(name "VBUS"
@@ -1256,23 +1256,25 @@
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
-			(property "Reference" "J"
-				(at 0 2.54 0)
+			(property "Reference" "J202"
+				(at 2.54 0.0001 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
+					(justify left)
 				)
 			)
 			(property "Value" "Conn_01x02"
-				(at 0 -5.08 0)
+				(at 2.54 -2.5399 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
+					(justify left)
 				)
 			)
-			(property "Footprint" ""
+			(property "Footprint" "Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal"
 				(at 0 0 0)
 				(effects
 					(font
@@ -3112,6 +3114,107 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "power:PWR_FLAG"
+			(power)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "#FLG"
+				(at 0 1.905 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Value" "PWR_FLAG"
+				(at 0 3.81 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" "~"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Special symbol for telling ERC where power comes from"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "flag power"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "PWR_FLAG_0_0"
+				(pin power_out line
+					(at 0 0 90)
+					(length 0)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(symbol "PWR_FLAG_0_1"
+				(polyline
+					(pts
+						(xy 0 0) (xy 0 1.27) (xy -1.016 1.905) (xy 0 2.54) (xy 1.016 1.905) (xy 0 1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "power:VBUS"
 			(power)
 			(pin_numbers
@@ -3427,6 +3530,12 @@
 		(uuid "2f2daa88-68ff-4307-8e47-537df4f712cb")
 	)
 	(junction
+		(at 217.17 124.46)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "313773a6-4b41-44ea-8c3e-1452a3f6b489")
+	)
+	(junction
 		(at 123.19 60.96)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3437,6 +3546,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "3368fed6-f47c-4696-ba28-ebdd713e88ed")
+	)
+	(junction
+		(at 44.45 78.74)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "3f07c213-8378-4120-ac25-5ef02f61441f")
 	)
 	(junction
 		(at 215.9 55.88)
@@ -3517,6 +3632,12 @@
 		(uuid "c2b230bb-799a-41de-9cae-ca946581ec9e")
 	)
 	(junction
+		(at 66.04 36.83)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "cb4bf229-83bb-4ea1-a6fa-b7f661c7b0a1")
+	)
+	(junction
 		(at 59.69 54.61)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3563,6 +3684,26 @@
 			(type default)
 		)
 		(uuid "08bad9aa-a776-4565-94ab-a0d82c57627a")
+	)
+	(wire
+		(pts
+			(xy 44.45 80.01) (xy 44.45 78.74)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0b63e2c5-0232-4686-bf8c-ebd54ae7827b")
+	)
+	(wire
+		(pts
+			(xy 72.39 36.83) (xy 66.04 36.83)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0df4b3e8-53b6-48c7-b3c7-b5e9841e3229")
 	)
 	(wire
 		(pts
@@ -3616,7 +3757,7 @@
 	)
 	(wire
 		(pts
-			(xy 59.69 41.91) (xy 86.36 41.91)
+			(xy 59.69 41.91) (xy 87.63 41.91)
 		)
 		(stroke
 			(width 0)
@@ -3626,7 +3767,17 @@
 	)
 	(wire
 		(pts
-			(xy 86.36 54.61) (xy 86.36 52.07)
+			(xy 44.45 78.74) (xy 50.8 78.74)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1dcefd29-2144-4641-95dc-c7061164ef85")
+	)
+	(wire
+		(pts
+			(xy 87.63 54.61) (xy 87.63 52.07)
 		)
 		(stroke
 			(width 0)
@@ -3656,6 +3807,16 @@
 	)
 	(wire
 		(pts
+			(xy 195.58 43.18) (xy 201.93 43.18)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "28a0e64d-911c-40fd-ae47-38a356689ff7")
+	)
+	(wire
+		(pts
 			(xy 142.24 71.12) (xy 142.24 68.58)
 		)
 		(stroke
@@ -3666,7 +3827,7 @@
 	)
 	(wire
 		(pts
-			(xy 86.36 41.91) (xy 86.36 44.45)
+			(xy 87.63 41.91) (xy 87.63 44.45)
 		)
 		(stroke
 			(width 0)
@@ -3703,16 +3864,6 @@
 			(type default)
 		)
 		(uuid "3b63ed03-97a0-4f87-aa10-a0e7abde9343")
-	)
-	(wire
-		(pts
-			(xy 195.58 43.18) (xy 201.93 43.18)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "3e32a5f1-7a53-4ed5-a060-a03a84e38a03")
 	)
 	(wire
 		(pts
@@ -3806,6 +3957,16 @@
 	)
 	(wire
 		(pts
+			(xy 72.39 34.29) (xy 72.39 36.83)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "54678cc5-2ae0-442d-a5f6-fe5d5fe964b0")
+	)
+	(wire
+		(pts
 			(xy 83.82 86.36) (xy 81.28 86.36)
 		)
 		(stroke
@@ -3876,7 +4037,7 @@
 	)
 	(wire
 		(pts
-			(xy 67.31 35.56) (xy 67.31 36.83)
+			(xy 66.04 33.02) (xy 66.04 36.83)
 		)
 		(stroke
 			(width 0)
@@ -4066,6 +4227,16 @@
 	)
 	(wire
 		(pts
+			(xy 215.9 41.91) (xy 215.9 43.18)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "970d976f-1c74-4259-80f9-ddc97f24b545")
+	)
+	(wire
+		(pts
 			(xy 72.39 121.92) (xy 82.55 121.92)
 		)
 		(stroke
@@ -4186,6 +4357,16 @@
 	)
 	(wire
 		(pts
+			(xy 167.64 27.94) (xy 167.64 29.21)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "be61a265-295b-4b59-b0ae-3af7a2b79740")
+	)
+	(wire
+		(pts
 			(xy 44.45 74.93) (xy 44.45 78.74)
 		)
 		(stroke
@@ -4206,6 +4387,16 @@
 	)
 	(wire
 		(pts
+			(xy 195.58 41.91) (xy 195.58 43.18)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d0080386-d1ed-42f3-b299-4e3186228cae")
+	)
+	(wire
+		(pts
 			(xy 261.62 68.58) (xy 264.16 68.58)
 		)
 		(stroke
@@ -4223,6 +4414,16 @@
 			(type default)
 		)
 		(uuid "d3a47f31-aa5f-4c5b-ba71-7ad4eb0f5039")
+	)
+	(wire
+		(pts
+			(xy 261.62 74.93) (xy 261.62 68.58)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d453f35f-5f58-4abe-99c0-17b39793c27f")
 	)
 	(wire
 		(pts
@@ -4266,7 +4467,7 @@
 	)
 	(wire
 		(pts
-			(xy 67.31 36.83) (xy 59.69 36.83)
+			(xy 66.04 36.83) (xy 59.69 36.83)
 		)
 		(stroke
 			(width 0)
@@ -4343,16 +4544,6 @@
 			(type default)
 		)
 		(uuid "e80c7bda-14d0-4f62-a2a8-49449fed616d")
-	)
-	(wire
-		(pts
-			(xy 82.55 74.93) (xy 91.44 74.93)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "e84c93ec-ce07-4367-ba51-29e692d5ed57")
 	)
 	(wire
 		(pts
@@ -4603,7 +4794,7 @@
 		(at 81.28 86.36 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "04c3df19-4e93-406c-9f9a-494baeda9f28")
@@ -4675,7 +4866,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "064e828d-f2c1-49c5-9e34-333bb93a5cb7")
-		(property "Reference" "#PWR0215"
+		(property "Reference" "#PWR0213"
 			(at 264.16 81.28 0)
 			(effects
 				(font
@@ -4725,7 +4916,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0215")
+					(reference "#PWR0213")
 					(unit 1)
 				)
 			)
@@ -4759,7 +4950,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric_Pad0.64x0.40mm_HandSolder"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric_Pad1.08x0.95mm_HandSolder"
 			(at 216.8652 53.34 0)
 			(effects
 				(font
@@ -4778,6 +4969,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 215.9 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C14663"
 			(at 215.9 49.53 0)
 			(effects
 				(font
@@ -4856,6 +5056,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C25804"
+			(at 166.37 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "1cb63163-0048-42e2-884b-1402b9a22d2b")
 		)
@@ -4890,7 +5099,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "Conn_01x02"
+		(property "Value" "Battery_conn"
 			(at 238.76 121.9199 0)
 			(effects
 				(font
@@ -4918,6 +5127,15 @@
 			)
 		)
 		(property "Description" "Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 236.22 119.38 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C173752"
 			(at 236.22 119.38 0)
 			(effects
 				(font
@@ -4969,7 +5187,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric_Pad0.64x0.40mm_HandSolder"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric_Pad1.08x0.95mm_HandSolder"
 			(at 73.3552 134.62 0)
 			(effects
 				(font
@@ -4988,6 +5206,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 72.39 130.81 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C15849"
 			(at 72.39 130.81 0)
 			(effects
 				(font
@@ -5132,6 +5359,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C25803"
+			(at 138.43 132.08 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "055c379b-6244-45a5-b13c-64911f524e87")
 		)
@@ -5152,11 +5388,11 @@
 		(at 261.62 68.58 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "1340ba48-211d-4f02-a289-1465ff5bcaf5")
-		(property "Reference" "TP204"
+		(property "Reference" "TP205"
 			(at 260.096 63.5 0)
 			(effects
 				(font
@@ -5208,7 +5444,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP204")
+					(reference "TP205")
 					(unit 1)
 				)
 			)
@@ -5216,73 +5452,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 69.85 73.66 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "1703ebe4-76c6-47d9-84d2-72d7dfbd13a1")
-		(property "Reference" "#PWR0210"
-			(at 69.85 80.01 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "GND"
-			(at 69.85 78.74 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 69.85 73.66 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 69.85 73.66 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 69.85 73.66 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "d79de56c-2c32-4c6e-9c75-bff50020653d")
-		)
-		(instances
-			(project "devotchi"
-				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0210")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
-		(at 44.45 78.74 0)
+		(at 44.45 80.01 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5290,8 +5460,8 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "1b211cfa-4670-4bd3-a4e4-b1242fb0dfa2")
-		(property "Reference" "#PWR0216"
-			(at 44.45 85.09 0)
+		(property "Reference" "#PWR0214"
+			(at 44.45 86.36 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5300,7 +5470,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 44.45 83.82 0)
+			(at 44.45 85.09 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5308,7 +5478,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 44.45 78.74 0)
+			(at 44.45 80.01 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5317,7 +5487,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 44.45 78.74 0)
+			(at 44.45 80.01 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5326,7 +5496,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 44.45 78.74 0)
+			(at 44.45 80.01 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5340,7 +5510,7 @@
 		(instances
 			(project ""
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0216")
+					(reference "#PWR0214")
 					(unit 1)
 				)
 			)
@@ -5348,16 +5518,15 @@
 	)
 	(symbol
 		(lib_id "Device:R")
-		(at 86.36 48.26 0)
+		(at 87.63 48.26 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "24479764-fcd1-4f69-b8f3-9ddeacab91dc")
 		(property "Reference" "R203"
-			(at 88.9 46.9899 0)
+			(at 89.154 46.99 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5366,7 +5535,7 @@
 			)
 		)
 		(property "Value" "5k1"
-			(at 88.9 49.5299 0)
+			(at 89.154 49.53 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5374,8 +5543,8 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0201_0603Metric_Pad0.64x0.40mm_HandSolder"
-			(at 84.582 48.26 90)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder"
+			(at 85.852 48.26 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5384,7 +5553,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 86.36 48.26 0)
+			(at 87.63 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5393,7 +5562,16 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 86.36 48.26 0)
+			(at 87.63 48.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C23186"
+			(at 87.63 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5421,11 +5599,11 @@
 		(at 201.93 43.18 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "28ec2cff-909b-4531-a948-63fb4da86d61")
-		(property "Reference" "TP201"
+		(property "Reference" "TP202"
 			(at 200.406 38.1 0)
 			(effects
 				(font
@@ -5477,7 +5655,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP201")
+					(reference "TP202")
 					(unit 1)
 				)
 			)
@@ -5493,7 +5671,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "29ea22cb-200f-4744-bcb6-9dd9421f7766")
-		(property "Reference" "#PWR0214"
+		(property "Reference" "#PWR0212"
 			(at 166.37 81.28 0)
 			(effects
 				(font
@@ -5543,7 +5721,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0214")
+					(reference "#PWR0212")
 					(unit 1)
 				)
 			)
@@ -5596,6 +5774,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 167.64 33.02 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C15850"
 			(at 167.64 33.02 0)
 			(effects
 				(font
@@ -5674,6 +5861,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C25803"
+			(at 138.43 119.38 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "b38d3d5f-1cce-43d6-ae4f-97c5bbea2d83")
 		)
@@ -5699,7 +5895,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "388a97b6-3069-4d31-a5ca-b820f5427736")
-		(property "Reference" "#PWR0221"
+		(property "Reference" "#PWR0219"
 			(at 217.17 128.27 0)
 			(effects
 				(font
@@ -5749,7 +5945,7 @@
 		(instances
 			(project ""
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0221")
+					(reference "#PWR0219")
 					(unit 1)
 				)
 			)
@@ -5760,12 +5956,12 @@
 		(at 228.6 124.46 180)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "3acaaa68-1a76-47a7-91aa-99ca00f6a215")
 		(property "Reference" "TP212"
-			(at 230.124 129.54 0)
+			(at 233.172 130.048 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5827,7 +6023,7 @@
 		(at 72.39 121.92 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "42b11d58-52a4-4525-ae8e-2092b35408e3")
@@ -6010,6 +6206,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C21190"
+			(at 255.27 55.88 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "9c9098ba-3b32-4611-a45a-1f678eeadf9e")
 		)
@@ -6027,7 +6232,7 @@
 	)
 	(symbol
 		(lib_id "power:VBUS")
-		(at 67.31 35.56 0)
+		(at 66.04 33.02 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6036,7 +6241,7 @@
 		(fields_autoplaced yes)
 		(uuid "4b2de073-1de0-4f42-a9c1-22b3e9521ddb")
 		(property "Reference" "#PWR0202"
-			(at 67.31 39.37 0)
+			(at 66.04 36.83 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6045,7 +6250,7 @@
 			)
 		)
 		(property "Value" "VBUS"
-			(at 67.31 30.48 0)
+			(at 66.04 27.94 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6053,7 +6258,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 67.31 35.56 0)
+			(at 66.04 33.02 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6062,7 +6267,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 67.31 35.56 0)
+			(at 66.04 33.02 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6071,7 +6276,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"VBUS\""
-			(at 67.31 35.56 0)
+			(at 66.04 33.02 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6146,6 +6351,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C4211"
+			(at 156.21 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "9b1c6e5c-ea99-4166-b942-cb4fc90ee255")
 		)
@@ -6171,7 +6385,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "55262ef9-afd0-4bda-95b1-a5f880592d7d")
-		(property "Reference" "#PWR0217"
+		(property "Reference" "#PWR0215"
 			(at 138.43 118.11 0)
 			(effects
 				(font
@@ -6221,7 +6435,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0217")
+					(reference "#PWR0215")
 					(unit 1)
 				)
 			)
@@ -6229,7 +6443,7 @@
 	)
 	(symbol
 		(lib_id "power:+BATT")
-		(at 195.58 43.18 0)
+		(at 195.58 41.91 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6238,7 +6452,7 @@
 		(fields_autoplaced yes)
 		(uuid "5557b3f9-8f12-46a7-b5e2-6ae838053682")
 		(property "Reference" "#PWR0205"
-			(at 195.58 46.99 0)
+			(at 195.58 45.72 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6247,7 +6461,7 @@
 			)
 		)
 		(property "Value" "+BATT"
-			(at 195.58 38.1 0)
+			(at 195.58 36.83 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6255,7 +6469,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 195.58 43.18 0)
+			(at 195.58 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6264,7 +6478,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 195.58 43.18 0)
+			(at 195.58 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6273,7 +6487,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+BATT\""
-			(at 195.58 43.18 0)
+			(at 195.58 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6338,6 +6552,15 @@
 			)
 		)
 		(property "Description" "USB 2.0-only 16P Type-C Receptacle connector"
+			(at 44.45 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C165948"
 			(at 44.45 52.07 0)
 			(effects
 				(font
@@ -6416,7 +6639,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "6527a79f-5664-471c-992e-1c69bf3ddf17")
-		(property "Reference" "#PWR0212"
+		(property "Reference" "#PWR0211"
 			(at 156.21 80.01 0)
 			(effects
 				(font
@@ -6466,7 +6689,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0212")
+					(reference "#PWR0211")
 					(unit 1)
 				)
 			)
@@ -6543,7 +6766,7 @@
 		(at 39.37 121.92 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "68a056a6-3066-459b-97e0-8ef734a1490c")
@@ -6725,6 +6948,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C725790"
+			(at 142.24 55.88 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "e1de4ab7-2b6a-4c2b-adb0-92e481a1df02")
 		)
@@ -6771,7 +7003,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "7960454b-f886-42eb-b750-9b5f37457224")
-		(property "Reference" "#PWR0222"
+		(property "Reference" "#PWR0220"
 			(at 39.37 144.78 0)
 			(effects
 				(font
@@ -6821,7 +7053,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0222")
+					(reference "#PWR0220")
 					(unit 1)
 				)
 			)
@@ -6829,7 +7061,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 86.36 54.61 0)
+		(at 87.63 54.61 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6838,7 +7070,7 @@
 		(fields_autoplaced yes)
 		(uuid "7f310288-9801-45da-b705-ad84fa43462d")
 		(property "Reference" "#PWR0208"
-			(at 86.36 60.96 0)
+			(at 87.63 60.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6847,7 +7079,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 86.36 59.69 0)
+			(at 87.63 59.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6855,7 +7087,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 86.36 54.61 0)
+			(at 87.63 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6864,7 +7096,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 86.36 54.61 0)
+			(at 87.63 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6873,7 +7105,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 86.36 54.61 0)
+			(at 87.63 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6888,6 +7120,72 @@
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
 					(reference "#PWR0208")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:PWR_FLAG")
+		(at 217.17 124.46 180)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "7fd993f4-cc26-4626-b0d2-63cf0e21a376")
+		(property "Reference" "#FLG0203"
+			(at 217.17 126.365 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 217.17 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 217.17 124.46 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 217.17 124.46 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Special symbol for telling ERC where power comes from"
+			(at 217.17 124.46 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "d888a3e0-1de3-4052-9544-7a33ace7465a")
+		)
+		(instances
+			(project ""
+				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
+					(reference "#FLG0203")
 					(unit 1)
 				)
 			)
@@ -6969,7 +7267,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "9798fc5a-8464-49c9-95ca-fb1e38e5f34b")
-		(property "Reference" "#PWR0220"
+		(property "Reference" "#PWR0218"
 			(at 82.55 125.73 0)
 			(effects
 				(font
@@ -7019,7 +7317,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0220")
+					(reference "#PWR0218")
 					(unit 1)
 				)
 			)
@@ -7027,15 +7325,15 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 82.55 74.93 0)
+		(at 72.39 34.29 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "a66f70a2-61c8-4476-bcc5-41020514640e")
-		(property "Reference" "TP206"
-			(at 81.026 69.85 0)
+		(property "Reference" "TP201"
+			(at 70.866 28.194 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7044,7 +7342,7 @@
 			)
 		)
 		(property "Value" "TestPoint"
-			(at 85.09 72.8979 0)
+			(at 74.93 32.2579 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7054,7 +7352,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 87.63 74.93 0)
+			(at 77.47 34.29 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7063,7 +7361,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 87.63 74.93 0)
+			(at 77.47 34.29 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7072,7 +7370,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 82.55 74.93 0)
+			(at 72.39 34.29 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7086,7 +7384,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP206")
+					(reference "TP201")
 					(unit 1)
 				)
 			)
@@ -7102,7 +7400,7 @@
 		(dnp no)
 		(uuid "a7f15e28-11c3-499b-90b9-57af33cdbc7c")
 		(property "Reference" "R202"
-			(at 81.28 46.9899 0)
+			(at 80.264 46.99 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7111,7 +7409,7 @@
 			)
 		)
 		(property "Value" "5k1"
-			(at 81.28 49.5299 0)
+			(at 80.264 49.53 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7119,7 +7417,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0201_0603Metric_Pad0.64x0.40mm_HandSolder"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder"
 			(at 76.962 48.26 90)
 			(effects
 				(font
@@ -7146,6 +7444,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C23186"
+			(at 78.74 48.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "adcaa17e-16ce-4552-9eac-855eab908951")
 		)
@@ -7162,6 +7469,73 @@
 		)
 	)
 	(symbol
+		(lib_id "power:PWR_FLAG")
+		(at 261.62 74.93 180)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "aec466ff-1aec-4efc-b8a1-b553756d0a5e")
+		(property "Reference" "#FLG0202"
+			(at 261.62 76.835 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 261.62 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Footprint" ""
+			(at 261.62 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 261.62 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Special symbol for telling ERC where power comes from"
+			(at 261.62 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "bed35221-c98e-465e-96ab-b52a05dffa8d")
+		)
+		(instances
+			(project "devotchi"
+				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
+					(reference "#FLG0202")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:GND")
 		(at 138.43 138.43 0)
 		(unit 1)
@@ -7171,7 +7545,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "af4fc00f-a7c9-412f-ab4f-a3d1cef3ec6e")
-		(property "Reference" "#PWR0225"
+		(property "Reference" "#PWR0223"
 			(at 138.43 144.78 0)
 			(effects
 				(font
@@ -7221,7 +7595,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0225")
+					(reference "#PWR0223")
 					(unit 1)
 				)
 			)
@@ -7232,11 +7606,11 @@
 		(at 123.19 60.96 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "b10abbb7-6650-4064-b18f-07c966bc4a17")
-		(property "Reference" "TP203"
+		(property "Reference" "TP204"
 			(at 121.666 55.88 0)
 			(effects
 				(font
@@ -7288,7 +7662,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP203")
+					(reference "TP204")
 					(unit 1)
 				)
 			)
@@ -7296,15 +7670,15 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 69.85 73.66 0)
+		(at 50.8 78.74 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "b2e2cc11-6f55-4329-88bc-f16ff012097a")
-		(property "Reference" "TP205"
-			(at 68.326 68.58 0)
+		(property "Reference" "TP206"
+			(at 49.276 73.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7313,7 +7687,7 @@
 			)
 		)
 		(property "Value" "TestPoint"
-			(at 72.39 71.6279 0)
+			(at 53.34 76.7079 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7323,7 +7697,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 74.93 73.66 0)
+			(at 55.88 78.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7332,7 +7706,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 74.93 73.66 0)
+			(at 55.88 78.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7341,7 +7715,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 69.85 73.66 0)
+			(at 50.8 78.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7355,7 +7729,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP205")
+					(reference "TP206")
 					(unit 1)
 				)
 			)
@@ -7371,7 +7745,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "b5e4ff60-cff9-4929-bf84-b1cdcd1bb4fe")
-		(property "Reference" "#PWR0211"
+		(property "Reference" "#PWR0210"
 			(at 142.24 80.01 0)
 			(effects
 				(font
@@ -7421,7 +7795,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0211")
+					(reference "#PWR0210")
 					(unit 1)
 				)
 			)
@@ -7437,7 +7811,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "ba13b006-a91e-49f9-bf00-cde0354a295d")
-		(property "Reference" "#PWR0223"
+		(property "Reference" "#PWR0221"
 			(at 57.15 144.78 0)
 			(effects
 				(font
@@ -7487,73 +7861,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0223")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:VBUS")
-		(at 91.44 74.93 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "bcf64e85-bdce-4c42-a83c-300ccbf11a9e")
-		(property "Reference" "#PWR0213"
-			(at 91.44 78.74 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "VBUS"
-			(at 91.44 69.85 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 91.44 74.93 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 91.44 74.93 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"VBUS\""
-			(at 91.44 74.93 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "a06a9d5e-2a2e-4f76-a47b-5580117321a3")
-		)
-		(instances
-			(project "devotchi"
-				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0213")
+					(reference "#PWR0221")
 					(unit 1)
 				)
 			)
@@ -7569,7 +7877,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "befd1192-7493-475e-bc9d-454d92da1a92")
-		(property "Reference" "#PWR0224"
+		(property "Reference" "#PWR0222"
 			(at 72.39 144.78 0)
 			(effects
 				(font
@@ -7619,7 +7927,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0224")
+					(reference "#PWR0222")
 					(unit 1)
 				)
 			)
@@ -7653,7 +7961,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric_Pad0.64x0.40mm_HandSolder"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric_Pad1.08x0.95mm_HandSolder"
 			(at 40.3352 133.35 0)
 			(effects
 				(font
@@ -7672,6 +7980,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 39.37 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C15849"
 			(at 39.37 129.54 0)
 			(effects
 				(font
@@ -7700,7 +8017,7 @@
 		(at 228.6 116.84 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "cf98d678-f0ae-444e-967a-31de1293b5b7")
@@ -7764,7 +8081,7 @@
 	)
 	(symbol
 		(lib_id "power:VBUS")
-		(at 167.64 29.21 0)
+		(at 167.64 27.94 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7773,7 +8090,7 @@
 		(fields_autoplaced yes)
 		(uuid "d0249a01-93b0-4c87-8d47-83fa8b816ace")
 		(property "Reference" "#PWR0201"
-			(at 167.64 33.02 0)
+			(at 167.64 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7782,7 +8099,7 @@
 			)
 		)
 		(property "Value" "VBUS"
-			(at 167.64 24.13 0)
+			(at 167.64 22.86 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7790,7 +8107,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 167.64 29.21 0)
+			(at 167.64 27.94 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7799,7 +8116,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 167.64 29.21 0)
+			(at 167.64 27.94 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7808,7 +8125,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"VBUS\""
-			(at 167.64 29.21 0)
+			(at 167.64 27.94 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7833,7 +8150,7 @@
 		(at 148.59 125.73 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "d2e4c01a-c25a-49a8-8969-aa96770ff9e1")
@@ -7948,6 +8265,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C351410"
+			(at 238.76 45.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "6"
 			(uuid "6e4a3767-7747-438a-9fe8-afd2ba2ff164")
 		)
@@ -8028,6 +8354,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C82942"
+			(at 57.15 124.46 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "a926809c-3622-442f-a04d-82b024bd1576")
 		)
@@ -8057,11 +8392,11 @@
 		(at 123.19 53.34 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "d81dc0b1-de45-40f9-994c-a506ff09be44")
-		(property "Reference" "TP202"
+		(property "Reference" "TP203"
 			(at 121.666 48.26 0)
 			(effects
 				(font
@@ -8113,7 +8448,74 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP202")
+					(reference "TP203")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:PWR_FLAG")
+		(at 215.9 41.91 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "da1d5e72-2820-4e78-a592-659eeabdcfc4")
+		(property "Reference" "#FLG0201"
+			(at 215.9 40.005 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 215.9 36.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Footprint" ""
+			(at 215.9 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 215.9 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Special symbol for telling ERC where power comes from"
+			(at 215.9 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "a43161ea-46b1-416f-a19e-479b47de6057")
+		)
+		(instances
+			(project "devotchi"
+				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
+					(reference "#FLG0201")
 					(unit 1)
 				)
 			)
@@ -8295,6 +8697,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C2830320"
+			(at 241.3 68.58 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "5"
 			(uuid "ae7b1170-3e53-46b8-9e2c-c9ea8649563a")
 		)
@@ -8338,7 +8749,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "e129eedc-075d-4695-8097-034b2e695007")
-		(property "Reference" "#PWR0219"
+		(property "Reference" "#PWR0217"
 			(at 33.02 125.73 0)
 			(effects
 				(font
@@ -8388,7 +8799,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0219")
+					(reference "#PWR0217")
 					(unit 1)
 				)
 			)
@@ -8404,7 +8815,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "ece31bd6-f782-4443-9056-33be17f65e31")
-		(property "Reference" "#PWR0218"
+		(property "Reference" "#PWR0216"
 			(at 217.17 120.65 0)
 			(effects
 				(font
@@ -8454,7 +8865,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0218")
+					(reference "#PWR0216")
 					(unit 1)
 				)
 			)
@@ -8513,6 +8924,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC Part" "C22775"
+			(at 209.55 43.18 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "a2a58342-e6fa-4bc3-a2fb-ac72a8de16df")
 		)
@@ -8533,7 +8953,7 @@
 		(at 67.31 86.36 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "f7dcaecf-1e1e-47fc-bf0c-5c8f91f129f7")

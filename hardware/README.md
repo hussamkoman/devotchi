@@ -24,34 +24,26 @@
 
 ---
 
-## Component Bill of Materials (Portable WiFi+BLE)
+## Parts
 
-### MCU: ESP32-S3-MINI-1
+See [purchase-list.md](purchase-list.md) for the complete BOM with LCSC part numbers and sourcing info.
+
+### MCU: ESP32-S3-MINI-1-N4R2
 
 | Spec | Value |
 |---|---|
-| Manufacturer | Espressif |
-| Part number | ESP32-S3-MINI-1-N8 (8MB flash, no PSRAM) |
+| Part number | ESP32-S3-MINI-1-N4R2 (4MB flash, 2MB PSRAM) |
 | CPU | Dual-core Xtensa LX7 @ 240 MHz |
-| SRAM | 512 KB |
+| SRAM | 512 KB + 2MB PSRAM |
 | WiFi | 802.11 b/g/n, 2.4 GHz |
 | Bluetooth | BLE 5.0 |
 | Antenna | Integrated PCB antenna |
 | Module dimensions | 15.4 x 20.5 x 2.4 mm |
 | Operating voltage | 3.0 - 3.6V |
-| Deep sleep current | ~8 uA (module level) |
-| Interface highlights | SPI, I2C, I2S, UART, USB OTG, PWM, ADC |
 
-**Datasheet:** [ESP32-S3-MINI-1 datasheet](../docs/mcu/ESP32-S3-MINI-1_datasheet.pdf)
-**SoC datasheet:** [ESP32-S3 SoC datasheet](../docs/mcu/ESP32-S3_SoC_datasheet.pdf)
+**Datasheets:** [Module](../docs/mcu/ESP32-S3-MINI-1_datasheet.pdf) | [SoC](../docs/mcu/ESP32-S3_SoC_datasheet.pdf)
 
-**Why this part:**
-- Integrated PCB antenna — no external antenna or custom antenna design needed
-- Small module footprint (15.4 x 20.5 mm)
-- Dual-core allows running WiFi/BLE stack on one core and application on the other
-- I2S peripheral enables future voice command features (microphone input)
-- Massive community and library ecosystem
-- USB OTG for the desktop variant (serial communication without UART bridge)
+**Why N4R2:** PSRAM needed for display framebuffers — 320x240 RGB565 = 150KB per frame, double buffering needs 300KB. Without PSRAM, internal 512KB SRAM can't fit framebuffers + WiFi stack + application.
 
 ### Display: HS20HS072RX 2.0" Color TFT LCD
 
@@ -108,68 +100,18 @@
 | 11 | K | Backlight LED cathode |
 | 12 | GND | Power ground |
 
-### FPC Connector: AFC01-S12FCA-00
-
-| Spec | Value |
-|---|---|
-| Manufacturer | JUSHUO |
-| Part number | AFC01-S12FCA-00 |
-| LCSC | C262661 |
-| Pins | 12 |
-| Pitch | 0.5mm |
-| Contact type | Bottom contact |
-| Locking | Hinged lid (flip-lock) |
-| Height | 2mm above board |
-| FPC thickness | 0.3mm |
-| Price | $0.09 (1+), $0.07 (50+) |
-| Stock | 76,000+ |
-
 ### Backlight Dimming Circuit
 
-The display has no built-in backlight controller. Backlight is driven from battery voltage (+BATT, 3.7-4.2V) through a current-limiting resistor and switched by an N-channel MOSFET controlled by ESP32 PWM.
+Backlight driven from +BATT (3.7-4.2V) through 22Ω resistor + AO3400A N-ch MOSFET, PWM-controlled by ESP32.
 
-**Why +BATT instead of 3.3V:** The backlight LEDs have Vf = 3.0V typical. Running from 3.3V gives only 0.3V headroom — poor current regulation. Running from +BATT (~3.7-4.2V) gives 0.7-1.2V headroom for reliable regulation.
+**Why +BATT instead of 3.3V:** LEDs have Vf = 3.0V. Only 0.3V headroom from 3.3V — poor regulation. +BATT gives 0.7-1.2V headroom.
 
-**Components:**
+**Circuit:** `+BATT → R (22Ω) → LED anode → LED cathode → MOSFET drain → GND`, gate driven by DISP_BL GPIO.
 
-| Ref | Part | Value | Purpose |
-|---|---|---|---|
-| Q_BL | AO3400A (C20917) | N-ch MOSFET, SOT-23 | Switches backlight cathode, PWM dimming |
-| R_BL | Resistor | 12Ω, 0603 | Current limiting (~80mA at +BATT=3.96V) |
+**Current at different battery voltages:**
+- 4.2V (full): ~55mA | 3.7V (nominal): ~32mA | 3.4V (low): ~18mA
 
-**MOSFET: AO3400A**
-
-| Spec | Value |
-|---|---|
-| LCSC | C20917 |
-| Library | Basic (no assembly fee) |
-| Vgs(th) | 1.45V (fully on at 3.3V GPIO) |
-| Vds | 30V |
-| Id | 5.7A |
-| Rds(on) | 48mΩ @ Vgs=2.5V |
-| Package | SOT-23 |
-| Price | $0.08 |
-| Stock | 2,000,000+ |
-
-**Circuit:**
-```
-+BATT ─── R_BL (12Ω) ─── FPC Pin 10 (LED Anode)
-                          FPC Pin 11 (LED Cathode) ─── Q_BL Drain
-                                                       Q_BL Source ─── GND
-                                                       Q_BL Gate ─── ESP32 PWM GPIO
-```
-
-**Resistor calculation:**
-- +BATT nominal = 3.7V, Vf = 3.0V, I = 80mA
-- R = (3.7 - 3.0) / 0.08 = 8.75Ω → use 12Ω for safety margin
-- At 4.2V (full charge): I = (4.2 - 3.0) / 12 = 100mA (within 80mA abs max only briefly, PWM duty < 80% at full charge)
-- At 3.7V (nominal): I = (3.7 - 3.0) / 12 = 58mA (comfortable)
-- At 3.4V (low battery): I = (3.4 - 3.0) / 12 = 33mA (dimmer but still visible)
-
-**Firmware notes:**
-- PWM frequency: 1kHz+ (no visible flicker)
-- Sleep: send ST7789 SLPIN command (0x10), then set PWM duty to 0
-- Wake: set PWM duty > 0, then send SLPOUT command (0x11), wait 120ms
+**Firmware:** PWM at 1kHz+. Sleep: SLPIN (0x10) + duty=0. Wake: duty>0 + SLPOUT (0x11), wait 120ms.
 
 ### Firmware Graphics Library
 
@@ -182,99 +124,33 @@ The display has no built-in backlight controller. Backlight is driven from batte
 - ST7789 sleep commands (SLPIN/SLPOUT) supported for power management
 - Alternative: LVGL if more complex UI widgets are needed later
 
-### Battery Protection: DW01A + FS8205A
+### Power Chain
 
-| Spec | Value |
-|---|---|
-| Protection IC | DW01A (PUOLOP / Fortune Semiconductor) |
-| Package (DW01A) | SOT-23-6 |
-| MOSFET | FS8205A dual N-channel MOSFET |
-| Package (FS8205A) | SOT-23-6 |
-| Over-discharge cutoff | ~2.4V |
-| Over-charge cutoff | ~4.3V |
-| Short circuit protection | Yes, via CS pin current sense |
-| Rds(on) (FS8205A) | ~25 mΩ per MOSFET |
+USB-C → TP4056 (charger) → DW01A+FS8205A (protection) → ME6211 (3.3V LDO) → ESP32-S3 + display
 
-**Datasheets:**
-- [DW01A datasheet](../docs/power/DW01A_datasheet.pdf)
-- [FS8205A datasheet](../docs/power/FS8205A_datasheet.pdf)
+**Datasheets:** [TP4056](../docs/power/TP4056_datasheet.pdf) | [DW01A](../docs/power/DW01A_datasheet.pdf) | [FS8205A](../docs/power/FS8205A_datasheet.pdf) | [ME6211](../docs/power/ME6211_datasheet.pdf)
 
-**Why these parts:**
-- Standard LiPo protection pair — used on virtually every small battery board
-- DW01A monitors voltage and current, FS8205A switches the ground path
-- Protects against over-discharge (battery drains to 0V = dead cell), over-charge, and short circuit
-- Very low cost (~$0.10 total) and tiny footprint (two SOT-23-6 packages)
-
-**Design notes:**
-- DW01A VCC connects to battery positive via 100Ω resistor (inrush limiting)
-- 100nF cap between VCC and GND
-- FS8205A sits in the battery ground path — DW01A controls its gates (OD/OC pins)
-- CS pin connects to FS8205A source via 1kΩ resistor (current sense for short circuit detection)
-- In normal operation, MOSFETs are ON and battery GND = system GND
-- During fault, MOSFETs turn OFF, disconnecting the battery
-
-### Charger: TP4056
-
-| Spec | Value |
-|---|---|
-| Type | Linear single-cell LiPo charger |
-| Package | SOP-8 / ESOP-8 |
-| Input | USB-C, 4V - 8V |
-| Charge current | Up to 1A (configurable via resistor) |
-| Charge voltage | 4.2V (constant voltage) |
-| Protection | DW01A + 8205A MOSFETs on module (over-charge, over-discharge, short circuit) |
-| Charge termination | Current drops below threshold |
-| Status outputs | 2 pins (charging / standby) |
-
-**Datasheet:** [TP4056 datasheet](../docs/power/TP4056_datasheet.pdf)
-
-**Design notes:**
-- Set charge current via PROG resistor (R_prog). For a small LiPo (300-500mAh), use 2.4k-4k ohm for 250-500mA charge rate.
-- Connect STDBY and CHRG pins to ESP32 GPIOs for software battery status reading.
-- USB-C connector wired with CC1/CC2 pull-down resistors (5.1k each) for proper USB-C detection.
-
-### Regulator: ME6211 3.3V LDO
-
-| Spec | Value |
-|---|---|
-| Type | CMOS LDO voltage regulator |
-| Package | SOT-23-5 |
-| Output voltage | 3.3V (fixed) |
-| Output current | 500 mA max |
-| Dropout voltage | 100 mV @ 100mA |
-| Quiescent current | 40 uA typical |
-| Input voltage | 2.0 - 6.0V |
-
-**Datasheet:** [ME6211 datasheet](../docs/power/ME6211_datasheet.pdf)
-
-**Design notes:**
-- Input from LiPo battery (3.0 - 4.2V) → output 3.3V
-- 1uF input cap + 1uF output cap minimum
-- Powers both the ESP32-S3 and the TFT display logic (IOVCC + VCC)
-
-**Known concern — dropout at low battery:**
-The ME6211 has 100mV dropout, meaning it needs ~3.4V input to regulate 3.3V. LiPo cells drop to 3.0-3.2V before cutoff. Between 3.0-3.4V the output will sag below 3.3V. The ESP32-S3 operates down to 3.0V, so it will still function but may be out of spec. Options to address this:
-- Accept it — the device will work slightly below spec at very low battery, and the DW01A cuts off at ~2.4V anyway
-- Use a buck-boost converter instead (e.g., TPS63001) — converts 1.8-5.5V to 3.3V but more complex and expensive
-- For MVP, the LDO is fine — flag low battery in firmware and prompt charging before regulation drops
+**Key design notes:**
+- TP4056 charge current set by R205 (3kΩ → ~330mA charge rate)
+- DW01A+FS8205A: standard LiPo protection pair, back-to-back MOSFETs in battery ground path
+- ME6211 LDO: 100mV dropout — at low battery (<3.4V) output sags below 3.3V, acceptable for MVP
+- USB-C CC1/CC2 pull-downs: 5.1kΩ each for proper USB-C detection
 
 ### Buttons
 
-| Button | Position | Function |
-|---|---|---|
-| Approve (green) | Front left | Accept approval/permission requests |
-| Reject (red) | Front right | Reject approval/permission requests |
-| Action | Front center | Context-dependent: scroll, open menu, poke pet |
-| Wake/Power | Side | Wake from deep sleep, long-press for power off |
+4 tactile switches with hardware debounce (10kΩ pull-up + 100nF cap per button). Active low, pressed = GND.
 
-All buttons are standard 6x6mm tactile switches with 10k pull-up resistors (or use ESP32 internal pull-ups). Buttons connect to ground when pressed.
+| Button | Function |
+|---|---|
+| Approve | Accept approval/permission requests |
+| Reject | Reject approval/permission requests |
+| Action | Context-dependent: scroll, open menu, poke pet |
+| Wake/Power | Wake from deep sleep (RTC-capable GPIO), long-press for power off |
 
 ### Feedback
 
-| Component | Purpose | GPIO |
-|---|---|---|
-| Status LED (RGB or single color) | Connection status, charging, notifications | 1 PWM pin (or 3 for RGB) |
-| Vibration motor (coin type, 3V) | Haptic alert for approval requests | 1 GPIO via MOSFET |
+- **Debug LED** (green 0603) — GPIO direct drive through 150Ω resistor. Dev/debug only.
+- **Vibration motor** (6mm coin, 3V) — AO3400A MOSFET driver + 1N5819W flyback diode. PWM-capable. Connected via solder pads.
 
 ---
 
