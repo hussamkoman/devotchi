@@ -1,0 +1,602 @@
+[
+  {
+    "design": "01_classic_box",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 3.4,
+        "clearance_h": 17.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 55.2x56.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 10.2,
+        "clearance_h": 16.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 55.2x56.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 25.2,
+        "clearance_h": 21.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 55.2x56.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 15.1,
+        "min_required": 15.1,
+        "margin": 0.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 0.43,
+        "note": "R=2.0mm corners reduce usable rect by ~0.4mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 9.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "02_pebble",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 7.4,
+        "clearance_h": 21.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 59.2x60.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 14.2,
+        "clearance_h": 20.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 59.2x60.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 29.2,
+        "clearance_h": 25.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 59.2x60.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 16.1,
+        "min_required": 15.1,
+        "margin": 1.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 1.72,
+        "note": "R=8.0mm corners reduce usable rect by ~1.7mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 11.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "03_slim_wedge",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 3.4,
+        "clearance_h": 19.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 55.2x58.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 10.2,
+        "clearance_h": 18.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 55.2x58.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 25.2,
+        "clearance_h": 23.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 55.2x58.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 18.1,
+        "min_required": 15.1,
+        "margin": 3.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 0.64,
+        "note": "R=3.0mm corners reduce usable rect by ~0.6mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 9.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "04_tamagotchi_egg",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 11.4,
+        "clearance_h": 27.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 63.2x66.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 18.2,
+        "clearance_h": 26.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 63.2x66.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 33.2,
+        "clearance_h": 31.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 63.2x66.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 19.1,
+        "min_required": 15.1,
+        "margin": 4.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 2.58,
+        "note": "R=12.0mm corners reduce usable rect by ~2.6mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 13.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "05_industrial",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 5.4,
+        "clearance_h": 19.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 57.2x58.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 12.2,
+        "clearance_h": 18.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 57.2x58.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 27.2,
+        "clearance_h": 23.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 57.2x58.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 15.1,
+        "min_required": 15.1,
+        "margin": 0.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 0.21,
+        "note": "R=1.0mm corners reduce usable rect by ~0.2mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 10.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "06_compact_pill",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 5.4,
+        "clearance_h": 19.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 57.2x58.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 12.2,
+        "clearance_h": 18.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 57.2x58.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 27.2,
+        "clearance_h": 23.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 57.2x58.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 15.6,
+        "min_required": 15.1,
+        "margin": 0.5
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 4.29,
+        "note": "R=20.0mm corners reduce usable rect by ~4.3mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 10.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "07_ergonomic_grip",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 5.4,
+        "clearance_h": 19.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 57.2x58.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 12.2,
+        "clearance_h": 18.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 57.2x58.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 27.2,
+        "clearance_h": 23.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 57.2x58.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 23.1,
+        "min_required": 15.1,
+        "margin": 8.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 0.86,
+        "note": "R=4.0mm corners reduce usable rect by ~0.9mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 10.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "08_game_boy_micro",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 9.4,
+        "clearance_h": 17.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 61.2x56.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 16.2,
+        "clearance_h": 16.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 61.2x56.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 31.2,
+        "clearance_h": 21.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 61.2x56.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 15.1,
+        "min_required": 15.1,
+        "margin": 0.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 0.75,
+        "note": "R=3.5mm corners reduce usable rect by ~0.8mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 12.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "09_keychain_mini",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 3.4,
+        "clearance_h": 20.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 55.2x59.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 10.2,
+        "clearance_h": 19.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 55.2x59.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 25.2,
+        "clearance_h": 24.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 55.2x59.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 15.1,
+        "min_required": 15.1,
+        "margin": 0.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 0.54,
+        "note": "R=2.5mm corners reduce usable rect by ~0.5mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 9.1,
+        "min_required": 2.5
+      }
+    ]
+  },
+  {
+    "design": "10_luxury_chamfer",
+    "pass": true,
+    "checks": [
+      {
+        "component": "Display",
+        "status": "PASS",
+        "clearance_w": 7.4,
+        "clearance_h": 21.0,
+        "min_required": 0.4,
+        "note": "Module 51.8x36.2 in cavity 59.2x60.2"
+      },
+      {
+        "component": "PCB",
+        "status": "PASS",
+        "clearance_w": 14.2,
+        "clearance_h": 20.2,
+        "min_required": 0.4,
+        "note": "PCB 45.0x40.0 in cavity 59.2x60.2"
+      },
+      {
+        "component": "Battery",
+        "status": "PASS",
+        "clearance_w": 29.2,
+        "clearance_h": 25.2,
+        "min_required": 1.0,
+        "note": "Battery 30.0x35.0 in cavity 59.2x60.2"
+      },
+      {
+        "component": "Depth stack",
+        "status": "PASS",
+        "case_depth": 18.1,
+        "min_required": 15.1,
+        "margin": 3.0
+      },
+      {
+        "component": "USB-C port",
+        "status": "PASS",
+        "note": "Bottom edge accessible"
+      },
+      {
+        "component": "Corner clearance",
+        "status": "PASS",
+        "effective_loss_per_corner": 1.07,
+        "note": "R=5.0mm corners reduce usable rect by ~1.1mm"
+      },
+      {
+        "component": "Wall printability",
+        "status": "PASS",
+        "wall_thickness": 1.5,
+        "min_fdm": 1.2
+      },
+      {
+        "component": "Button edge clearance",
+        "status": "PASS",
+        "distance_to_wall": 11.1,
+        "min_required": 2.5
+      }
+    ]
+  }
+]
