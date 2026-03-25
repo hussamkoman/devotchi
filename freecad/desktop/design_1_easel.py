@@ -438,46 +438,57 @@ def get_views():
     # Interior back: back shell viewed from front face side
     interior_back = back
 
-    # Cross section: assembled slab cut at Y=0
-    cross = cross_section_cut(union()(assembled_slab, screen, pcb), axis="y", keep="back")
+    # Cross section: assembled unit cut at X=0 — shows triangular stand profile + tilted slab
+    cross = cross_section_cut(assembled_full_with_internals, axis="x", keep="back")
 
     views = [
         {
             "name": "assembled_iso",
             "scad_object": assembled_full_with_internals,
-            # Slab is tilted 65° in stand; custom camera to see screen face
-            "camera": camera_custom(rot_x=100, rot_y=0, rot_z=20, dist=500),
+            # 3/4 view showing screen face: rot_x=155 sees -Z/front,
+            # rot_z=340 orbits right for side view, centered on assembly
+            "camera": camera_custom(rot_x=155, rot_y=0, rot_z=340, dist=550,
+                                    tx=15, ty=0, tz=30),
         },
         {
             "name": "assembled_front",
             "scad_object": assembled_full_with_internals,
-            # Screen faces viewer at ~65° tilt; look slightly from below
-            "camera": camera_custom(rot_x=155, rot_y=0, rot_z=0, dist=450),
+            # Screen faces viewer at ~65° tilt; centered on assembly
+            "camera": camera_custom(rot_x=155, rot_y=0, rot_z=0, dist=500,
+                                    tx=15, ty=0, tz=30),
         },
         {
             "name": "assembled_back",
             "scad_object": assembled_full_with_internals,
-            "camera": camera_iso_back(dist=450),
+            # Back of stand: camera_iso_back centered on assembly
+            "camera": camera_custom(rot_x=55, rot_y=0, rot_z=325, dist=500,
+                                    tx=15, ty=0, tz=30),
         },
         {
             "name": "exploded",
             "scad_object": exploded,
-            "camera": camera_iso(dist=500),
+            # Slab parts separated along Z; use front-ISO angle
+            "camera": camera_custom(rot_x=200, rot_y=0, rot_z=340, dist=500),
         },
         {
             "name": "interior_front",
             "scad_object": interior_front,
-            "camera": camera_front(dist=400),
+            # Front shell from behind: rotated 180° so camera_back sees inner face
+            "camera": camera_custom(rot_x=20, rot_y=0, rot_z=340, dist=350),
         },
         {
             "name": "interior_back",
             "scad_object": interior_back,
-            "camera": camera_back(dist=400),
+            # Back shell inner face: use ISO angle from front side
+            "camera": camera_custom(rot_x=200, rot_y=0, rot_z=340, dist=350),
         },
         {
             "name": "cross_section",
             "scad_object": cross,
-            "camera": camera_custom(rot_x=80, rot_y=0, rot_z=0, dist=350),
+            # Cut at x=0, keep x>0 — look from -X into cut face
+            # rot_z=270 faces -X toward camera, rot_x=55 for steep elevation
+            "camera": camera_custom(rot_x=55, rot_y=0, rot_z=260, dist=450,
+                                    tx=15, ty=0, tz=30),
         },
     ]
     return views

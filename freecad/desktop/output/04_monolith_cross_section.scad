@@ -121,7 +121,7 @@ intersection() {
 			}
 		}
 	}
-	translate(v = [250.0, 0, 0]) {
-		cube(center = true, size = [500, 1000, 1000]);
+	translate(v = [0, 250.0, 0]) {
+		cube(center = true, size = [1000, 500, 1000]);
 	}
 }
