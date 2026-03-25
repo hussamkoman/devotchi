@@ -311,44 +311,46 @@ def get_views():
 
     views = {}
 
-    # 1. ISO assembled (with kickstand deployed, no internals)
+    # 1. ISO assembled — 3/4 front view showing screen face + side + top
+    #    rot_x=200 = 20° past 180 (screen at -Z), rot_z=340 orbits right
     views["iso_assembled"] = (
         assembled,
-        camera_iso(dist=350),
+        camera_custom(200, 0, 340, dist=500),
     )
 
-    # 2. Front face — looking straight at screen
+    # 2. Front face — looking straight at screen, adequate distance for 135x90 slab
     views["front"] = (
         front,
-        camera_front(dist=300),
+        camera_front(dist=400),
     )
 
     # 3. Back face — looking at kickstand slot
     views["back"] = (
         back,
-        camera_back(dist=300),
+        camera_back(dist=400),
     )
 
     # 4. Right edge — button holes
     views["right_edge"] = (
         assembled,
-        camera_custom(0, 0, 90, dist=300),
+        camera_custom(5, 0, 90, dist=400),
     )
 
     # 5. Bottom edge — USB-C port
     views["bottom_edge"] = (
         assembled,
-        camera_custom(90, 0, 0, dist=300),
+        camera_custom(90, 0, 0, dist=400),
     )
 
-    # 6. Cross-section (cut along Y axis) showing internal stack
+    # 6. Cross-section — cut at y=0, keep y>0, look from -Y into cut face
+    #    Thin slab (15mm Z) so use steep elevation to see depth stack
     full_with_internals = union()(front, back, screen, pcb)
     views["cross_section"] = (
-        cross_section_cut(full_with_internals, axis="x", keep="back"),
-        camera_custom(0, 0, 0, dist=350),
+        cross_section_cut(full_with_internals, axis="y", keep="back"),
+        camera_custom(55, 0, 350, dist=350),
     )
 
-    # 7. Exploded — parts pulled apart along Z
+    # 7. Exploded — parts pulled apart along Z, front-ISO angle
     views["exploded"] = (
         explode_parts([
             (front,   (0,  0, -15)),
@@ -357,7 +359,7 @@ def get_views():
             (screen,  (0,  0,  -5)),
             (pcb,     (0,  0,   5)),
         ]),
-        camera_iso(dist=450),
+        camera_custom(200, 0, 340, dist=550),
     )
 
     return views

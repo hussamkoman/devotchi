@@ -458,7 +458,9 @@ def get_views():
     views.append({
         "name":   "cross_section",
         "solid":  cross,
-        "camera": camera_custom(0, 0, 90, dist=400),
+        # Cut at x=0, keep x>0 — look from -X into cut face
+        # rot_z=270 puts -X toward camera, rot_x=80 adds elevation
+        "camera": camera_custom(80, 0, 270, dist=350),
     })
 
     return views

@@ -489,14 +489,16 @@ def get_views():
     )
 
     # 6. Cross-section along X axis — shows depth stack
-    #    Side view with slight elevation to see cut interior
+    #    Cut at x=0, keep x>0 — look from -X into cut face
+    #    rot_z=270 puts -X toward camera, rot_x=80 for slight elevation
     full_with_internals = union()(front, back, screen, pcb, speaker)
     views["cross_section"] = (
         cross_section_cut(full_with_internals, axis="x", keep="back"),
-        camera_custom(85, 0, 90, dist=450),
+        camera_custom(80, 0, 270, dist=500),
     )
 
     # 7. Exploded — parts pulled apart along Z
+    #    Use slightly more side-angled view than ISO to show depth separation
     views["exploded"] = (
         explode_parts([
             (front,   (0,  0, -20)),
@@ -505,7 +507,7 @@ def get_views():
             (pcb,     (0,  0,   5)),
             (speaker, (0,  0,   0)),
         ]),
-        camera_custom(195, 0, 345, dist=600),
+        camera_custom(200, 0, 320, dist=600),
     )
 
     return views
