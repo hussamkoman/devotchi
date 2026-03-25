@@ -16,7 +16,7 @@
 
   <rect width="1200" height="900" fill="white"/>
 
-  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 8: Lanyard Badge &mdash; 90mm x 60mm x 12mm (thin badge form)</text>
+  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 8: Lanyard Badge — 90mm x 60mm x 12mm (thin badge form)</text>
 
   <!-- ==================== VIEW 1: Front View (top-left) ==================== -->
   <g transform="translate(20, 50)">

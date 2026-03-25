@@ -20,7 +20,7 @@
 
   <rect width="1200" height="900" fill="white"/>
 
-  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 9: Fidget Brick &mdash; 65mm x 50mm x 22mm (extra chunky, 8mm radius)</text>
+  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 9: Fidget Brick — 65mm x 50mm x 22mm (extra chunky, 8mm radius)</text>
 
   <!-- ==================== VIEW 1: Front View (top-left) ==================== -->
   <g transform="translate(20, 50)">
