@@ -16,7 +16,7 @@
 
   <rect width="1200" height="900" fill="white"/>
 
-  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 10: Capsule/Pill &mdash; 90mm x 48mm x 16mm (landscape, stadium shape)</text>
+  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 10: Capsule/Pill — 90mm x 48mm x 16mm (landscape, stadium shape)</text>
 
   <!-- ==================== VIEW 1: Front View (top-left) ==================== -->
   <g transform="translate(20, 50)">

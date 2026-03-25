@@ -16,7 +16,7 @@
 
   <rect width="1200" height="900" fill="white"/>
 
-  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 7: Zippo/Flip-Lid &mdash; 65mm x 45mm x 18mm</text>
+  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 7: Zippo/Flip-Lid — 65mm x 45mm x 18mm</text>
 
   <!-- ==================== VIEW 1: Closed Front View (top-left) ==================== -->
   <g transform="translate(20, 50)">

@@ -20,7 +20,7 @@
   <rect width="1200" height="900" fill="white"/>
 
   <!-- Main title -->
-  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 6: Pager/Beeper &mdash; 80mm x 55mm x 18mm (portrait, wedge taper)</text>
+  <text x="600" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold">Design 6: Pager/Beeper — 80mm x 55mm x 18mm (portrait, wedge taper)</text>
 
   <!-- ==================== VIEW 1: Front View (top-left) ==================== -->
   <g transform="translate(20, 50)">
