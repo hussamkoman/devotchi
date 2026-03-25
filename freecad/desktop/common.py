@@ -253,18 +253,23 @@ def explode_parts(parts_with_offsets):
 # ── Camera Presets ──
 
 def camera_iso(dist=400):
-    """Isometric camera: elevation 25, azimuth 325."""
+    """Isometric camera showing front (-Z) face, top and side."""
+    return f"0,0,0,125,0,35,{dist}"
+
+
+def camera_iso_back(dist=400):
+    """Isometric camera showing back (+Z) face, top and side."""
     return f"0,0,0,55,0,325,{dist}"
 
 
 def camera_front(dist=350):
-    """Front view camera."""
-    return f"0,0,0,0,0,0,{dist}"
+    """Front view camera — looking at -Z face (screen face)."""
+    return f"0,0,0,180,0,0,{dist}"
 
 
 def camera_back(dist=350):
-    """Back view camera."""
-    return f"0,0,0,0,0,180,{dist}"
+    """Back view camera — looking at +Z face."""
+    return f"0,0,0,0,0,0,{dist}"
 
 
 def camera_top(dist=350):

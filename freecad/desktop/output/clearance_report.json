@@ -80,34 +80,59 @@
     "pass": true,
     "checks": [
       {
-        "name": "screen_width_fit",
+        "name": "pcb_stack_vs_inner_back",
         "pass": true,
-        "detail": "Surface 151.0mm >= screen 120.4mm"
+        "detail": "11.0 vs limit 36.0"
       },
       {
-        "name": "screen_depth_fit",
+        "name": "inner_front_positive",
         "pass": true,
-        "detail": "Surface 96.0mm >= screen 75.4mm"
+        "detail": "6.0 vs limit 0.0"
       },
       {
-        "name": "pcb_fit",
+        "name": "screen_mod_width",
         "pass": true,
-        "detail": "Cavity 151.0x96.0 >= PCB 110.0x65.0"
+        "detail": "120.4 vs limit 151.0"
       },
       {
-        "name": "depth_at_back",
+        "name": "screen_mod_depth",
         "pass": true,
-        "detail": "Back height 40.0mm >= stack 13.1mm"
+        "detail": "75.4 vs limit 96.0"
       },
       {
-        "name": "speaker_fit",
+        "name": "pcb_width_fit",
         "pass": true,
-        "detail": "Available height 36.0mm for speaker + PCB"
+        "detail": "110.0 vs limit 151.0"
       },
       {
-        "name": "usbc_accessible",
+        "name": "pcb_depth_fit",
         "pass": true,
-        "detail": "USB-C on back face, centered"
+        "detail": "65.0 vs limit 96.0"
+      },
+      {
+        "name": "taper_angle_range",
+        "pass": true,
+        "detail": "16.69924423399362 vs limit 25.0"
+      },
+      {
+        "name": "speaker_in_back_half",
+        "pass": true,
+        "detail": "12.0 vs limit 0.0"
+      },
+      {
+        "name": "standoff_clears_speaker_cavity",
+        "pass": true,
+        "detail": "7.0 vs limit 6.0"
+      },
+      {
+        "name": "button_span_fit",
+        "pass": true,
+        "detail": "28.0 vs limit 147.0"
+      },
+      {
+        "name": "boss_inside_footprint",
+        "pass": true,
+        "detail": "65.5 vs limit 73.5"
       }
     ]
   },
