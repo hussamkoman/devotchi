@@ -456,9 +456,10 @@ def get_views():
     views = {}
 
     # 1. ISO assembled — 3/4 front view showing front face, right side, top
+    #    rot_x=155 is close to 180 (-Z = screen face) with slight top visibility
     views["iso_assembled"] = (
         assembled,
-        camera_iso(dist=450),
+        camera_custom(155, 0, 25, dist=500),
     )
 
     # 2. Front face — looking straight at screen bezel
@@ -474,22 +475,24 @@ def get_views():
     )
 
     # 4. Right side — knob button holes
+    #    rot_x=5 adds slight elevation; dist=500 for 165mm wide TV
     views["right_side"] = (
         assembled,
-        camera_custom(0, 0, 90, dist=350),
+        camera_custom(5, 0, 90, dist=500),
     )
 
     # 5. Left side — speaker grille
     views["left_side"] = (
         assembled,
-        camera_custom(0, 0, 270, dist=350),
+        camera_custom(5, 0, 270, dist=500),
     )
 
     # 6. Cross-section along X axis — shows depth stack
+    #    Side view with slight elevation to see cut interior
     full_with_internals = union()(front, back, screen, pcb, speaker)
     views["cross_section"] = (
         cross_section_cut(full_with_internals, axis="x", keep="back"),
-        camera_custom(0, 0, 0, dist=400),
+        camera_custom(85, 0, 90, dist=450),
     )
 
     # 7. Exploded — parts pulled apart along Z
@@ -501,7 +504,7 @@ def get_views():
             (pcb,     (0,  0,   5)),
             (speaker, (0,  0,   0)),
         ]),
-        camera_iso(dist=550),
+        camera_custom(155, 0, 25, dist=600),
     )
 
     return views

@@ -30,7 +30,7 @@ from common import (
     ghost_screen, ghost_pcb, ghost_speaker,
     usbc_cutout, button_hole, speaker_grille,
     standoff, standoff_set, screw_boss, rubber_foot,
-    camera_iso, camera_front, camera_back, camera_custom,
+    camera_iso, camera_iso_back, camera_front, camera_back, camera_custom,
     cross_section_cut, explode_parts,
 )
 
@@ -403,10 +403,11 @@ def get_views():
     views = []
 
     # 1. assembled_iso — isometric showing wedge shape with screen ghost
+    #    Wedge screen is on angled TOP surface — use iso_back (from above) to see it
     views.append({
         "name":   "assembled_iso",
         "solid":  union()(assembled, screen),
-        "camera": camera_iso(dist=450),
+        "camera": camera_iso_back(dist=450),
     })
 
     # 2. assembled_front — front face, slightly elevated to see the button lip
@@ -434,7 +435,7 @@ def get_views():
     views.append({
         "name":   "exploded",
         "solid":  exploded,
-        "camera": camera_iso(dist=550),
+        "camera": camera_iso_back(dist=550),
     })
 
     # 5. interior_front — top shell viewed from below (screen pocket visible)

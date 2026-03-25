@@ -37,7 +37,7 @@ from common import (
     usbc_cutout, button_hole,
     standoff, standoff_set,
     speaker_grille,
-    camera_iso, camera_front, camera_back, camera_custom,
+    camera_iso, camera_iso_back, camera_front, camera_back, camera_custom,
     cross_section_cut, explode_parts,
 )
 
@@ -444,22 +444,25 @@ def get_views():
 
     views = {}
 
-    # 1. Assembled ISO — no internals
+    # Assembly center height for camera framing
+    assy_cz = (BASE_H + PEG_H + EGG_H / 2 + 2.0) / 2  # ~51mm — midpoint of full assembly
+
+    # 1. Assembled ISO — orb screen is on +Z face, so use iso_back (from above) to see it
     views["assembled_iso"] = (
         assembled,
-        camera_iso(dist=500),
+        camera_custom(rot_x=55, rot_y=0, rot_z=325, dist=500, tz=assy_cz),
     )
 
-    # 2. Assembled front — looking at screen face
+    # 2. Assembled front — egg screen is on +Z face; use rot_x=0 (sees +Z)
     views["assembled_front"] = (
         assembled,
-        camera_front(dist=450),
+        camera_custom(rot_x=0, rot_y=0, rot_z=0, dist=450, tz=assy_cz),
     )
 
-    # 3. Assembled back — back of egg + base rear
+    # 3. Assembled back — back of egg is -Z; use rot_x=180 (sees -Z)
     views["assembled_back"] = (
         assembled,
-        camera_back(dist=450),
+        camera_custom(rot_x=180, rot_y=0, rot_z=0, dist=450, tz=assy_cz),
     )
 
     # 4. Exploded — egg halves apart, base below
@@ -472,25 +475,26 @@ def get_views():
             (pcb,         (0,   0,  20)),
             (speaker,     (0,   0, -60)),
         ]),
-        camera_iso(dist=600),
+        camera_custom(rot_x=55, rot_y=0, rot_z=325, dist=600, tz=assy_cz),
     )
 
-    # 5. Interior front — front half with ghost internals
+    # 5. Interior front — front half with ghost internals (screen on +Z, view from +Z)
+    egg_cz = BASE_H + PEG_H + EGG_H / 2 + 2.0  # egg center Z
     views["interior_front"] = (
         union()(front_shell, screen, pcb),
-        camera_front(dist=400),
+        camera_custom(rot_x=0, rot_y=0, rot_z=0, dist=400, tz=egg_cz),
     )
 
-    # 6. Interior back — back half with standoffs and ghost PCB
+    # 6. Interior back — back half with standoffs (view from -Z side)
     views["interior_back"] = (
         union()(back_shell, pcb),
-        camera_back(dist=400),
+        camera_custom(rot_x=180, rot_y=0, rot_z=0, dist=400, tz=egg_cz),
     )
 
     # 7. Cross-section through assembled model (cut along X axis, keep front half)
     views["cross_section"] = (
         cross_section_cut(assembled_full, axis="x", keep="back"),
-        camera_custom(0, 0, 0, dist=500),
+        camera_custom(rot_x=55, rot_y=0, rot_z=325, dist=500, tz=assy_cz),
     )
 
     return views

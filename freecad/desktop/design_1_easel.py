@@ -27,7 +27,7 @@ from common import (
     rounded_box, ghost_screen, ghost_pcb,
     screen_window_cutout, usbc_cutout, button_row, led_hole,
     standoff, standoff_set, retention_clip, cross_section_cut,
-    camera_iso, camera_front, camera_back, camera_custom,
+    camera_iso, camera_iso_back, camera_front, camera_back, camera_custom,
 )
 
 # ── Slab outer dimensions ──
@@ -445,17 +445,19 @@ def get_views():
         {
             "name": "assembled_iso",
             "scad_object": assembled_full_with_internals,
-            "camera": camera_iso(dist=500),
+            # Slab is tilted 65° in stand; custom camera to see screen face
+            "camera": camera_custom(rot_x=100, rot_y=0, rot_z=20, dist=500),
         },
         {
             "name": "assembled_front",
             "scad_object": assembled_full_with_internals,
-            "camera": camera_front(dist=450),
+            # Screen faces viewer at ~65° tilt; look slightly from below
+            "camera": camera_custom(rot_x=155, rot_y=0, rot_z=0, dist=450),
         },
         {
             "name": "assembled_back",
             "scad_object": assembled_full_with_internals,
-            "camera": camera_back(dist=450),
+            "camera": camera_iso_back(dist=450),
         },
         {
             "name": "exploded",
@@ -470,7 +472,7 @@ def get_views():
         {
             "name": "interior_back",
             "scad_object": interior_back,
-            "camera": camera_front(dist=400),
+            "camera": camera_back(dist=400),
         },
         {
             "name": "cross_section",

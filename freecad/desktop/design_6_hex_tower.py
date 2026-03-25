@@ -28,7 +28,7 @@ from common import (
     ghost_screen, ghost_pcb, ghost_speaker,
     screen_window_cutout, usbc_cutout, button_hole, button_column,
     speaker_grille, standoff, standoff_set, screw_boss, rubber_foot,
-    camera_iso, camera_front, camera_back, camera_top, camera_custom,
+    camera_iso, camera_iso_back, camera_front, camera_back, camera_top, camera_custom,
     cross_section_cut, explode_parts,
 )
 
@@ -433,41 +433,46 @@ def get_views():
 
     views = {}
 
-    # 1. ISO assembled — show the full tower
+    # 1. ISO assembled — show from above to see cap, speaker grille, body shape
     views["iso_assembled"] = (
         assembled,
-        camera_iso(dist=500),
+        camera_iso_back(dist=500),
     )
 
     # 2. Screen facet — looking straight at the screen window
-    #    Screen normal is +Y; camera looks from +Y inward
+    #    Screen normal is +Y (90° from +X). rot_x=270 sees +Y face.
     views["screen_facet"] = (
         front,
-        camera_custom(0, 0, 0, dist=400),   # camera at +Y, looking toward origin
+        camera_custom(270, 0, 0, dist=400),
     )
 
-    # 3. Button facet — 60° from screen
+    # 3. Button facet — 60° CCW from screen (normal at 30° from +X)
+    #    rot_z=60 rotates button face (30°) to +Y (90°) where rot_x=270 sees it
     views["button_facet"] = (
         assembled,
-        camera_custom(0, 0, 60, dist=400),
+        camera_custom(270, 0, 60, dist=400),
     )
 
-    # 4. Speaker facet — opposite buttons, 210° from +X = looking from -Y side, rotated
+    # 4. Speaker facet — at 210° from +X
+    #    rot_z=240 rotates speaker face (210°) to 90° (+Y) where rot_x=270 sees it
+    #    (210 + 240 = 450 → 90° mod 360)
     views["speaker_facet"] = (
         assembled,
-        camera_custom(0, 0, 210 - 90, dist=400),
+        camera_custom(270, 0, 240, dist=400),
     )
 
-    # 5. Top view — looking down at the cap
+    # 5. Top view — looking straight down at the hex cap
+    #    rot_x=0 sees +Z face = top of standing tower
     views["top"] = (
         assembled,
-        camera_top(dist=350),
+        camera_custom(0, 0, 0, dist=350),
     )
 
     # 6. Bottom — USB-C and rubber feet
+    #    rot_x=180 sees -Z face = bottom of tower
     views["bottom"] = (
         union()(front, _rubber_feet()),
-        camera_custom(270, 0, 0, dist=400),  # flip upside down
+        camera_custom(180, 0, 0, dist=400),
     )
 
     # 7. Cross-section — cut along X axis to show internal layout
