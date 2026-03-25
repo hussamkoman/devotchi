@@ -308,19 +308,20 @@ def get_views():
     screen = internals["screen"]
     pcb = internals["pcb"]
     assembled = union()(front, back, stand)
+    assembled_full = union()(front, back, stand, screen, pcb)
 
     views = {}
 
     # 1. ISO assembled — 3/4 front view showing screen face + side + top
-    #    rot_x=200 = 20° past 180 (screen at -Z), rot_z=340 orbits right
+    #    Include internals so screen/PCB are visible through window
     views["iso_assembled"] = (
-        assembled,
+        assembled_full,
         camera_custom(200, 0, 340, dist=500),
     )
 
-    # 2. Front face — looking straight at screen, adequate distance for 135x90 slab
+    # 2. Front face — looking straight at screen with internals visible
     views["front"] = (
-        front,
+        union()(front, screen, pcb),
         camera_front(dist=400),
     )
 

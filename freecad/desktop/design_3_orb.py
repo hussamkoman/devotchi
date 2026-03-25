@@ -448,20 +448,21 @@ def get_views():
     assy_cz = (BASE_H + PEG_H + EGG_H / 2 + 2.0) / 2  # ~51mm — midpoint of full assembly
 
     # 1. Assembled ISO — orb screen is on +Z face, so use iso_back (from above) to see it
+    #    Include internals so screen/PCB are visible through shell
     views["assembled_iso"] = (
-        assembled,
+        assembled_full,
         camera_custom(rot_x=55, rot_y=0, rot_z=325, dist=500, tz=assy_cz),
     )
 
     # 2. Assembled front — egg screen is on +Z face; use rot_x=0 (sees +Z)
     views["assembled_front"] = (
-        assembled,
+        assembled_full,
         camera_custom(rot_x=0, rot_y=0, rot_z=0, dist=450, tz=assy_cz),
     )
 
     # 3. Assembled back — back of egg is -Z; use rot_x=180 (sees -Z)
     views["assembled_back"] = (
-        assembled,
+        assembled_full,
         camera_custom(rot_x=180, rot_y=0, rot_z=0, dist=450, tz=assy_cz),
     )
 

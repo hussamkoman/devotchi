@@ -429,6 +429,7 @@ def get_views():
     pcb       = internals["pcb"]
     speaker   = internals["speaker"]
     assembled = union()(front, back)
+    assembled_full = union()(front, back, screen, pcb, speaker)
 
     views = {}
 
@@ -437,17 +438,15 @@ def get_views():
     # For ISO with 15° elevation: rot_x = 75°, add ±10° to rot_z for 3/4 view
 
     # 1. ISO assembled — screen facet (90°) with adjacent button facet visible
-    #    rot_z≈235 shows screen window centered with button facet to the right
+    #    Include internals so screen/PCB visible through window
     views["iso_assembled"] = (
-        assembled,
+        assembled_full,
         camera_custom(65, 0, 235, dist=550),
     )
 
-    # 2. Screen facet — face normal at 90° (+Y).
-    #    rot_z rotates scene; to bring 90° face to camera: rot_z = θ - 90 = 0
-    #    Empirically verified: rot_z≈245 shows the screen window on the front face
+    # 2. Screen facet — face normal at 90° (+Y). Show screen through window
     views["screen_facet"] = (
-        front,
+        union()(front, screen, pcb),
         camera_custom(75, 0, 245, dist=500),
     )
 

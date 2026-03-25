@@ -115,4 +115,30 @@ union() {
 			}
 		}
 	}
+	translate(v = [0, 0, -3.25]) {
+		rotate(a = [0, 0, 90]) {
+			union() {
+				color(alpha = 0.5, c = "DodgerBlue") {
+					cube(center = true, size = [120.0, 75.0, 4.5]);
+				}
+				color(alpha = 0.7, c = "LightBlue") {
+					translate(v = [0, 0, 1.75]) {
+						cube(center = true, size = [108.0, 64.8, 1.0]);
+					}
+				}
+			}
+		}
+	}
+	translate(v = [0, 0, 0.30000000000000004]) {
+		union() {
+			color(alpha = 0.5, c = "ForestGreen") {
+				cube(center = true, size = [110.0, 65.0, 1.6]);
+			}
+			color(alpha = 0.6, c = "DarkGreen") {
+				translate(v = [30.0, 17.5, 2.0]) {
+					cube(center = true, size = [15.4, 20.5, 2.4]);
+				}
+			}
+		}
+	}
 }
