@@ -456,10 +456,11 @@ def get_views():
     views = {}
 
     # 1. ISO assembled — 3/4 front view showing front face, right side, top
-    #    rot_x=155 is close to 180 (-Z = screen face) with slight top visibility
+    #    rot_x=195 is 15° past 180 (camera above, looking down at -Z screen face)
+    #    rot_z=345 orbits slightly right to show right side panel
     views["iso_assembled"] = (
         assembled,
-        camera_custom(155, 0, 25, dist=500),
+        camera_custom(195, 0, 345, dist=500),
     )
 
     # 2. Front face — looking straight at screen bezel
@@ -504,7 +505,7 @@ def get_views():
             (pcb,     (0,  0,   5)),
             (speaker, (0,  0,   0)),
         ]),
-        camera_custom(155, 0, 25, dist=600),
+        camera_custom(195, 0, 345, dist=600),
     )
 
     return views

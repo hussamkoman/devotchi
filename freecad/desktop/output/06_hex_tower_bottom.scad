@@ -6,13 +6,9 @@ union() {
 					difference() {
 						difference() {
 							difference() {
-								rotate(a = [0, 0, 30]) {
-									cylinder($fn = 6, center = true, d = 150.1110699893027, h = 160.02);
-								}
+								cylinder($fn = 6, center = true, d = 150.1110699893027, h = 160.02);
 								translate(v = [0, 0, 1.25]) {
-									rotate(a = [0, 0, 30]) {
-										cylinder($fn = 6, center = true, d = 144.33756729740645, h = 157.52);
-									}
+									cylinder($fn = 6, center = true, d = 144.33756729740645, h = 157.52);
 								}
 							}
 							translate(v = [0, 0, 0.0]) {

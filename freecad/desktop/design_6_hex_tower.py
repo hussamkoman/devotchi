@@ -101,15 +101,14 @@ STANDOFF_H  = 10.0            # Height of PCB standoffs from bottom inner floor
 def _hex_prism(flat, h, center=True):
     """Solid hexagonal prism, flat-to-flat = flat, height = h.
 
-    A regular hexagon with flat sides along ±X.  The cylinder _fn=6 in
-    OpenSCAD/SolidPython2 produces a hexagonal prism whose 'diameter'
-    argument is the corner-to-corner (circumscribed circle) diameter.
-    We rotate 30° so a flat face is perpendicular to +Y.
+    A regular hexagon.  The cylinder _fn=6 in OpenSCAD/SolidPython2
+    produces a hexagonal prism whose 'diameter' argument is the
+    corner-to-corner (circumscribed circle) diameter.
+    Without rotation, vertices at 0°,60°,…,300° and face normals at
+    30°,90°,150°,210°,270°,330° — matching our feature placement angles.
     """
     R = flat / math.sqrt(3)   # circumradius
-    return rotate([0, 0, 30])(
-        cylinder(d=R * 2, h=h, center=center, _fn=6)
-    )
+    return cylinder(d=R * 2, h=h, center=center, _fn=6)
 
 
 def _hex_body_solid():
@@ -433,53 +432,55 @@ def get_views():
 
     views = {}
 
-    # 1. ISO assembled — show from above to see cap, speaker grille, body shape
+    # Face normals (no 30° rotation): 30°, 90°, 150°, 210°, 270°, 330°
+    # To see facet at angle θ straight-on: rot_z = 90° - θ, rot_x = 90°
+    # For ISO with 15° elevation: rot_x = 75°, add ±10° to rot_z for 3/4 view
+
+    # 1. ISO assembled — screen facet (90°) with adjacent button facet visible
+    #    rot_z≈235 shows screen window centered with button facet to the right
     views["iso_assembled"] = (
         assembled,
-        camera_iso_back(dist=500),
+        camera_custom(65, 0, 235, dist=550),
     )
 
-    # 2. Screen facet — looking straight at the screen window
-    #    Screen normal is +Y (90° from +X). rot_x=270 sees +Y face.
+    # 2. Screen facet — face normal at 90° (+Y).
+    #    rot_z rotates scene; to bring 90° face to camera: rot_z = θ - 90 = 0
+    #    Empirically verified: rot_z≈245 shows the screen window on the front face
     views["screen_facet"] = (
         front,
-        camera_custom(270, 0, 0, dist=400),
+        camera_custom(75, 0, 245, dist=500),
     )
 
-    # 3. Button facet — 60° CCW from screen (normal at 30° from +X)
-    #    rot_z=60 rotates button face (30°) to +Y (90°) where rot_x=270 sees it
+    # 3. Button facet — face normal at 30°. rot_z=65 confirmed shows buttons
     views["button_facet"] = (
         assembled,
-        camera_custom(270, 0, 60, dist=400),
+        camera_custom(75, 0, 65, dist=500),
     )
 
-    # 4. Speaker facet — at 210° from +X
-    #    rot_z=240 rotates speaker face (210°) to 90° (+Y) where rot_x=270 sees it
-    #    (210 + 240 = 450 → 90° mod 360)
+    # 4. Speaker facet — face normal at 210°. rot_z=5 confirmed shows speaker
     views["speaker_facet"] = (
         assembled,
-        camera_custom(270, 0, 240, dist=400),
+        camera_custom(75, 0, 5, dist=500),
     )
 
-    # 5. Top view — looking straight down at the hex cap
-    #    rot_x=0 sees +Z face = top of standing tower
+    # 5. Top view — looking straight down at hex cap (rot_x=0 sees +Z = top)
     views["top"] = (
         assembled,
-        camera_custom(0, 0, 0, dist=350),
+        camera_custom(0, 0, 0, dist=400),
     )
 
-    # 6. Bottom — USB-C and rubber feet
-    #    rot_x=180 sees -Z face = bottom of tower
+    # 6. Bottom — USB-C and rubber feet (rot_x=180 sees -Z = bottom)
     views["bottom"] = (
         union()(front, _rubber_feet()),
         camera_custom(180, 0, 0, dist=400),
     )
 
-    # 7. Cross-section — cut along X axis to show internal layout
+    # 7. Cross-section — cut along X axis, view from -X into cut
+    #    rot_z=270 + rot_x=80 looks from -X direction with slight elevation
     full_with_internals = union()(front, back, screen, pcb, speaker)
     views["cross_section"] = (
         cross_section_cut(full_with_internals, axis="x", keep="back"),
-        camera_custom(0, 0, 0, dist=500),
+        camera_custom(80, 0, 275, dist=550),
     )
 
     return views
