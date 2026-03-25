@@ -402,11 +402,11 @@ def get_views():
 
     views = []
 
-    # 1. assembled_iso — isometric showing wedge shape with screen ghost
+    # 1. assembled_iso — isometric showing wedge shape with all internals visible
     #    Wedge screen is on angled TOP surface — use iso_back (from above) to see it
     views.append({
         "name":   "assembled_iso",
-        "solid":  union()(assembled, screen),
+        "solid":  union()(assembled, screen, pcb, speaker),
         "camera": camera_iso_back(dist=450),
     })
 

@@ -360,4 +360,21 @@ union() {
 			}
 		}
 	}
+	translate(v = [8.0, 0, 9.8]) {
+		union() {
+			color(alpha = 0.5, c = "ForestGreen") {
+				cube(center = true, size = [110.0, 65.0, 1.6]);
+			}
+			color(alpha = 0.6, c = "DarkGreen") {
+				translate(v = [30.0, 17.5, 2.0]) {
+					cube(center = true, size = [15.4, 20.5, 2.4]);
+				}
+			}
+		}
+	}
+	translate(v = [0.0, 28.0, 4.25]) {
+		color(alpha = 0.5, c = "Gold") {
+			cylinder($fn = 48, center = true, d = 28.0, h = 3.5);
+		}
+	}
 }
