@@ -7,13 +7,9 @@ intersection() {
 						difference() {
 							difference() {
 								difference() {
-									rotate(a = [0, 0, 30]) {
-										cylinder($fn = 6, center = true, d = 150.1110699893027, h = 160.02);
-									}
+									cylinder($fn = 6, center = true, d = 150.1110699893027, h = 160.02);
 									translate(v = [0, 0, 1.25]) {
-										rotate(a = [0, 0, 30]) {
-											cylinder($fn = 6, center = true, d = 144.33756729740645, h = 157.52);
-										}
+										cylinder($fn = 6, center = true, d = 144.33756729740645, h = 157.52);
 									}
 								}
 								translate(v = [0, 0, 0.0]) {
@@ -349,19 +345,13 @@ intersection() {
 									difference() {
 										difference() {
 											union() {
-												rotate(a = [0, 0, 30]) {
-													cylinder($fn = 6, center = false, d = 150.1110699893027, h = 8.0);
-												}
+												cylinder($fn = 6, center = false, d = 150.1110699893027, h = 8.0);
 												translate(v = [0, 0, -5.0]) {
-													rotate(a = [0, 0, 30]) {
-														cylinder($fn = 6, center = false, d = 143.6447469743789, h = 5.02);
-													}
+													cylinder($fn = 6, center = false, d = 143.6447469743789, h = 5.02);
 												}
 											}
 											translate(v = [0, 0, 2.5]) {
-												rotate(a = [0, 0, 30]) {
-													cylinder($fn = 6, center = false, d = 144.33756729740645, h = 5.52);
-												}
+												cylinder($fn = 6, center = false, d = 144.33756729740645, h = 5.52);
 											}
 										}
 										translate(v = [58.5, 0.0, -5.1]) {
