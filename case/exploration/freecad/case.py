@@ -456,7 +456,7 @@ def build_back_cover():
     # 4. Battery guide rails (grow from inner face toward front)
     #    These hold the battery in place between Z_BATT and Z_BATT+BATT_D
     batt_x = (CASE_W - BATT_W) / 2
-    batt_y = (CASE_H - BATT_H) / 2
+    batt_y = (CASE_H_DISPLAY - BATT_H) / 2  # battery in display zone
     guide_w = 1.2
     margin = 5.0
     # Guides extend from inner face down to battery bottom
@@ -577,7 +577,7 @@ def build_ghost_pcb():
 def build_ghost_battery():
     batt = Part.makeBox(BATT_W, BATT_H, BATT_D)
     batt_x = (CASE_W - BATT_W) / 2
-    batt_y = (CASE_H - BATT_H) / 2
+    batt_y = (CASE_H_DISPLAY - BATT_H) / 2  # battery in display zone
     batt.translate(FreeCAD.Vector(batt_x, batt_y, Z_BATT))
     return batt
 

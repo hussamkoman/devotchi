@@ -49,18 +49,22 @@ CASE_H = CASE_H_DISPLAY + CASE_H_BUTTONS + CASE_H_USB  # ~59.2mm
 
 # ──────────────────────────────────
 # Depth stack (front to back)
-# Order: front wall → display → gap(ESP32) → PCB → gap → battery → back wall
+# Display zone (top): wall + display + gap + battery + back wall
+# PCB zone (bottom): wall + display/ESP32 gap + PCB + JST gap + back wall
+# Battery sits behind display (Y = display zone), not behind PCB.
 # ──────────────────────────────────
 GAP_DISP_PCB = 2.5   # gap for ESP32 (2.4mm module + 0.1mm clearance)
-GAP_PCB_BATT = 0.5   # gap between PCB solder-side and battery
+GAP_PCB_BATT = 5.0   # gap behind PCB solder-side (JST connector 4.8mm + clearance)
 
-CASE_D = (WALL + DISP_MOD_D + GAP_DISP_PCB + PCB_D
-          + GAP_PCB_BATT + BATT_D + WALL)  # = 15.1mm
+# Case depth driven by the deeper zone
+_depth_disp = WALL + DISP_MOD_D + 0.5 + BATT_D + WALL   # 11.0
+_depth_pcb = WALL + GAP_DISP_PCB + PCB_D + GAP_PCB_BATT + WALL  # 12.1
+CASE_D = max(_depth_disp, _depth_pcb)  # 12.1mm
 
 # Z positions (from front face = 0, going inward / +Z)
-Z_DISP = WALL                                    # 1.5
-Z_PCB = WALL + DISP_MOD_D + GAP_DISP_PCB         # 6.5
-Z_BATT = Z_PCB + PCB_D + GAP_PCB_BATT            # 8.6
+Z_DISP = WALL                                     # 1.5
+Z_PCB = WALL + GAP_DISP_PCB                       # 4.0
+Z_BATT = WALL + DISP_MOD_D + 0.5                  # 5.5 (behind display in display zone)
 
 # Front shell depth (everything except back cover wall)
 SHELL_D = CASE_D - WALL  # 13.6mm
