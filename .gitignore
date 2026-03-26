@@ -17,7 +17,12 @@ dist/
 
 # KiCad generated files
 *.kicad_prl
+*.lck
 *-backups/
 fp-info-cache
 hardware/output/
 hardware/jlcpcb/project.db
+hardware/gerbers/
+
+# OpenSCAD rough drafts
+scad/
