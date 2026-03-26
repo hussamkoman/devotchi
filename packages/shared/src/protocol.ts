@@ -79,12 +79,14 @@ export interface PermissionResponse {
 export interface RegisterMessage {
   type: "register";
   role: ClientRole;
-  pairingCode: string;
+  roomId?: string;
+  token?: string;
 }
 
 export interface RegisterAck {
   type: "register_ack";
   role: ClientRole;
+  roomId: string;
   pairingCode: string;
   connectedPeers: number;
 }

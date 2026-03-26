@@ -7,68 +7,101 @@ Carry it in your pocket, clip it to your bag, or leave it on your desk — no ne
 ## How it works
 
 ```
-AI Agent ──Hook HTTP──> Broker ──WebSocket──> Device
-AI Agent ──MCP stdio──> MCP Server ──WebSocket──> Broker ──WebSocket──> Device
+User's PC                          Server (hosted or self-hosted)
+┌─────────────────────┐            ┌─────────────────────────┐
+│  devotchi CLI        │            │  @devotchi/server       │
+│  ├─ Web UI (:3456)   │◄──HTTP───│  ├─ REST API             │
+│  ├─ MCP server       │           │  ├─ WebSocket router     │
+│  └─ Hook config      │──hooks──►│  ├─ Hook endpoints       │
+│                      │           │  └─ SQLite               │
+│  Claude Code         │──hooks──►│                          │
+└─────────────────────┘            └──────────┬──────────────┘
+                                              │ WebSocket
+                                   ┌──────────▼──────────────┐
+                                   │  Devotchi Device (ESP32) │
+                                   └─────────────────────────┘
 ```
 
-1. **Claude Code hooks** automatically forward permission requests to the **broker** via HTTP
-2. The broker sends them to your **Devotchi device** over WiFi (WebSocket)
+1. **Claude Code hooks** automatically forward permission requests to the **server** via HTTP
+2. The server sends them to your **Devotchi device** over WiFi (WebSocket)
 3. You approve or reject directly on the device with physical buttons
 4. The response goes back to Claude Code, which continues (or stops)
-5. The **MCP server** handles voluntary actions: status updates, mood, notifications
+5. The **MCP server** (embedded in the client) handles voluntary actions: status updates, mood, notifications
+
+## Quick start
+
+```bash
+npx devotchi
+```
+
+This starts the dashboard, connects to the server, and opens the web UI. On first run it generates a token and pairing code automatically.
+
+### Auto-configure Claude Code hooks
+
+```bash
+npx devotchi setup
+```
+
+### Register MCP server
+
+```bash
+claude mcp add devotchi -- npx devotchi mcp
+```
+
+## Self-hosted / Local mode
+
+Run the server yourself:
+
+```bash
+npx @devotchi/server
+```
+
+Then point the client at it:
+
+```bash
+npx devotchi start --server http://localhost:8080
+```
+
+Or run everything locally without a separate server:
+
+```bash
+npx devotchi start --local
+```
+
+## Development
+
+```bash
+git clone <repo-url>
+cd devotchi
+pnpm install
+pnpm run build
+```
+
+### Run locally
+
+```bash
+# Terminal 1 — Start the server
+pnpm run server
+
+# Terminal 2 — Start the client dashboard
+pnpm run client
+```
+
+The web UI opens at `http://localhost:3456`.
 
 ## Project structure
 
 ```
 devotchi/
 ├── packages/
-│   ├── shared/              # Protocol types and constants
-│   ├── broker/              # WebSocket message broker
-│   ├── mcp-server/          # MCP server (Node.js, TypeScript)
-│   └── simulator/           # Browser-based device simulator (dev tool)
+│   ├── shared/              # Protocol types, API types, config
+│   ├── server/              # Koa server (WebSocket + REST + SQLite)
+│   └── client/              # CLI + web UI + MCP server
 ├── firmware/                # ESP32 firmware (C, ESP-IDF)
-├── docs/                    # Architecture, protocol, hardware docs + datasheets
-├── CLAUDE.md
+├── hardware/                # KiCad schematics and PCB design
+├── docs/                    # Architecture, protocol, hardware docs
 └── README.md
 ```
-
-## Quick start
-
-```bash
-pnpm install
-pnpm run build
-```
-
-**Terminal 1** — Start the broker:
-```bash
-pnpm run broker
-```
-
-**Terminal 2** — Start the simulator:
-```bash
-pnpm run simulator:dev
-```
-
-Open `http://localhost:5173` in your browser.
-
-**Setup Claude Code hooks:**
-
-1. Run the MCP server once to generate your pairing code:
-   ```bash
-   node packages/mcp-server/dist/index.js
-   ```
-   Kill it after you see the pairing code. Check `~/.devotchi/config.json` for the code.
-
-2. Register the MCP server:
-   ```bash
-   claude mcp add devotchi -- node packages/mcp-server/dist/index.js
-   ```
-
-3. Copy `.claude/settings.local.json.example` to `.claude/settings.local.json` and replace `YOUR_PAIRING_CODE` with your code.
-
-4. Enter the same pairing code in the simulator and click Connect.
-
-5. Start a Claude Code session — permission requests will appear on the simulator automatically.
 
 ## Documentation
 

@@ -4,17 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm -r run build",
+    "build": "pnpm --filter @devotchi/shared build && pnpm --filter @devotchi/server --filter devotchi build",
     "build:shared": "pnpm --filter @devotchi/shared build",
-    "build:broker": "pnpm --filter @devotchi/broker build",
-    "build:mcp": "pnpm --filter @devotchi/mcp-server build",
-    "build:sim": "pnpm --filter @devotchi/simulator build",
-    "broker": "node packages/broker/dist/index.js",
-    "mcp-server": "node packages/mcp-server/dist/index.js",
-    "sim": "pnpm --filter @devotchi/simulator dev"
+    "build:server": "pnpm --filter @devotchi/server build",
+    "build:client": "pnpm --filter devotchi build",
+    "server": "node packages/server/dist/index.js",
+    "client": "node packages/client/dist/cli.js",
+    "dev": "pnpm --filter devotchi dev"
   },
   "packageManager": "pnpm@10.32.1",
   "engines": {
     "node": ">=18"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
   }
 }

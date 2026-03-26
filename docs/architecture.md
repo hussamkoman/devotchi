@@ -2,44 +2,47 @@
 
 ## Overview
 
-Devotchi has 4 layers. The software stack covers Layers 1-3. Layer 4 (ESP32 firmware) is built separately in C.
+Devotchi has 3 software layers plus ESP32 firmware (Layer 4, built separately in C).
 
 ```
                                             ┌────────────────────────────────────┐
-┌──────────┐  Hook HTTP POST                │            Broker                  │
+┌──────────┐  Hook HTTP POST                │         Server                     │
 │  Claude   │ ──────────────────────────────>│  /hook/permission (long-poll)      │
 │  Code     │ <─────────────────────────────│  /hook/status     (fire & forget)  │
 │           │  Hook JSON response            │  /hook/stop       (fire & forget)  │
 │           │                                │                                    │
-│           │  MCP stdio    ┌──────────┐ WS  │                                    │
-│           │ <──────────── │  MCP     │ ──> │   WebSocket router                 │
-│           │  (voluntary)  │  Server  │     │                                    │
-└──────────┘               └──────────┘     └──────────────┬─────────────────────┘
-   AI Agent                 Layer 1              Layer 2    │
-   (any MCP client)         (mood/status/notify) (deployable)
+│           │  MCP stdio   ┌───────────┐ WS  │  REST API (/api/auth, /api/pair)  │
+│           │ <─────────── │  Client   │ ──> │  WebSocket router                  │
+│           │  (voluntary) │  CLI+MCP  │     │  SQLite (tokens, pairings)         │
+└──────────┘              └───────────┘     └──────────────┬─────────────────────┘
+   AI Agent                Layer 1              Layer 2     │
+   (any MCP client)        (unified client)     (server)    │
                                                             │
                               ┌──────────────────────────────┼────────────────┐
                               v                              v                v
                      ┌──────────────┐              ┌──────────────┐  ┌──────────────┐
-                     │  Simulator   │              │  ESP32       │  │  Phone PWA   │
+                     │  Web UI      │              │  ESP32       │  │  Phone PWA   │
                      │  (browser)   │              │  (firmware)  │  │  (future)    │
                      └──────────────┘              └──────────────┘  └──────────────┘
-                      Dev tool                      Layer 4           Layer 3
+                      Dashboard + Sim               Layer 4           Layer 3
                                                     (C, ESP-IDF)      (future)
 ```
 
-## Layer 1: MCP Server (`packages/mcp-server/`)
+## Layer 1: Client (`packages/client/`)
 
-Voluntary tools for AI-initiated actions (mood, status, notifications). Approvals are handled automatically via hooks — see "Claude Code Hooks" below.
+Unified PC application published as `devotchi` on npm. Combines the MCP server, web dashboard (with simulator), and hook configuration into one CLI tool.
 
-### Responsibilities
-- Exposes 3 MCP tools via stdio transport (voluntary, non-blocking)
-- Translates tool calls into protocol messages
-- Sends messages to the broker via WebSocket as a producer
-- Handles reconnection if the broker drops
-- Generates and stores pairing code
+### Components
 
-### Tools
+- **CLI** (`src/cli.ts`) — Commander-based entry point with subcommands: `start`, `mcp`, `setup`, `config`
+- **MCP Server** (`src/mcp.ts`) — 3 voluntary tools (show_status, notify, set_mood) over stdio transport
+- **Connection** (`src/connection.ts`) — WebSocket connection to server with auto-reconnect
+- **Hook Config** (`src/hooks.ts`) — Auto-configures `.claude/settings.local.json`
+- **Web Server** (`src/web-server.ts`) — Serves dashboard UI, proxies WebSocket to upstream server
+- **Local Broker** (`src/local-broker.ts`) — Embedded minimal server for `--local` mode
+- **Web UI** (`web/`) — Vite SPA with pet display, approval modals, event log, settings
+
+### MCP Tools
 
 | Tool | Returns |
 |---|---|
@@ -52,94 +55,100 @@ Voluntary tools for AI-initiated actions (mood, status, notifications). Approval
 Stored in `~/.devotchi/config.json`:
 ```json
 {
+  "serverUrl": "ws://localhost:8080",
+  "token": "...",
   "pairingCode": "A7X9K2",
-  "brokerUrl": "ws://localhost:8080",
-  "approvalTimeout": 300000,
-  "logLevel": "info"
+  "webPort": 3456,
+  "localMode": false
 }
 ```
 
-### Graceful degradation
-- If the broker is unreachable, tools return immediately with `{ ok: true, brokerConnected: false }`
-
 ---
 
-## Layer 2: Broker (`packages/broker/`)
+## Layer 2: Server (`packages/server/`)
 
-A stateless WebSocket message router. Its only job is to match producers and consumers by pairing code and forward messages between them.
+Koa-based HTTP + WebSocket server with SQLite persistence. Replaces the old stateless broker with token-based auth and pairing management.
+
+### Server Modes
+
+- **Single-user** (default): Just tokens, no accounts. For self-hosted and local use.
+- **Multi-user**: Accounts, signup, token management. For hosted service.
+
+Set via `DEVOTCHI_MODE=multi-user` env var.
 
 ### How pairing works
-1. MCP server connects and sends: `{ type: "register", role: "producer", pairingCode: "A7X9K2" }`
-2. Broker responds with: `{ type: "register_ack", role: "producer", pairingCode: "A7X9K2", connectedPeers: 0 }`
-3. Device/simulator connects and sends: `{ type: "register", role: "consumer", pairingCode: "A7X9K2" }`
-4. Broker responds with: `{ type: "register_ack", role: "consumer", pairingCode: "A7X9K2", connectedPeers: 1 }`
-5. Messages flow: producer -> broker -> all consumers with that code
-6. Responses flow: any consumer -> broker -> producer
 
-**Note:** Consumers include the simulator (for dev/testing), the ESP32 physical device (via WiFi WebSocket), and potentially a phone PWA in the future. Multiple consumers can be connected simultaneously.
+1. Client calls `POST /api/auth/token` → gets an API token
+2. Client calls `POST /api/pair` → gets a pairing code
+3. Client connects via WebSocket with token and registers as producer
+4. Device connects via WebSocket and registers as consumer with same pairing code
+5. Messages flow: producer → server → all consumers with that code
+
+### REST API
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/token` | none | Generate anonymous token |
+| POST | `/api/auth/register` | none | Create account (multi-user only) |
+| POST | `/api/auth/login` | none | Login (multi-user only) |
+| GET | `/api/devices` | token | List paired devices |
+| POST | `/api/pair` | token | Create pairing code |
+
+### Hook Endpoints
+
+| Endpoint | Hook Event | Behavior |
+|---|---|---|
+| `POST /hook/permission?code=X` | `PermissionRequest` | Long-poll: waits for device response |
+| `POST /hook/status?code=X` | `PostToolUse` | Fire-and-forget: status update |
+| `POST /hook/stop?code=X` | `Stop` | Fire-and-forget: agent stopped |
 
 ### Key design decisions
-- **Stateless** — no database, no persistence. All state is in-memory WebSocket connections.
-- **Multi-consumer** — one producer can have multiple consumers (e.g., simulator + physical device simultaneously)
-- **Single producer per code** — only one MCP server per pairing code (last one wins if there's a conflict)
-- **No auth** — pairing code is the only security. Fine for MVP. Codes are 6 characters from a 31-char alphabet = ~887 million possibilities.
 
-### Features
-- Heartbeat ping/pong every 30 seconds to detect dead connections
-- Clean up disconnected clients automatically
-- Basic rate limiting to prevent flooding
-- HTTP health check endpoint: `GET /` returns `{ status: "ok", connections: N }`
-- HTTP hook endpoints for Claude Code hooks (see below)
-- Configurable port via `DEVOTCHI_BROKER_PORT` env var (default 8080)
-- Deployable to Railway, Render, Fly.io, or any Node.js host
-- CORS headers for browser WebSocket connections
+- **SQLite persistence** — tokens and pairings survive restarts (unlike the old stateless broker)
+- **Token auth** — SHA-256 hashed API tokens for WebSocket and REST auth
+- **Multi-consumer** — one producer can have multiple consumers simultaneously
+- **Graceful degradation** — if no consumers connected, `/hook/permission` returns allow
+- **Same codebase** for hosted and self-hosted (config flag for multi-user mode)
 
-### Message routing rules
-- Producer messages → forwarded to ALL consumers with the same pairing code
-- Consumer messages → first checked against pending hook requests (by ID), otherwise forwarded to producer
-- System messages (register, ping, pong, error) → handled by broker, never forwarded
+### Configuration (env vars)
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `DEVOTCHI_PORT` | `8080` | Server port |
+| `DEVOTCHI_MODE` | `single-user` | `single-user` or `multi-user` |
+| `DEVOTCHI_DB_PATH` | `~/.devotchi/devotchi.db` | SQLite database path |
+| `DEVOTCHI_JWT_SECRET` | — | Required for multi-user mode |
+| `DEVOTCHI_CORS_ORIGINS` | `*` | Comma-separated allowed origins |
 
 ---
 
 ## Claude Code Hooks
 
-Approvals and status updates are handled automatically via Claude Code `http` hooks — no AI involvement, zero context cost. Configured in `.claude/settings.local.json`.
+Approvals and status updates are handled automatically via Claude Code `http` hooks — no AI involvement, zero context cost.
 
 ### How it works
 
-1. Claude Code fires a `PermissionRequest` hook → HTTP POST to broker's `/hook/permission?code=XXXXXX`
-2. Broker translates to a Devotchi `permission` message, sends to all consumers via WebSocket
+1. Claude Code fires a `PermissionRequest` hook → HTTP POST to server's `/hook/permission?code=XXXXXX`
+2. Server translates to a Devotchi `permission` message, sends to all consumers via WebSocket
 3. User approves/rejects on device/simulator
 4. Consumer sends `permission_response` back via WebSocket
-5. Broker returns hook JSON response: `{ decision: { behavior: "allow"|"deny" } }`
+5. Server returns hook JSON response: `{ decision: { behavior: "allow"|"deny" } }`
 6. Claude Code proceeds or blocks — all within one HTTP request/response cycle
 
-### Hook endpoints
-
-| Endpoint | Hook Event | Behavior |
-|---|---|---|
-| `POST /hook/permission?code=X` | `PermissionRequest` | Long-poll: waits for device response, returns allow/deny |
-| `POST /hook/status?code=X` | `PostToolUse` | Fire-and-forget: sends status update to device |
-| `POST /hook/stop?code=X` | `Stop` | Fire-and-forget: notifies device agent stopped |
-
-### Graceful degradation
-- If no consumers are connected, `/hook/permission` returns `{}` (allow) — the agent is not blocked when nobody is watching
-- `/hook/status` and `/hook/stop` always return `{}` immediately
+Run `devotchi setup` to auto-configure hooks in `.claude/settings.local.json`.
 
 ---
 
-## Phone PWA (future — `packages/pwa/`)
+## Phone PWA (future)
 
 A companion phone app. Not part of the current build. May be added later as:
-- A phone-based Tamagotchi UI (WebSocket to broker)
+- A phone-based Tamagotchi UI (WebSocket to server)
 - A BLE bridge between phone and ESP32 device
 - Installable as PWA with push notifications for approvals
 
-This is a future idea — the physical device is the core product.
-
 ---
 
-## Layer 4: ESP32 Firmware (separate — `firmware/`)
+## Layer 4: ESP32 Firmware (`firmware/`)
 
 Written in C using ESP-IDF (not Arduino). Runs on the physical device.
 
@@ -156,33 +165,18 @@ See [hardware/README.md](../hardware/README.md) for component details and pin as
 
 ---
 
-## Dev Tool: Simulator (`packages/simulator/`)
-
-A browser-based simulator that acts as a "device" consumer. Essential for testing the software stack without physical hardware.
-
-### Implementation
-- Vite + TypeScript app
-- Connects to broker via WebSocket
-- Shows Tamagotchi-style character (CSS/canvas based)
-- Clickable approve/reject buttons
-- Message log
-- Pairing code input
-- Connection status indicator
-
----
-
 ## Data Flow Examples
 
 ### Permission request via hook (automatic)
 ```
 Claude Code wants to run "rm -rf dist"
   → PermissionRequest hook fires
-  → HTTP POST to broker /hook/permission?code=A7X9K2
-  → Broker generates ID, sends {"type":"permission","id":"a1b2c3","action":"Bash",...} to consumers
-  → Device/simulator shows permission modal
+  → HTTP POST to server /hook/permission?code=A7X9K2
+  → Server generates ID, sends permission message to consumers
+  → Device/web UI shows permission modal
   → User presses Approve
-  → Device sends {"type":"permission_response","id":"a1b2c3","granted":true} to broker
-  → Broker returns { decision: { behavior: "allow" } } as HTTP response
+  → Device sends permission_response to server
+  → Server returns { decision: { behavior: "allow" } }
   → Claude Code proceeds with the command
 ```
 
@@ -190,25 +184,17 @@ Claude Code wants to run "rm -rf dist"
 ```
 Claude Code finishes running a Bash command
   → PostToolUse hook fires
-  → HTTP POST to broker /hook/status?code=A7X9K2
-  → Broker sends {"type":"status","msg":"echo hello world","mood":"working"} to consumers
-  → Device/simulator updates display
-  → Broker returns {} immediately
+  → HTTP POST to server /hook/status?code=A7X9K2
+  → Server sends status message to consumers
+  → Device/web UI updates display
+  → Server returns {} immediately
 ```
 
 ### Voluntary status update via MCP
 ```
 Claude Code calls show_status("Refactoring auth...", "focused")
-  → MCP Server sends {"type":"status","msg":"Refactoring auth...","mood":"focused"} to broker
-  → Broker forwards to all consumers
-  → Device/simulator updates display
+  → MCP Server sends status message to server via WebSocket
+  → Server forwards to all consumers
+  → Device/web UI updates display
   → MCP Server returns {ok: true} to Claude Code
-```
-
-### Timeout on permission
-```
-(same as permission request, but user doesn't respond within 5 minutes)
-  → Broker's timeout fires
-  → Broker returns { decision: { behavior: "deny" } } as HTTP response
-  → Claude Code blocks the action
 ```
