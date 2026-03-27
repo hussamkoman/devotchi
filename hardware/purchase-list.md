@@ -29,7 +29,7 @@ These parts are placed on the PCB by JLCPCB during assembly. The LCSC part numbe
 | Ref | Description | Value | LCSC | Library | Price (1+) |
 |---|---|---|---|---|---|
 | J201 | USB-C connector | HRO TYPE-C-31-M-12 | C165948 | Extended | $0.18 |
-| J202 | Battery connector | JST PH S2B-PH-K-S 2-pin | C173752 | Extended | $0.04 |
+| J202 | Battery connector (SMD) | PH 2.0mm 2-pin SMD right-angle | C7433648 | Extended | $0.02 |
 | FPC301 | Display FPC connector | JUSHUO AFC01-S12FCA-00 | C262661 | Extended | $0.09 |
 
 ### Capacitors (all MLCC ceramic)

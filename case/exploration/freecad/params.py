@@ -25,46 +25,44 @@ DISP_FPC_L = 12.1   # FPC tail length from module edge
 # PCB
 # ──────────────────────────────────
 PCB_W = 45.0        # PCB width
-PCB_H = 40.0        # PCB height
+PCB_H = 50.0        # PCB height (extended for FPC connector clearance)
 PCB_D = 1.6         # PCB thickness
 
 # ──────────────────────────────────
-# Battery (placeholder — 5mm thick LiPo)
+# Battery (503450 LiPo, 1000mAh)
 # ──────────────────────────────────
-BATT_W = 30.0       # battery width
-BATT_H = 35.0       # battery height
+BATT_W = 34.0       # battery width (portrait orientation)
+BATT_H = 50.0       # battery height (portrait, cable exits right side toward bottom)
 BATT_D = 5.0        # battery thickness
 
 # ──────────────────────────────────
-# Case outer dimensions (derived)
+# Case outer dimensions (60 x 60 — clean numbers)
 # ──────────────────────────────────
-DISP_CLEARANCE = 3.0  # extra clearance for display fit (total, both sides)
-CASE_W = DISP_MOD_W + 2 * WALL + 2 * TOL + DISP_CLEARANCE  # 58.2mm
+CASE_W = 60.0       # case width (fixed)
+CASE_H = 60.0       # case height (fixed)
+
+# Derived clearances from fixed case size
+DISP_CLEARANCE = CASE_W - DISP_MOD_W - 2 * WALL - 2 * TOL  # 4.8mm total
 
 # Height zones (front view, top to bottom)
-CASE_H_DISPLAY = DISP_MOD_H + 2 * WALL    # display area: 39.2mm
-CASE_H_BUTTONS = 15.0                      # button area below display
-CASE_H_USB = 5.0                           # USB area at bottom
-CASE_H = CASE_H_DISPLAY + CASE_H_BUTTONS + CASE_H_USB  # ~59.2mm
+CASE_H_DISPLAY = DISP_MOD_H + 2 * WALL                      # 39.2mm
+CASE_H_USB = 5.0                                             # USB area at bottom
+CASE_H_BUTTONS = CASE_H - CASE_H_DISPLAY - CASE_H_USB       # 15.8mm
 
 # ──────────────────────────────────
 # Depth stack (front to back)
-# Display zone (top): wall + display + gap + battery + back wall
-# PCB zone (bottom): wall + display/ESP32 gap + PCB + JST gap + back wall
-# Battery sits behind display (Y = display zone), not behind PCB.
 # ──────────────────────────────────
 GAP_DISP_PCB = 2.5   # gap for ESP32 (2.4mm module + 0.1mm clearance)
 GAP_PCB_BATT = 5.0   # gap behind PCB solder-side (JST connector 4.8mm + clearance)
 
-# Case depth driven by the deeper zone
-_depth_disp = WALL + DISP_MOD_D + 0.5 + BATT_D + WALL   # 11.0
-_depth_pcb = WALL + GAP_DISP_PCB + PCB_D + GAP_PCB_BATT + WALL  # 12.1
-CASE_D = max(_depth_disp, _depth_pcb)  # 12.1mm
+# Depth stack (front to back):
+# wall(1.5) + display(2.5) + gap(2.5) + PCB(1.6) + gap(0.5) + battery(5.0) + wall(1.5) = 15.1
+CASE_D = WALL + DISP_MOD_D + GAP_DISP_PCB + PCB_D + 0.5 + BATT_D + WALL  # 15.1mm
 
 # Z positions (from front face = 0, going inward / +Z)
 Z_DISP = WALL                                     # 1.5
-Z_PCB = WALL + GAP_DISP_PCB                       # 4.0
-Z_BATT = WALL + DISP_MOD_D + 0.5                  # 5.5 (behind display in display zone)
+Z_PCB = WALL + DISP_MOD_D + GAP_DISP_PCB          # 6.5
+Z_BATT = Z_PCB + PCB_D + 0.5                      # 8.6
 
 # Front shell depth (everything except back cover wall)
 SHELL_D = CASE_D - WALL  # 13.6mm
@@ -72,8 +70,8 @@ SHELL_D = CASE_D - WALL  # 13.6mm
 # ──────────────────────────────────
 # PCB positioning in case
 # ──────────────────────────────────
-PCB_OFFSET_X = (CASE_W - PCB_W) / 2              # centered horizontally
-PCB_OFFSET_Y = CASE_H - WALL - PCB_H             # bottom-aligned for USB-C
+PCB_OFFSET_X = (CASE_W - PCB_W) / 2              # 7.5mm — centered horizontally
+PCB_OFFSET_Y = CASE_H - WALL - PCB_H             # 8.5mm — bottom-aligned for USB-C
 
 # ──────────────────────────────────
 # Buttons (4 front, no side button)
@@ -88,15 +86,15 @@ BTN_CAP_TRAVEL = 0.8      # how far cap protrudes above case surface
 BTN_SPACING = 14.0   # center-to-center for main 3
 
 # Main 3 buttons Y position (in button zone)
-BTN_Y = CASE_H_DISPLAY + CASE_H_BUTTONS * 0.30
+BTN_Y = CASE_H_DISPLAY + CASE_H_BUTTONS * 0.30   # ~43.9mm
 # Wake button Y position (further below main 3)
-BTN_WAKE_Y = CASE_H_DISPLAY + CASE_H_BUTTONS * 0.80
+BTN_WAKE_Y = CASE_H_DISPLAY + CASE_H_BUTTONS * 0.80  # ~51.8mm
 
 # X positions (centered)
-BTN_X_APPROVE = CASE_W / 2 - BTN_SPACING
-BTN_X_ACTION = CASE_W / 2
-BTN_X_REJECT = CASE_W / 2 + BTN_SPACING
-BTN_X_WAKE = CASE_W / 2
+BTN_X_APPROVE = CASE_W / 2 - BTN_SPACING          # 16.0mm
+BTN_X_ACTION = CASE_W / 2                          # 30.0mm
+BTN_X_REJECT = CASE_W / 2 + BTN_SPACING            # 44.0mm
+BTN_X_WAKE = CASE_W / 2                            # 30.0mm
 
 # ──────────────────────────────────
 # USB-C (HRO TYPE-C-31-M-12)
@@ -111,7 +109,7 @@ USBC_OVERHANG = 1.95       # connector protrudes past PCB edge
 # ──────────────────────────────────
 LED_HOLE_D = 2.0
 LED_X = 8.0
-LED_Y = CASE_H - 5.0
+LED_Y = CASE_H - 5.0       # 55.0mm
 
 # ──────────────────────────────────
 # Motor (6mm coin vibration)
@@ -124,7 +122,7 @@ MOTOR_H = 2.1
 # ──────────────────────────────────
 POST_OD = 4.0        # outer diameter of standoff
 POST_ID = 2.2        # M2 screw hole (2.0mm + tolerance)
-POST_INSET = 3.0     # inset from PCB edge
+POST_INSET = 3.0     # inset from PCB edge (3 holes: TR, BL, BR — TL removed for FPC)
 POST_H = DISP_MOD_D + GAP_DISP_PCB  # 5.0mm (from front inner wall to PCB)
 
 # ──────────────────────────────────
