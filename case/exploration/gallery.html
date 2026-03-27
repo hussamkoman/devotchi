@@ -437,6 +437,12 @@ const designs = [
   { id: 'p25', name: 'Pendant', category: 'portable', dims: '45×45×12mm',
     desc: 'Octagonal necklace pendant. Beveled edges, bail loop for chain, jewelry finishing.',
     svg: 'drawings/portable/25_pendant.svg', ascii: 'concepts/portable/25_pendant.txt' },
+  { id: 'p26', name: 'Chamfered Box', category: 'portable', dims: '60×60×15.1mm',
+    desc: 'FreeCAD final design. Clean rectangular form with chamfered front edges, rounded corners, snap-fit back cover. 3 buttons, no wake. Chosen base design.',
+    svg: 'drawings/portable/26_chamfered_box.svg', ascii: 'concepts/portable/26_chamfered_box.txt' },
+  { id: 'p27', name: 'PCB Layout', category: 'portable', dims: '45×50×1.6mm',
+    desc: 'PCB component placement reference. ESP32, FPC connector, 3 buttons, USB-C, power section. 503450 battery (1000mAh). Shows display-PCB alignment.',
+    svg: 'drawings/portable/27_pcb_layout.svg', ascii: 'concepts/portable/27_pcb_layout.txt' },
 ];
 
 let currentCategory = 'all';
@@ -510,7 +516,8 @@ async function showContent() {
   } else {
     el.className = 'modal-content ascii-view';
     const text = await fetchContent(d.ascii);
-    el.innerHTML = `<pre>${text || 'ASCII file not found.'}</pre>`;
+    const escaped = (text || 'ASCII file not found.').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    el.innerHTML = `<pre>${escaped}</pre>`;
   }
 }
 

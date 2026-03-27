@@ -6,8 +6,8 @@ All dimensions in mm. Use this as a reference when recreating the design in Onsh
 
 | Dimension | Value | Notes |
 |---|---|---|
-| Width | 58.2 | Display (51.8) + walls (3.0) + tolerance (0.4) + clearance (3.0) |
-| Height | 59.2 | Display zone (39.2) + button zone (15.0) + USB zone (5.0) |
+| Width | 60.0 | Clean number, display (51.8) + walls + clearance (4.8) |
+| Height | 60.0 | Display zone (39.2) + button zone (15.8) + USB zone (5.0) |
 | Depth | 15.1 | See depth stack below |
 | Corner radius | 3.0 | XY plane, all 4 corners |
 | Front chamfer | 2.5 | 45-degree slope on front face edges only |
@@ -39,12 +39,11 @@ Back wall ────────── 1.5mm   Z = 13.6 to 15.1
 │  └────────────────────────────────┘  │
 │          Display zone: 39.2mm        │ Y = 39.2
 │                                      │
-│  <approve> <action>  <reject>        │ Y = 43.7 (btn centers)
+│  <approve> <action>  <reject>        │ Y = 43.9 (btn centers)
 │                                      │
-│           <wake>                     │ Y = 51.2 (wake center)
-│         Button zone: 15.0mm         │ Y = 54.2
+│         Button zone: 15.8mm         │
 │     (LED)     ═══USB═══             │
-│          USB zone: 5.0mm             │ Y = 59.2
+│          USB zone: 5.0mm             │ Y = 60.0
 └──────────────────────────────────────┘
 ```
 
@@ -54,7 +53,7 @@ Back wall ────────── 1.5mm   Z = 13.6 to 15.1
 |---|---|---|
 | Module size | 51.8 x 36.2 x 2.5 | HS20HS072RX |
 | Active area | 40.8 x 30.6 | Window cutout size |
-| FPC tail | 6.5 wide, 12.1 long | Exits LEFT edge, ~15.3mm from top |
+| FPC tail | 6.5 wide, 12.1 long | Exits LEFT edge, centered on display Y |
 | Pocket size | 55.2 x 36.2 | Full inner cavity width/height |
 | Pocket depth | 3.0 | From Z=1.5 to Z=4.5 |
 | Window bezel slope | 1.5mm margin, 0.8mm deep | Sloped surround on front face |
@@ -71,28 +70,59 @@ Thin lips (1.5mm overhang, 1.0mm thick) at Z = 3.0 (back of display).
 | Right bottom | X = pocket far edge, Y = 20.3mm from top | 1.5 x 5.0 |
 | Top | Centered on top edge | 8.0 x 1.5 |
 
-Left clips split to avoid FPC exit zone (15.3mm from top, ~5mm clearance).
+Left clips split to avoid FPC exit zone.
 
 ## PCB
 
 | Dimension | Value | Notes |
 |---|---|---|
-| Size | 45.0 x 40.0 x 1.6 | Smaller than display |
-| Position X | 6.6 | Centered: (58.2 - 45.0) / 2 |
-| Position Y | 17.7 | Bottom-aligned: 59.2 - 1.5 - 40.0 |
+| Size | 45.0 x 50.0 x 1.6 | Extended height for FPC connector clearance |
+| Position X | 7.5 | Centered: (60.0 - 45.0) / 2 |
+| Position Y | 8.5 | Bottom-aligned: 60.0 - 1.5 - 50.0 |
 | Position Z | 6.5 | Components face front (toward display) |
+
+### FPC Connector (AFC01-S12FCA-00)
+
+| Dimension | Value | Notes |
+|---|---|---|
+| PCB X | 5.0 | From left edge (origin), no overhang |
+| PCB Y | 38.9 | From bottom edge, aligned with display center |
+| Rotation | -90° | Latch faces left (cable entry from PCB edge) |
+| Body extends | 4.5mm left, 2mm right of origin | After rotation |
+
+### Button Switches (3x TS-1187A, 6x6mm)
+
+| Button | PCB X | PCB Y (from bottom) | Case X | Case Y |
+|---|---|---|---|---|
+| Approve (SW501) | 8.5 | 14.6 | 16.0 | 43.9 |
+| Action (SW502) | 22.5 | 14.6 | 30.0 | 43.9 |
+| Reject (SW503) | 36.5 | 14.6 | 44.0 | 43.9 |
+
+14mm center-to-center spacing. Wake function handled by any button press (RTC wake).
+
+### Mounting Holes (3x M2)
+
+| Hole | PCB X | PCB Y | Notes |
+|---|---|---|---|
+| TR | 42.0 | 47.0 | 3mm inset from edges |
+| BL | 3.0 | 3.0 | 3mm inset from edges |
+| BR | 42.0 | 3.0 | 3mm inset from edges |
+
+TL hole removed for FPC connector clearance.
 
 ## Battery
 
 | Dimension | Value | Notes |
 |---|---|---|
-| Size | 30.0 x 35.0 x 5.0 | Placeholder, 5mm thick LiPo |
-| Position | Centered XY | Behind PCB |
-| Position Z | 8.6 | Between PCB and back wall |
+| Model | 503450 LiPo | 1000mAh, 3.7V |
+| Size | 34.0 x 50.0 x 5.0 | Portrait orientation in case |
+| Cable | Exits right side, routes toward bottom | JST-PH 2-pin |
+| Position | Upper portion, behind PCB | Centered XY |
+| Position Z | 8.6 to 13.6 | Between PCB and back wall |
 
 ## Buttons (Front Face)
 
-Elongated hexagon shape (`<=>`) with rounded corners.
+Elongated hexagon shape (`<=>`) with rounded corners. 3 buttons only (wake removed).
 
 ### Main 3 Buttons (Approve, Action, Reject)
 
@@ -102,20 +132,10 @@ Elongated hexagon shape (`<=>`) with rounded corners.
 | Hex height (flat to flat) | 6.0 |
 | Corner rounding | 1.2 |
 | Spacing (center to center) | 14.0 |
-| Y position (center) | 43.7 |
-| X positions | 15.1, 29.1, 43.1 (centered) |
+| Y position (center) | 43.9 |
+| X positions | 16.0, 30.0, 44.0 (centered) |
 | Bezel slope margin | 0.5 |
 | Bezel slope depth | 0.3 |
-
-### Wake Button
-
-| Dimension | Value |
-|---|---|
-| Hex width | 10.0 |
-| Hex height | 4.5 |
-| Corner rounding | 1.2 |
-| Y position (center) | 51.2 |
-| X position | 29.1 (centered) |
 
 ### Button Caps
 
@@ -137,14 +157,13 @@ Elongated hexagon shape (`<=>`) with rounded corners.
 | Hole height | 3.66 | 3.26 + 2 x 0.2 tolerance |
 | Shape | Pill (rounded rectangle) | |
 | Position | Centered X, bottom wall | |
-| Z center | 4.67 | Connector extends from PCB toward front |
 
 ## LED Hole
 
 | Dimension | Value |
 |---|---|
 | Diameter | 2.0 |
-| Position | X = 8.0, Y = 54.2 (bottom-left area) |
+| Position | X = 8.0, Y = 55.0 (bottom-left area) |
 
 ## Back Cover
 
@@ -165,7 +184,7 @@ Elongated hexagon shape (`<=>`) with rounded corners.
 | Hook overhang | 0.5 |
 | Positions | Left, Right (Y centered), Top, Bottom (X centered) |
 
-### PCB Mounting Standoffs (4 on back cover)
+### PCB Mounting Standoffs (3 on back cover)
 
 | Dimension | Value | Notes |
 |---|---|---|
@@ -173,7 +192,7 @@ Elongated hexagon shape (`<=>`) with rounded corners.
 | Screw hole | 2.2 (M2) | |
 | Inset from PCB edge | 3.0 | |
 | Height | 5.5 | From back inner wall to PCB solder side |
-| Positions | 4 corners of PCB | |
+| Positions | TR, BL, BR corners | TL removed for FPC connector |
 
 ### Battery Guide Rails (on back cover)
 

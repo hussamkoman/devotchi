@@ -221,7 +221,7 @@ Real-world usage will be a mix — display on for a few seconds when events arri
 - Follow ESP32-S3-MINI-1 datasheet antenna keepout zone (no copper/ground under antenna area)
 - Display connects via 12-pin 0.5mm FPC cable (AFC01-S12FCA-00 connector)
 - USB-C connector: use 16-pin mid-mount type with data lines (D+/D-) connected to ESP32-S3 USB OTG pins for firmware updates and desktop serial communication
-- Battery connector: JST-PH 2-pin (standard for small LiPo)
+- Battery connector: JST-PH 2-pin SMD (standard for small LiPo, LCSC C7433648)
 - Test points for: 3.3V, +BATT, GND, UART TX/RX
 
 ---
