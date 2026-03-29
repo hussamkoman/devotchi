@@ -2781,7 +2781,7 @@
 	)
 	(text "on pin 4"
 		(exclude_from_sim no)
-		(at 163.576 33.274 90)
+		(at 110.236 32.004 90)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -2834,6 +2834,16 @@
 			)
 		)
 		(uuid "8760949a-09f9-4d5a-8f0a-798d34b6859d")
+	)
+	(text "on pin 5\n"
+		(exclude_from_sim no)
+		(at 161.798 30.226 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "a28002e8-3c65-4bf5-a8ac-6d379fa2bab2")
 	)
 	(text "Battery_ADC"
 		(exclude_from_sim no)
@@ -2890,12 +2900,6 @@
 		(uuid "262348c4-9fe6-406b-852e-169efeb6538f")
 	)
 	(junction
-		(at 123.19 53.34)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "2ad62fc6-a89a-4274-89f0-89a530476959")
-	)
-	(junction
 		(at 228.6 116.84)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -2906,12 +2910,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "313773a6-4b41-44ea-8c3e-1452a3f6b489")
-	)
-	(junction
-		(at 123.19 60.96)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "331aa655-2db7-4c9e-9b91-0377295ba7d6")
 	)
 	(junction
 		(at 142.24 71.12)
@@ -2936,12 +2934,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "62f7417e-5cf7-4705-8602-65a709b3df25")
-	)
-	(junction
-		(at 203.2 33.02)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "6420caee-1cb4-42be-9475-a8fc8fec390b")
 	)
 	(junction
 		(at 142.24 40.64)
@@ -3016,16 +3008,6 @@
 	(no_connect
 		(at 60.96 64.77)
 		(uuid "b16be430-9527-4100-ae5e-63c6d04c8e4b")
-	)
-	(wire
-		(pts
-			(xy 167.64 36.83) (xy 167.64 38.1)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "0349128f-717a-4861-a0fe-de638a3150a3")
 	)
 	(wire
 		(pts
@@ -3119,6 +3101,16 @@
 	)
 	(wire
 		(pts
+			(xy 165.1 34.29) (xy 165.1 35.56)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "14972ae7-aaa0-4c21-ad83-a44e309890a3")
+	)
+	(wire
+		(pts
 			(xy 217.17 35.56) (xy 217.17 33.02)
 		)
 		(stroke
@@ -3179,7 +3171,7 @@
 	)
 	(wire
 		(pts
-			(xy 121.92 60.96) (xy 123.19 60.96)
+			(xy 121.92 60.96) (xy 128.27 60.96)
 		)
 		(stroke
 			(width 0)
@@ -3256,16 +3248,6 @@
 			(type default)
 		)
 		(uuid "397fe753-6352-4d5e-b882-2066906ea730")
-	)
-	(wire
-		(pts
-			(xy 67.31 86.36) (xy 69.85 86.36)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "3aa70537-6284-44b2-b4a7-968ac5d7b17f")
 	)
 	(wire
 		(pts
@@ -3366,16 +3348,6 @@
 			(type default)
 		)
 		(uuid "54678cc5-2ae0-442d-a5f6-fe5d5fe964b0")
-	)
-	(wire
-		(pts
-			(xy 83.82 86.36) (xy 81.28 86.36)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "5657722f-8047-4dc4-8828-5a7aa52e2092")
 	)
 	(wire
 		(pts
@@ -3529,6 +3501,16 @@
 	)
 	(wire
 		(pts
+			(xy 165.1 25.4) (xy 165.1 26.67)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7f717514-e7af-4682-8416-aa8b8f0d737a")
+	)
+	(wire
+		(pts
 			(xy 265.43 54.61) (xy 265.43 60.96)
 		)
 		(stroke
@@ -3679,16 +3661,6 @@
 	)
 	(wire
 		(pts
-			(xy 123.19 53.34) (xy 128.27 53.34)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "b9354616-8191-41e4-8a68-797ebe25ab03")
-	)
-	(wire
-		(pts
 			(xy 217.17 43.18) (xy 217.17 45.72)
 		)
 		(stroke
@@ -3729,7 +3701,7 @@
 	)
 	(wire
 		(pts
-			(xy 167.64 27.94) (xy 167.64 29.21)
+			(xy 114.3 26.67) (xy 114.3 27.94)
 		)
 		(stroke
 			(width 0)
@@ -3749,7 +3721,7 @@
 	)
 	(wire
 		(pts
-			(xy 203.2 33.02) (xy 207.01 33.02)
+			(xy 196.85 33.02) (xy 207.01 33.02)
 		)
 		(stroke
 			(width 0)
@@ -3809,16 +3781,6 @@
 	)
 	(wire
 		(pts
-			(xy 123.19 60.96) (xy 128.27 60.96)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "d63d900f-0e94-44a0-b41b-f5954f055e8d")
-	)
-	(wire
-		(pts
 			(xy 59.69 44.45) (xy 78.74 44.45)
 		)
 		(stroke
@@ -3846,6 +3808,16 @@
 			(type default)
 		)
 		(uuid "dcd5df30-b866-416d-b81d-c6b1c1aafd37")
+	)
+	(wire
+		(pts
+			(xy 114.3 35.56) (xy 114.3 38.1)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e1a0f776-1537-4e9f-b845-601fb219e8c9")
 	)
 	(wire
 		(pts
@@ -3939,16 +3911,6 @@
 	)
 	(wire
 		(pts
-			(xy 196.85 33.02) (xy 203.2 33.02)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "ee9a1aeb-e7ee-426d-b3af-90c5cdb38ae4")
-	)
-	(wire
-		(pts
 			(xy 138.43 135.89) (xy 138.43 138.43)
 		)
 		(stroke
@@ -3969,7 +3931,7 @@
 	)
 	(wire
 		(pts
-			(xy 121.92 53.34) (xy 123.19 53.34)
+			(xy 121.92 53.34) (xy 128.27 53.34)
 		)
 		(stroke
 			(width 0)
@@ -4109,28 +4071,6 @@
 			)
 		)
 	)
-	(global_label "USB_DN"
-		(shape input)
-		(at 69.85 86.36 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "1b75a972-898d-4374-804e-1e355e4d7c14")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 80.2133 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-	)
 	(global_label "PWR_STDBY"
 		(shape input)
 		(at 121.92 60.96 180)
@@ -4216,203 +4156,6 @@
 				)
 				(justify left)
 				(hide yes)
-			)
-		)
-	)
-	(global_label "USB_DP"
-		(shape input)
-		(at 83.82 86.36 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "f94f29db-c95a-482e-a0a6-1e4f61267ebc")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 94.1228 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 81.28 86.36 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "04c3df19-4e93-406c-9f9a-494baeda9f28")
-		(property "Reference" "TP208"
-			(at 79.756 81.28 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "TestPoint"
-			(at 83.82 84.3279 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 86.36 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 86.36 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "test point"
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Availability" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Check_prices" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description_1" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MANUFACTURER" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MAXIMUM_PACKAGE_HEIGHT" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MF" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "PARTREV" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Package" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Price" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "STANDARD" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "SnapEDA_Link" ""
-			(at 81.28 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "95d5f682-7574-4ef1-99d8-931a524e4a7a")
-		)
-		(instances
-			(project "devotchi"
-				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP208")
-					(unit 1)
-				)
 			)
 		)
 	)
@@ -4782,7 +4525,7 @@
 			(uuid "537e55b1-d7a7-4805-ad44-17ac829b598d")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
 					(reference "J202")
 					(unit 1)
@@ -4800,7 +4543,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "10235f6c-c1e5-429a-b488-8f73cc2f9b05")
-		(property "Reference" "C204"
+		(property "Reference" "C205"
 			(at 76.2 129.5399 0)
 			(effects
 				(font
@@ -4971,7 +4714,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "C204")
+					(reference "C205")
 					(unit 1)
 				)
 			)
@@ -5174,7 +4917,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "1b211cfa-4670-4bd3-a4e4-b1242fb0dfa2")
-		(property "Reference" "#PWR0214"
+		(property "Reference" "#PWR0216"
 			(at 44.45 86.36 0)
 			(effects
 				(font
@@ -5222,9 +4965,9 @@
 			(uuid "e8a0b778-3136-45b3-a66b-4a5cfe8543d3")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0214")
+					(reference "#PWR0216")
 					(unit 1)
 				)
 			)
@@ -5418,6 +5161,71 @@
 	)
 	(symbol
 		(lib_id "power:GND")
+		(at 165.1 35.56 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "26b08fce-1808-4754-9ca5-dba392cbc0b6")
+		(property "Reference" "#PWR0205"
+			(at 165.1 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 165.1 39.624 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 165.1 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 165.1 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 165.1 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "6ad282e5-0916-4090-b188-41ad29524115")
+		)
+		(instances
+			(project "devotchi"
+				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
+					(reference "#PWR0205")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
 		(at 166.37 74.93 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -5426,7 +5234,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "29ea22cb-200f-4744-bcb6-9dd9421f7766")
-		(property "Reference" "#PWR0213"
+		(property "Reference" "#PWR0215"
 			(at 166.37 81.28 0)
 			(effects
 				(font
@@ -5476,7 +5284,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0213")
+					(reference "#PWR0215")
 					(unit 1)
 				)
 			)
@@ -5484,16 +5292,15 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 167.64 33.02 0)
+		(at 114.3 31.75 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "32018823-13d1-4012-9687-1f04f7b61197")
-		(property "Reference" "C201"
-			(at 171.45 31.7499 0)
+		(property "Reference" "C202"
+			(at 117.094 30.48 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5502,7 +5309,7 @@
 			)
 		)
 		(property "Value" "10µ"
-			(at 171.45 34.2899 0)
+			(at 117.348 33.02 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5511,7 +5318,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
-			(at 168.6052 36.83 0)
+			(at 115.2652 35.56 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5520,7 +5327,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5529,7 +5336,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5538,7 +5345,7 @@
 			)
 		)
 		(property "LCSC Part" "C15850"
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5547,7 +5354,7 @@
 			)
 		)
 		(property "Availability" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5556,7 +5363,7 @@
 			)
 		)
 		(property "Check_prices" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5565,7 +5372,7 @@
 			)
 		)
 		(property "Description_1" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5574,7 +5381,7 @@
 			)
 		)
 		(property "MANUFACTURER" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5583,7 +5390,7 @@
 			)
 		)
 		(property "MAXIMUM_PACKAGE_HEIGHT" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5592,7 +5399,7 @@
 			)
 		)
 		(property "MF" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5601,7 +5408,7 @@
 			)
 		)
 		(property "MP" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5610,7 +5417,7 @@
 			)
 		)
 		(property "PARTREV" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5619,7 +5426,7 @@
 			)
 		)
 		(property "Package" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5628,7 +5435,7 @@
 			)
 		)
 		(property "Price" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5637,7 +5444,7 @@
 			)
 		)
 		(property "STANDARD" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5646,7 +5453,7 @@
 			)
 		)
 		(property "SnapEDA_Link" ""
-			(at 167.64 33.02 0)
+			(at 114.3 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5663,7 +5470,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "C201")
+					(reference "C202")
 					(unit 1)
 				)
 			)
@@ -5866,7 +5673,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "388a97b6-3069-4d31-a5ca-b820f5427736")
-		(property "Reference" "#PWR0219"
+		(property "Reference" "#PWR0221"
 			(at 217.17 128.27 0)
 			(effects
 				(font
@@ -5914,9 +5721,195 @@
 			(uuid "450f03f1-e934-4883-9786-9dde2d5a931c")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0219")
+					(reference "#PWR0221")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 165.1 30.48 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "39f4e3cc-19be-4123-b32d-511c5285d27c")
+		(property "Reference" "C201"
+			(at 167.64 29.21 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10µ"
+			(at 167.894 31.75 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
+			(at 166.0652 34.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C15850"
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Availability" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Check_prices" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description_1" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MANUFACTURER" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MAXIMUM_PACKAGE_HEIGHT" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MF" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MP" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "PARTREV" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Package" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "STANDARD" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "SnapEDA_Link" ""
+			(at 165.1 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "d2f85b5b-2bb8-4040-912e-6e783120729d")
+		)
+		(pin "2"
+			(uuid "613f3844-4280-4fa6-9f1d-4d5d19c62862")
+		)
+		(instances
+			(project "devotchi"
+				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
+					(reference "C201")
 					(unit 1)
 				)
 			)
@@ -5931,7 +5924,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "3acaaa68-1a76-47a7-91aa-99ca00f6a215")
-		(property "Reference" "TP212"
+		(property "Reference" "TP207"
 			(at 233.172 130.048 0)
 			(effects
 				(font
@@ -6091,7 +6084,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP212")
+					(reference "TP207")
 					(unit 1)
 				)
 			)
@@ -6106,7 +6099,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "42b11d58-52a4-4525-ae8e-2092b35408e3")
-		(property "Reference" "TP211"
+		(property "Reference" "TP206"
 			(at 70.866 116.84 0)
 			(effects
 				(font
@@ -6266,7 +6259,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP211")
+					(reference "TP206")
 					(unit 1)
 				)
 			)
@@ -6274,16 +6267,15 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 167.64 38.1 0)
+		(at 114.3 38.1 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "4326f5e3-db25-4394-8d1e-1eface2f28a1")
-		(property "Reference" "#PWR0205"
-			(at 167.64 44.45 0)
+		(property "Reference" "#PWR0207"
+			(at 114.3 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6292,7 +6284,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 167.64 43.18 0)
+			(at 114.3 42.164 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6300,7 +6292,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 167.64 38.1 0)
+			(at 114.3 38.1 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6309,7 +6301,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 167.64 38.1 0)
+			(at 114.3 38.1 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6318,7 +6310,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 167.64 38.1 0)
+			(at 114.3 38.1 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6332,7 +6324,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0205")
+					(reference "#PWR0207")
 					(unit 1)
 				)
 			)
@@ -6348,7 +6340,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "454ee070-f5ac-4fca-9f4d-a511fa16fb0f")
-		(property "Reference" "#PWR0206"
+		(property "Reference" "#PWR0208"
 			(at 196.85 46.99 0)
 			(effects
 				(font
@@ -6398,7 +6390,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0206")
+					(reference "#PWR0208")
 					(unit 1)
 				)
 			)
@@ -6414,7 +6406,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "4b2de073-1de0-4f42-a9c1-22b3e9521ddb")
-		(property "Reference" "#PWR0203"
+		(property "Reference" "#PWR0204"
 			(at 66.04 36.83 0)
 			(effects
 				(font
@@ -6464,7 +6456,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0203")
+					(reference "#PWR0204")
 					(unit 1)
 				)
 			)
@@ -6666,7 +6658,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "50ef729f-1ac5-4f75-b2e6-18df0b690ffe")
-		(property "Reference" "TP204"
+		(property "Reference" "TP202"
 			(at 263.906 49.53 0)
 			(effects
 				(font
@@ -6826,7 +6818,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP204")
+					(reference "TP202")
 					(unit 1)
 				)
 			)
@@ -7038,7 +7030,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "55262ef9-afd0-4bda-95b1-a5f880592d7d")
-		(property "Reference" "#PWR0215"
+		(property "Reference" "#PWR0217"
 			(at 138.43 118.11 0)
 			(effects
 				(font
@@ -7088,7 +7080,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0215")
+					(reference "#PWR0217")
 					(unit 1)
 				)
 			)
@@ -7316,7 +7308,7 @@
 			(uuid "f9204d5a-62f9-4955-88e3-38a4b58a4c0d")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
 					(reference "J201")
 					(unit 1)
@@ -7334,7 +7326,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "6527a79f-5664-471c-992e-1c69bf3ddf17")
-		(property "Reference" "#PWR0212"
+		(property "Reference" "#PWR0214"
 			(at 156.21 80.01 0)
 			(effects
 				(font
@@ -7384,7 +7376,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0212")
+					(reference "#PWR0214")
 					(unit 1)
 				)
 			)
@@ -7400,7 +7392,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "670efa97-656e-4173-95d7-b422468580dc")
-		(property "Reference" "#PWR0208"
+		(property "Reference" "#PWR0210"
 			(at 78.74 60.96 0)
 			(effects
 				(font
@@ -7448,9 +7440,9 @@
 			(uuid "c1756d69-4e52-45fa-86d1-fcdd28c4916b")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0208")
+					(reference "#PWR0210")
 					(unit 1)
 				)
 			)
@@ -7465,7 +7457,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "68a056a6-3066-459b-97e0-8ef734a1490c")
-		(property "Reference" "TP210"
+		(property "Reference" "TP205"
 			(at 37.846 116.84 0)
 			(effects
 				(font
@@ -7625,7 +7617,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP210")
+					(reference "TP205")
 					(unit 1)
 				)
 			)
@@ -7641,7 +7633,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "68e3bf65-ff56-49a8-95e1-6182315f5110")
-		(property "Reference" "#PWR0207"
+		(property "Reference" "#PWR0209"
 			(at 156.21 54.61 0)
 			(effects
 				(font
@@ -7691,7 +7683,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0207")
+					(reference "#PWR0209")
 					(unit 1)
 				)
 			)
@@ -7896,7 +7888,7 @@
 			(uuid "b2fb8145-b63a-49e5-aa5e-ad0a39384b01")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
 					(reference "U202")
 					(unit 1)
@@ -7914,7 +7906,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "7960454b-f886-42eb-b750-9b5f37457224")
-		(property "Reference" "#PWR0220"
+		(property "Reference" "#PWR0222"
 			(at 39.37 144.78 0)
 			(effects
 				(font
@@ -7964,7 +7956,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0220")
+					(reference "#PWR0222")
 					(unit 1)
 				)
 			)
@@ -7980,7 +7972,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "7f310288-9801-45da-b705-ad84fa43462d")
-		(property "Reference" "#PWR0209"
+		(property "Reference" "#PWR0211"
 			(at 87.63 60.96 0)
 			(effects
 				(font
@@ -8030,7 +8022,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0209")
+					(reference "#PWR0211")
 					(unit 1)
 				)
 			)
@@ -8094,7 +8086,7 @@
 			(uuid "d888a3e0-1de3-4052-9544-7a33ace7465a")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
 					(reference "#FLG0203")
 					(unit 1)
@@ -8112,7 +8104,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "80840b3a-2431-4a0f-83d5-eb5f94b855b5")
-		(property "Reference" "C202"
+		(property "Reference" "C203"
 			(at 220.98 38.0999 0)
 			(effects
 				(font
@@ -8283,7 +8275,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "C202")
+					(reference "C203")
 					(unit 1)
 				)
 			)
@@ -8299,7 +8291,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "8a044f46-110b-4251-8a89-c4bbb14714e9")
-		(property "Reference" "#PWR0204"
+		(property "Reference" "#PWR0206"
 			(at 142.24 40.64 0)
 			(effects
 				(font
@@ -8349,7 +8341,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0204")
+					(reference "#PWR0206")
 					(unit 1)
 				)
 			)
@@ -8410,7 +8402,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC Part" "C21190"
+		(property "LCSC Part" "C22808"
 			(at 256.54 44.45 0)
 			(effects
 				(font
@@ -8619,7 +8611,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "9798fc5a-8464-49c9-95ca-fb1e38e5f34b")
-		(property "Reference" "#PWR0218"
+		(property "Reference" "#PWR0220"
 			(at 82.55 125.73 0)
 			(effects
 				(font
@@ -8669,182 +8661,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0218")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 203.2 33.02 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "9c8bb78f-9628-4c0d-8048-8dfef51bdcb4")
-		(property "Reference" "TP201"
-			(at 201.676 27.94 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "TestPoint"
-			(at 205.74 30.9879 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 208.28 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 208.28 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "test point"
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Availability" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Check_prices" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description_1" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MANUFACTURER" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MAXIMUM_PACKAGE_HEIGHT" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MF" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "PARTREV" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Package" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Price" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "STANDARD" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "SnapEDA_Link" ""
-			(at 203.2 33.02 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "431c4d20-7f83-47ab-b575-f66633cc06ca")
-		)
-		(instances
-			(project "devotchi"
-				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP201")
+					(reference "#PWR0220")
 					(unit 1)
 				)
 			)
@@ -8859,7 +8676,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "a66f70a2-61c8-4476-bcc5-41020514640e")
-		(property "Reference" "TP202"
+		(property "Reference" "TP201"
 			(at 70.866 28.194 0)
 			(effects
 				(font
@@ -9019,7 +8836,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP202")
+					(reference "TP201")
 					(unit 1)
 				)
 			)
@@ -9203,9 +9020,74 @@
 			(uuid "1963d017-84dd-4261-8b04-86e6458d529c")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
 					(reference "R203")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+BATT")
+		(at 165.1 25.4 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "ac8c5ee3-42b8-4353-957f-9127d2134dc3")
+		(property "Reference" "#PWR0201"
+			(at 165.1 29.21 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+BATT"
+			(at 165.1 21.336 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 165.1 25.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 165.1 25.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+BATT\""
+			(at 165.1 25.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "35db9702-0a03-48ad-8958-c8d486fa5642")
+		)
+		(instances
+			(project "devotchi"
+				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
+					(reference "#PWR0201")
 					(unit 1)
 				)
 			)
@@ -9221,7 +9103,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "af4fc00f-a7c9-412f-ab4f-a3d1cef3ec6e")
-		(property "Reference" "#PWR0223"
+		(property "Reference" "#PWR0225"
 			(at 138.43 144.78 0)
 			(effects
 				(font
@@ -9271,182 +9153,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0223")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 123.19 60.96 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "b10abbb7-6650-4064-b18f-07c966bc4a17")
-		(property "Reference" "TP205"
-			(at 121.666 55.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "TestPoint"
-			(at 125.73 58.9279 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 128.27 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 128.27 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "test point"
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Availability" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Check_prices" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description_1" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MANUFACTURER" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MAXIMUM_PACKAGE_HEIGHT" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MF" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "PARTREV" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Package" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Price" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "STANDARD" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "SnapEDA_Link" ""
-			(at 123.19 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "c317ec04-654c-4850-a1e4-f4f9c3357c8c")
-		)
-		(instances
-			(project "devotchi"
-				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP205")
+					(reference "#PWR0225")
 					(unit 1)
 				)
 			)
@@ -9461,7 +9168,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "b2e2cc11-6f55-4329-88bc-f16ff012097a")
-		(property "Reference" "TP206"
+		(property "Reference" "TP203"
 			(at 49.276 73.66 0)
 			(effects
 				(font
@@ -9621,7 +9328,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP206")
+					(reference "TP203")
 					(unit 1)
 				)
 			)
@@ -9637,7 +9344,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "b5e4ff60-cff9-4929-bf84-b1cdcd1bb4fe")
-		(property "Reference" "#PWR0211"
+		(property "Reference" "#PWR0213"
 			(at 142.24 80.01 0)
 			(effects
 				(font
@@ -9687,7 +9394,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0211")
+					(reference "#PWR0213")
 					(unit 1)
 				)
 			)
@@ -9703,7 +9410,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "ba13b006-a91e-49f9-bf00-cde0354a295d")
-		(property "Reference" "#PWR0221"
+		(property "Reference" "#PWR0223"
 			(at 57.15 144.78 0)
 			(effects
 				(font
@@ -9753,7 +9460,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0221")
+					(reference "#PWR0223")
 					(unit 1)
 				)
 			)
@@ -9769,7 +9476,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "befd1192-7493-475e-bc9d-454d92da1a92")
-		(property "Reference" "#PWR0222"
+		(property "Reference" "#PWR0224"
 			(at 72.39 144.78 0)
 			(effects
 				(font
@@ -9819,7 +9526,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0222")
+					(reference "#PWR0224")
 					(unit 1)
 				)
 			)
@@ -9835,7 +9542,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "c5a6615f-47c9-4bc6-b36b-52d7d532c57c")
-		(property "Reference" "C203"
+		(property "Reference" "C204"
 			(at 43.18 128.2699 0)
 			(effects
 				(font
@@ -10006,7 +9713,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "C203")
+					(reference "C204")
 					(unit 1)
 				)
 			)
@@ -10022,7 +9729,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "ca2f2e00-b0bf-4b78-ad6f-b91dedc70deb")
-		(property "Reference" "#PWR0202"
+		(property "Reference" "#PWR0203"
 			(at 196.85 35.56 0)
 			(effects
 				(font
@@ -10072,7 +9779,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0202")
+					(reference "#PWR0203")
 					(unit 1)
 				)
 			)
@@ -10087,7 +9794,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "cf98d678-f0ae-444e-967a-31de1293b5b7")
-		(property "Reference" "TP209"
+		(property "Reference" "TP204"
 			(at 227.076 111.76 0)
 			(effects
 				(font
@@ -10247,7 +9954,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP209")
+					(reference "TP204")
 					(unit 1)
 				)
 			)
@@ -10255,16 +9962,15 @@
 	)
 	(symbol
 		(lib_id "power:VBUS")
-		(at 167.64 27.94 0)
+		(at 114.3 26.67 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "d0249a01-93b0-4c87-8d47-83fa8b816ace")
-		(property "Reference" "#PWR0201"
-			(at 167.64 31.75 0)
+		(property "Reference" "#PWR0202"
+			(at 114.3 30.48 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10273,7 +9979,7 @@
 			)
 		)
 		(property "Value" "VBUS"
-			(at 167.64 22.86 0)
+			(at 114.3 22.86 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10281,7 +9987,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 167.64 27.94 0)
+			(at 114.3 26.67 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10290,7 +9996,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 167.64 27.94 0)
+			(at 114.3 26.67 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10299,7 +10005,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"VBUS\""
-			(at 167.64 27.94 0)
+			(at 114.3 26.67 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10313,7 +10019,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0201")
+					(reference "#PWR0202")
 					(unit 1)
 				)
 			)
@@ -10328,7 +10034,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "d2e4c01a-c25a-49a8-8969-aa96770ff9e1")
-		(property "Reference" "TP213"
+		(property "Reference" "TP208"
 			(at 147.066 120.65 0)
 			(effects
 				(font
@@ -10488,7 +10194,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP213")
+					(reference "TP208")
 					(unit 1)
 				)
 			)
@@ -10504,7 +10210,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "d35c2283-35b4-4541-8f28-048b84579f3a")
-		(property "Reference" "#PWR0210"
+		(property "Reference" "#PWR0212"
 			(at 265.43 67.31 0)
 			(effects
 				(font
@@ -10554,7 +10260,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0210")
+					(reference "#PWR0212")
 					(unit 1)
 				)
 			)
@@ -10943,184 +10649,9 @@
 			(uuid "e301153d-3c13-47bd-b6f4-47d728919050")
 		)
 		(instances
-			(project ""
-				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "U203")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 123.19 53.34 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "d81dc0b1-de45-40f9-994c-a506ff09be44")
-		(property "Reference" "TP203"
-			(at 121.666 48.26 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "TestPoint"
-			(at 125.73 51.3079 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 128.27 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 128.27 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "test point"
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Availability" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Check_prices" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description_1" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MANUFACTURER" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MAXIMUM_PACKAGE_HEIGHT" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MF" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "PARTREV" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Package" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Price" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "STANDARD" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "SnapEDA_Link" ""
-			(at 123.19 53.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "fb994882-f8a9-4238-8df9-13f6c6aed72b")
-		)
-		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP203")
+					(reference "U203")
 					(unit 1)
 				)
 			)
@@ -11179,7 +10710,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC Part" "C22775"
+		(property "LCSC Part" "C22808"
 			(at 210.82 33.02 90)
 			(effects
 				(font
@@ -11321,7 +10852,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "e129eedc-075d-4695-8097-034b2e695007")
-		(property "Reference" "#PWR0217"
+		(property "Reference" "#PWR0219"
 			(at 33.02 125.73 0)
 			(effects
 				(font
@@ -11371,7 +10902,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0217")
+					(reference "#PWR0219")
 					(unit 1)
 				)
 			)
@@ -11454,7 +10985,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "ece31bd6-f782-4443-9056-33be17f65e31")
-		(property "Reference" "#PWR0216"
+		(property "Reference" "#PWR0218"
 			(at 217.17 120.65 0)
 			(effects
 				(font
@@ -11504,182 +11035,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "#PWR0216")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 67.31 86.36 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "f7dcaecf-1e1e-47fc-bf0c-5c8f91f129f7")
-		(property "Reference" "TP207"
-			(at 65.786 81.28 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "TestPoint"
-			(at 69.85 84.3279 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 72.39 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 72.39 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "test point"
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Availability" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Check_prices" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description_1" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MANUFACTURER" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MAXIMUM_PACKAGE_HEIGHT" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MF" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "PARTREV" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Package" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Price" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "STANDARD" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "SnapEDA_Link" ""
-			(at 67.31 86.36 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "a10a340c-d3d3-4921-9702-58b30480b5e6")
-		)
-		(instances
-			(project "devotchi"
-				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/9c37a0e5-9ac1-4129-87e1-3e889a79a4b6"
-					(reference "TP207")
+					(reference "#PWR0218")
 					(unit 1)
 				)
 			)

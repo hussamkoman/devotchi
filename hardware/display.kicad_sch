@@ -1305,6 +1305,12 @@
 		(color 0 0 0 0)
 		(uuid "90dd3be5-aa4b-4d62-91d6-3f0bf7c12ace")
 	)
+	(junction
+		(at 118.11 44.45)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "f3d158ed-b317-44cb-bcc3-dc3e73505830")
+	)
 	(no_connect
 		(at 53.34 52.07)
 		(uuid "7fef2032-9f19-458c-bd12-3c9ee2c38cdc")
@@ -1381,6 +1387,16 @@
 	)
 	(wire
 		(pts
+			(xy 118.11 44.45) (xy 118.11 45.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4f75a068-dcfe-4dc8-a003-a92b596b5f88")
+	)
+	(wire
+		(pts
 			(xy 41.91 97.79) (xy 41.91 100.33)
 		)
 		(stroke
@@ -1431,6 +1447,16 @@
 	)
 	(wire
 		(pts
+			(xy 118.11 44.45) (xy 120.65 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "8e6ba506-297a-40ac-918d-4313d0742916")
+	)
+	(wire
+		(pts
 			(xy 53.34 39.37) (xy 58.42 39.37)
 		)
 		(stroke
@@ -1458,6 +1484,16 @@
 			(type default)
 		)
 		(uuid "af931df1-f4ae-4c93-b187-abbd2ed3d902")
+	)
+	(wire
+		(pts
+			(xy 116.84 44.45) (xy 118.11 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b3023953-0c3f-44c0-946e-58591916aa62")
 	)
 	(wire
 		(pts
@@ -1518,16 +1554,6 @@
 			(type default)
 		)
 		(uuid "c956a345-780a-4fff-b742-b083e0ad9a9a")
-	)
-	(wire
-		(pts
-			(xy 118.11 44.45) (xy 120.65 44.45)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "ce6a92fd-1184-46ab-ac5f-b298fd003b4f")
 	)
 	(wire
 		(pts
@@ -1761,7 +1787,7 @@
 	)
 	(global_label "DISP_BL"
 		(shape input)
-		(at 118.11 44.45 180)
+		(at 116.84 44.45 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -1771,7 +1797,7 @@
 		)
 		(uuid "d74014e2-189d-4018-ac16-6b817e0f1c87")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 107.5048 44.45 0)
+			(at 106.2348 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1856,7 +1882,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "0ea45fd7-065b-4b43-9209-bf927d03d518")
-		(property "Reference" "#PWR0307"
+		(property "Reference" "#PWR0308"
 			(at 41.91 116.84 0)
 			(effects
 				(font
@@ -1906,7 +1932,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/98e7fe21-bddb-41d2-a56f-5f910350d952"
-					(reference "#PWR0307")
+					(reference "#PWR0308")
 					(unit 1)
 				)
 			)
@@ -2125,7 +2151,7 @@
 			(uuid "700455f8-b2b9-42f5-a4e4-d4f7bf61146a")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/98e7fe21-bddb-41d2-a56f-5f910350d952"
 					(reference "FPC301")
 					(unit 1)
@@ -2395,7 +2421,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "8f0ccc52-00ed-4708-af42-2446f0cd18a5")
-		(property "Reference" "#PWR0305"
+		(property "Reference" "#PWR0306"
 			(at 58.42 80.01 0)
 			(effects
 				(font
@@ -2443,9 +2469,9 @@
 			(uuid "880d413e-4d70-4e87-a2ee-73bf34646582")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/98e7fe21-bddb-41d2-a56f-5f910350d952"
-					(reference "#PWR0305")
+					(reference "#PWR0306")
 					(unit 1)
 				)
 			)
@@ -2527,7 +2553,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "af5eec8c-fdc4-47e9-ac84-c638d7d2c1e4")
-		(property "Reference" "#PWR0306"
+		(property "Reference" "#PWR0307"
 			(at 41.91 101.6 0)
 			(effects
 				(font
@@ -2577,7 +2603,7 @@
 		(instances
 			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/98e7fe21-bddb-41d2-a56f-5f910350d952"
-					(reference "#PWR0306")
+					(reference "#PWR0307")
 					(unit 1)
 				)
 			)
@@ -2771,6 +2797,72 @@
 		)
 	)
 	(symbol
+		(lib_id "power:GND")
+		(at 118.11 53.34 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "b2d565b7-c9e9-454e-b91f-2a7550527a92")
+		(property "Reference" "#PWR0305"
+			(at 118.11 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 118.11 58.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 118.11 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 118.11 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 118.11 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "20bdda33-d172-4d6f-9c87-944bf4427f47")
+		)
+		(instances
+			(project "devotchi"
+				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/98e7fe21-bddb-41d2-a56f-5f910350d952"
+					(reference "#PWR0305")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:C")
 		(at 48.26 104.14 0)
 		(unit 1)
@@ -2958,6 +3050,192 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:R")
+		(at 118.11 49.53 180)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "e1bab05c-24ee-41ad-af9d-b01b4ed0dd72")
+		(property "Reference" "R302"
+			(at 119.634 48.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Value" "1k"
+			(at 120.65 50.8 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder"
+			(at 119.888 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 118.11 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 118.11 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC Part" "C22808"
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Availability" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Check_prices" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description_1" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MANUFACTURER" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MAXIMUM_PACKAGE_HEIGHT" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MF" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MP" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "PARTREV" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Package" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "STANDARD" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "SnapEDA_Link" ""
+			(at 118.11 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "67d9d438-1aae-45ad-8c88-b280cbf5ac95")
+		)
+		(pin "1"
+			(uuid "1013a1cd-c948-4ba2-9334-b779effd60d5")
+		)
+		(instances
+			(project "devotchi"
+				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/98e7fe21-bddb-41d2-a56f-5f910350d952"
+					(reference "R302")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "easyeda:AO3400A")
 		(at 125.73 44.45 0)
 		(unit 1)
@@ -3139,7 +3417,7 @@
 			(uuid "cc02d522-ce95-45e5-a1ba-912cac7d1d5a")
 		)
 		(instances
-			(project ""
+			(project "devotchi"
 				(path "/d2bf821d-2b43-48c2-bd9f-23e5d37beff6/98e7fe21-bddb-41d2-a56f-5f910350d952"
 					(reference "Q301")
 					(unit 1)
