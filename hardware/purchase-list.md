@@ -49,8 +49,7 @@ These parts are placed on the PCB by JLCPCB during assembly. The LCSC part numbe
 | R207, R208 | 100kΩ (x2) | C25803 | Basic | $0.001 |
 | R202, R203 | 5.1kΩ (x2) | C23186 | Basic | $0.001 |
 | R205 | 3kΩ | C4211 | Basic | $0.001 |
-| R204 | 1kΩ | C21190 | Basic | $0.001 |
-| R201 | 100Ω | C22775 | Basic | $0.001 |
+| R201, R204 | 1kΩ (x2) | C21190 | Basic | $0.001 |
 | R401 | 150Ω | C22808 | Basic | $0.001 |
 | R301 | 22Ω | C23345 | Basic | $0.001 |
 
