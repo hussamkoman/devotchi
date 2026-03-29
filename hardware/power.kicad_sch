@@ -11144,7 +11144,7 @@
 				)
 			)
 		)
-		(property "Value" "100R"
+		(property "Value" "1K"
 			(at 210.82 29.21 90)
 			(effects
 				(font
