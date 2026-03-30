@@ -1033,7 +1033,7 @@
       "idf": "",
       "netlist": "",
       "plot": "gerber/",
-      "pos_files": "",
+      "pos_files": "CPL/",
       "specctra_dsn": "",
       "step": "",
       "svg": "",
