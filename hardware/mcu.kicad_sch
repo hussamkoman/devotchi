@@ -3898,7 +3898,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC Part" " C318884 "
+		(property "LCSC Part" "C318884"
 			(at 200.66 101.6 90)
 			(effects
 				(font

@@ -3381,7 +3381,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC Part" "  C318884 "
+		(property "LCSC Part" "C318884"
 			(at 31.75 44.45 90)
 			(effects
 				(font
@@ -3809,7 +3809,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC Part" "   C318884 "
+		(property "LCSC Part" "C318884"
 			(at 86.36 95.25 90)
 			(effects
 				(font
@@ -4424,7 +4424,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC Part" "   C318884 "
+		(property "LCSC Part" "C318884"
 			(at 86.36 44.45 90)
 			(effects
 				(font
