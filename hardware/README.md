@@ -1,5 +1,12 @@
 # Hardware Design
 
+## PCB
+
+![3D render of Devotchi PCB](pcb-3d-render.png)
+
+![PCB front](pcb-front.png)
+![PCB back](pcb-back.png)
+
 ## Device Variants
 
 ### 1. Portable WiFi+BLE (build first)
