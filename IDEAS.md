@@ -6,9 +6,9 @@ A larger touchscreen version that sits on your desk. Unlike the portable pocket 
 
 **Multi-session management:** The killer feature. Power users run multiple Claude Code sessions across different projects. The desktop device shows all active sessions at once — each project gets its own pet with mood and status. Tap a project to see details, approve/reject pending requests.
 
-The broker already supports multiple consumers per pairing code and multiple pairing codes simultaneously. The desktop device could connect as a consumer to multiple pairing codes at once, or we could add a "multi-code consumer" mode.
+The server already supports multiple consumers per room and multiple rooms simultaneously. The desktop device could connect as a consumer to multiple rooms at once, or we could add a "multi-room consumer" mode.
 
-The simulator is essentially a prototype of this UI — start from that codebase.
+The web dashboard is essentially a prototype of this UI — start from that codebase.
 
 **Hardware ideas:**
 - ESP32-S3 with a 3.5" or 5" capacitive touchscreen (ILI9488 or similar)
@@ -44,4 +44,4 @@ Let users customize the Tamagotchi character. The current emoji-based display is
 
 ## Webhook Integration
 
-Besides Claude Code hooks, support generic webhooks from CI/CD (GitHub Actions, etc.) so the device shows build/deploy status even when no agent is running. The broker already has HTTP endpoints — just add a `/webhook` route.
+Besides Claude Code hooks, support generic webhooks from CI/CD (GitHub Actions, etc.) so the device shows build/deploy status even when no agent is running. The server already has HTTP endpoints — just add a `/webhook` route.

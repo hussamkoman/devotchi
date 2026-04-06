@@ -1,12 +1,12 @@
 # Wire Protocol Specification
 
-All messages between the MCP server, broker, and consumers are JSON objects sent over WebSocket text frames. Every message has a `type` field.
+All messages between the MCP server, server, and consumers are JSON objects sent over WebSocket text frames. Every message has a `type` field.
 
 ## Message Types
 
 ### Producer -> Consumer messages
 
-These are sent by the MCP server (voluntary tools) or the broker (hook endpoints) and forwarded to all paired consumers.
+These are sent by the MCP server (voluntary tools) or the server (hook endpoints) and forwarded to all consumers in the same room.
 
 #### `status`
 Updates the pet's display with what the agent is currently doing.
@@ -112,7 +112,7 @@ Directly set the pet's mood without a specific event.
 
 ### Consumer -> Producer messages
 
-These are sent by devices/simulators and forwarded by the broker to the paired producer.
+These are sent by devices/web UI and forwarded by the server to the producer in the same room.
 
 #### `approval_response`
 Response to an `approval` request.
@@ -154,31 +154,34 @@ Response to a `permission` request.
 
 ### System messages
 
-These are exchanged between clients and the broker. They are never forwarded.
+These are exchanged between clients and the server. They are never forwarded.
 
 #### `register`
-Sent by a client immediately after connecting to the broker.
+Sent by a client immediately after WebSocket connection is established.
 
 ```json
 {
   "type": "register",
   "role": "producer",
-  "pairingCode": "A7X9K2"
+  "roomId": "a1b2c3d4e5f6",
+  "token": "..."
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `role` | `"producer"` or `"consumer"` | yes | What this client is |
-| `pairingCode` | string | yes | 6-character alphanumeric code |
+| `roomId` | string | yes | Room identifier (from token provisioning) |
+| `token` | string | no | API token (also passed as query param on WS connect) |
 
 #### `register_ack`
-Sent by the broker to confirm registration.
+Sent by the server to confirm registration.
 
 ```json
 {
   "type": "register_ack",
   "role": "producer",
+  "roomId": "a1b2c3d4e5f6",
   "pairingCode": "A7X9K2",
   "connectedPeers": 2
 }
@@ -192,10 +195,10 @@ Heartbeat messages to keep the connection alive.
 { "type": "pong" }
 ```
 
-Broker sends `ping` every 30 seconds. Client must respond with `pong` within 10 seconds or the connection is considered dead.
+Server sends `ping` every 30 seconds. Client must respond with `pong` within 10 seconds or the connection is considered dead.
 
 #### `error`
-Sent by the broker when something goes wrong.
+Sent by the server when something goes wrong.
 
 ```json
 {
@@ -207,9 +210,23 @@ Sent by the broker when something goes wrong.
 
 Error codes:
 - `INVALID_PAIRING_CODE` — code is not 6 alphanumeric characters
-- `NO_PRODUCER` — consumer tried to send a message but no producer is registered for this code
+- `NO_PRODUCER` — consumer tried to send a message but no producer is registered for this room
 - `RATE_LIMITED` — too many messages too fast
 - `INVALID_MESSAGE` — message could not be parsed as JSON or is missing required fields
+
+#### `dismiss`
+Sent by the server when a pending permission/approval request is cancelled (e.g., the requesting client disconnected).
+
+```json
+{
+  "type": "dismiss",
+  "id": "d4e5f6g7"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | yes | The ID of the request being dismissed |
 
 ---
 
@@ -257,15 +274,15 @@ Used in `notify` messages. Not enforced — any string is valid — but these ar
 - `msg` / `desc` / `action`: max 200 characters
 - `details` / `detail` / `reason`: max 1000 characters
 - Total message size: max 2 KB
-- These limits are enforced by the broker. Oversized messages are rejected with `INVALID_MESSAGE`.
+- These limits are enforced by the server. Oversized messages are rejected with `INVALID_MESSAGE`.
 
 ---
 
 ## Hook HTTP Endpoints
 
-The broker exposes HTTP endpoints for Claude Code hooks. These translate between Claude Code's hook JSON format and the Devotchi WebSocket protocol.
+The server exposes HTTP endpoints for Claude Code hooks. These translate between Claude Code's hook JSON format and the Devotchi WebSocket protocol. All hook endpoints require token auth via query parameter.
 
-### POST `/hook/permission?code=XXXXXX`
+### POST `/hook/permission?token=TOKEN`
 
 Receives Claude Code `PermissionRequest` hook body, forwards as a `permission` message to consumers, waits for `permission_response`, and returns a hook decision.
 
@@ -291,7 +308,7 @@ Receives Claude Code `PermissionRequest` hook body, forwards as a `permission` m
 - Long-polling: holds the HTTP connection until a consumer responds or timeout (5 minutes).
 - If no consumers are connected, returns `{}` immediately (allow by default).
 
-### POST `/hook/status?code=XXXXXX`
+### POST `/hook/status?token=TOKEN`
 
 Receives Claude Code `PostToolUse` hook body, sends a `status` message to consumers. Fire-and-forget.
 
@@ -306,7 +323,7 @@ Receives Claude Code `PostToolUse` hook body, sends a `status` message to consum
 
 **Response:** `{}`
 
-### POST `/hook/stop?code=XXXXXX`
+### POST `/hook/stop?token=TOKEN`
 
 Receives Claude Code `Stop` hook body, sends `notify` (task_complete) and `mood` (sleeping) to consumers.
 
