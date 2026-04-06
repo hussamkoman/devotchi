@@ -1,15 +1,23 @@
+# Dependencies
 node_modules/
-dist/
-.env
-*.tgz
-*.log
-.DS_Store
 
-# User-specific Claude Code settings (contains pairing code)
+# Build output
+dist/
+
+# Environment & secrets
+.env
+
+# OS & editor
+.DS_Store
+*.log
+*.tgz
+
+# Claude Code
 .claude/settings.local.json
 
-# KiCad
+# KiCad generated files
 *.kicad_prl
 *-backups/
 fp-info-cache
-hardware/gerbers/
+hardware/output/
+hardware/jlcpcb/project.db

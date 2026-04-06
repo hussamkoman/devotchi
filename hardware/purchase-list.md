@@ -37,19 +37,19 @@ These parts are placed on the PCB by JLCPCB during assembly. The LCSC part numbe
 | Ref | Value | Package | LCSC | Library | Price (1+) |
 |---|---|---|---|---|---|
 | C101 | 22µF | 0805 | C45783 | Basic | $0.03 |
-| C201 | 10µF | 0805 | C15850 | Basic | $0.02 |
-| C203, C204, C301, C302 | 1µF (x4) | 0603 | C15849 | Basic | $0.007 |
-| C102, C103, C202, C501-C504 | 100nF (x7) | 0603 | C14663 | Basic | $0.003 |
+| C201, C202 | 10µF (x2) | 0805 | C15850 | Basic | $0.02 |
+| C103, C204, C205, C301, C302 | 1µF (x5) | 0603 | C15849 | Basic | $0.007 |
+| C102, C203, C501, C502, C504 | 100nF (x5) | 0603 | C14663 | Basic | $0.003 |
 
 ### Resistors (all 0603, ±1%)
 
 | Ref | Value | LCSC | Library | Price (1+) |
 |---|---|---|---|---|
-| R101, R206, R501-R504 | 10kΩ (x6) | C25804 | Basic | $0.001 |
+| R101, R206, R501, R502, R504 | 10kΩ (x5) | C25804 | Basic | $0.001 |
 | R207, R208 | 100kΩ (x2) | C25803 | Basic | $0.001 |
-| R202, R203 | 5.1kΩ (x2) | C23186 | Basic | $0.001 |
+| R203, R204 | 5.1kΩ (x2) | C23186 | Basic | $0.001 |
 | R205 | 3kΩ | C4211 | Basic | $0.001 |
-| R201, R204 | 1kΩ (x2) | C21190 | Basic | $0.001 |
+| R201, R202, R302, R402 | 1kΩ (x4) | C21190 | Basic | $0.001 |
 | R401 | 150Ω | C22808 | Basic | $0.001 |
 | R301 | 22Ω | C23345 | Basic | $0.001 |
 

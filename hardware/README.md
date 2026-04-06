@@ -9,7 +9,7 @@
 
 ## Device Variants
 
-### 1. Portable WiFi+BLE (build first)
+### Portable WiFi+BLE (current)
 - ESP32-S3-MINI-1 with integrated PCB antenna
 - HS20HS072RX 2.0" color TFT LCD (ST7789, 320x240, IPS)
 - LiPo battery, USB-C charging
@@ -17,17 +17,16 @@
 - Status LED, vibration motor
 - Connects to broker via WiFi, or to phone via BLE
 
-### 2. Portable Cellular (build second)
+### Portable Cellular (planned)
 - Same form factor as WiFi+BLE version
 - Additional cellular modem (MCU TBD — may use same ESP32-S3 + SIM module, or different MCU)
 - SIM/eSIM support (provider TBD)
 - Works standalone anywhere with cell coverage
 
-### 3. Desktop (build third)
+### Desktop (planned)
 - USB-powered (no battery needed)
 - Potentially larger display
 - Same ESP32-S3-MINI-1, connects via USB serial or WiFi
-- PCB designed alongside portable version for combined ordering
 
 ---
 
@@ -161,9 +160,7 @@ USB-C → TP4056 (charger) → DW01A+FS8205A (protection) → ME6211 (3.3V LDO) 
 
 ---
 
-## Pin Assignment (preliminary)
-
-These are preliminary and will be finalized during schematic design.
+## Pin Assignment
 
 **Strapping pins to avoid:** GPIO0 (boot mode), GPIO3 (JTAG source, floating), GPIO45 (VDD_SPI), GPIO46 (boot mode). These are sampled at reset and should not have external loads that could affect their default state during boot.
 
@@ -188,10 +185,10 @@ These are preliminary and will be finalized during schematic design.
 | PWR_CHRG | GPIO 18 | Low = charging |
 | PWR_STDBY | GPIO 17 | Low = charge complete |
 | BAT_ADC | GPIO 1 | Via voltage divider for battery level |
-| **Future** | | |
+| **Future (unused, reserved)** | | |
 | I2S BCLK | GPIO 15 | For microphone (voice commands) |
 | I2S WS | GPIO 16 | For microphone |
-| I2S DIN | GPIO 17 | For microphone |
+| I2S DIN | GPIO 2 | For microphone (GPIO 17 used by PWR_STDBY) |
 
 ---
 
@@ -222,14 +219,13 @@ Real-world usage will be a mix — display on for a few seconds when events arri
 ## PCB Design Notes
 
 - **Single PCB** — power management and logic on one board
-- Keep power section (TP4056, ME6211, USB-C, battery connector) on one side
-- Keep logic section (ESP32, display connector, buttons) on the other side
+- Power section (TP4056, ME6211, USB-C, battery connector) on one side, logic section (ESP32, display connector, buttons) on the other
 - Ground plane between sections
-- Follow ESP32-S3-MINI-1 datasheet antenna keepout zone (no copper/ground under antenna area)
+- ESP32-S3-MINI-1 antenna keepout zone respected (no copper/ground under antenna area)
 - Display connects via 12-pin 0.5mm FPC cable (AFC01-S12FCA-00 connector)
-- USB-C connector: use 16-pin mid-mount type with data lines (D+/D-) connected to ESP32-S3 USB OTG pins for firmware updates and desktop serial communication
+- USB-C connector: 16-pin mid-mount type with D+/D- connected to ESP32-S3 USB OTG pins for firmware updates and serial communication
 - Battery connector: JST-PH 2-pin SMD (standard for small LiPo, LCSC C7433648)
-- Test points for: 3.3V, +BATT, GND, UART TX/RX
+- Test points: 3.3V, +BATT, GND, UART TX/RX
 
 ---
 
