@@ -5,32 +5,28 @@
 Devotchi has 3 software layers plus ESP32 firmware (Layer 4, built separately in C).
 
 ```
-                                            ┌────────────────────────────────────┐
-┌──────────┐  Hook HTTP POST                │         Server                     │
-│  Claude   │ ──────────────────────────────>│  /hook/permission (long-poll)      │
-│  Code     │ <─────────────────────────────│  /hook/status     (fire & forget)  │
-│           │  Hook JSON response            │  /hook/stop       (fire & forget)  │
-│           │                                │                                    │
-│           │  MCP stdio   ┌───────────┐ WS  │  REST API (/api/auth, /api/pair)  │
-│           │ <─────────── │  Client   │ ──> │  WebSocket router                  │
-│           │  (voluntary) │  CLI+MCP  │     │  SQLite (tokens, pairings)         │
-└──────────┘              └───────────┘     └──────────────┬─────────────────────┘
-   AI Agent                Layer 1              Layer 2     │
-   (any MCP client)        (unified client)     (server)    │
-                                                            │
-                              ┌──────────────────────────────┼────────────────┐
-                              v                              v                v
-                     ┌──────────────┐              ┌──────────────┐  ┌──────────────┐
-                     │  Web UI      │              │  ESP32       │  │  Phone PWA   │
-                     │  (browser)   │              │  (firmware)  │  │  (future)    │
-                     └──────────────┘              └──────────────┘  └──────────────┘
-                      Dashboard + Sim               Layer 4           Layer 3
-                                                    (C, ESP-IDF)      (future)
+                    User's PC                          Cloud / LAN
+              +--------------------+            +--------------------+
+              |                    |   hooks    |                    |
+              |   Claude Code   ---|---(HTTP)-->|   Server           |
+              |                    |            |   (WebSocket +     |
+              |   Client        ---|---(WS)---->|    REST + SQLite)  |
+              |   (CLI + MCP)      |            |                    |
+              +--------------------+            +---------+----------+
+                                                          |
+                                                          | WebSocket
+                                                          |
+                                    +---------------------+---------------------+
+                                    |                     |                     |
+                              +-----+------+        +----+-----+        +------+-----+
+                              |  Web UI    |        |  ESP32   |        |  Phone PWA |
+                              | (dashboard)|        | (device) |        |  (future)  |
+                              +------------+        +----------+        +------------+
 ```
 
 ## Layer 1: Client (`packages/client/`)
 
-Unified PC application published as `devotchi` on npm. Combines the MCP server, web dashboard (with simulator), and hook configuration into one CLI tool.
+Unified PC application that combines the MCP server, web dashboard, and hook configuration into one CLI tool.
 
 ### Components
 
@@ -67,7 +63,7 @@ Stored in `~/.devotchi/config.json`:
 
 ## Layer 2: Server (`packages/server/`)
 
-Koa-based HTTP + WebSocket server with SQLite persistence. Replaces the old stateless broker with token-based auth and pairing management.
+Koa-based HTTP + WebSocket server with SQLite persistence and token-based auth.
 
 ### Server Modes
 
@@ -98,13 +94,13 @@ Set via `DEVOTCHI_MODE=multi-user` env var.
 
 | Endpoint | Hook Event | Behavior |
 |---|---|---|
-| `POST /hook/permission?code=X` | `PermissionRequest` | Long-poll: waits for device response |
-| `POST /hook/status?code=X` | `PostToolUse` | Fire-and-forget: status update |
-| `POST /hook/stop?code=X` | `Stop` | Fire-and-forget: agent stopped |
+| `POST /hook/permission?token=T` | `PermissionRequest` | Long-poll: waits for device response |
+| `POST /hook/status?token=T` | `PostToolUse` | Fire-and-forget: status update |
+| `POST /hook/stop?token=T` | `Stop` | Fire-and-forget: agent stopped |
 
 ### Key design decisions
 
-- **SQLite persistence** — tokens and pairings survive restarts (unlike the old stateless broker)
+- **SQLite persistence** — tokens and pairings survive restarts
 - **Token auth** — SHA-256 hashed API tokens for WebSocket and REST auth
 - **Multi-consumer** — one producer can have multiple consumers simultaneously
 - **Graceful degradation** — if no consumers connected, `/hook/permission` returns allow
@@ -128,7 +124,7 @@ Approvals and status updates are handled automatically via Claude Code `http` ho
 
 ### How it works
 
-1. Claude Code fires a `PermissionRequest` hook → HTTP POST to server's `/hook/permission?code=XXXXXX`
+1. Claude Code fires a `PermissionRequest` hook → HTTP POST to server's `/hook/permission?token=TOKEN`
 2. Server translates to a Devotchi `permission` message, sends to all consumers via WebSocket
 3. User approves/rejects on device/simulator
 4. Consumer sends `permission_response` back via WebSocket
@@ -171,7 +167,7 @@ See [hardware/README.md](../hardware/README.md) for component details and pin as
 ```
 Claude Code wants to run "rm -rf dist"
   → PermissionRequest hook fires
-  → HTTP POST to server /hook/permission?code=A7X9K2
+  → HTTP POST to server /hook/permission?token=TOKEN
   → Server generates ID, sends permission message to consumers
   → Device/web UI shows permission modal
   → User presses Approve
@@ -184,7 +180,7 @@ Claude Code wants to run "rm -rf dist"
 ```
 Claude Code finishes running a Bash command
   → PostToolUse hook fires
-  → HTTP POST to server /hook/status?code=A7X9K2
+  → HTTP POST to server /hook/status?token=TOKEN
   → Server sends status message to consumers
   → Device/web UI updates display
   → Server returns {} immediately

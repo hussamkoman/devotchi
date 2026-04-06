@@ -13,9 +13,9 @@
 - ESP32-S3-MINI-1 with integrated PCB antenna
 - HS20HS072RX 2.0" color TFT LCD (ST7789, 320x240, IPS)
 - LiPo battery, USB-C charging
-- 4 buttons (3 front + 1 side)
+- 3 buttons (approve, reject, action)
 - Status LED, vibration motor
-- Connects to broker via WiFi, or to phone via BLE
+- Connects to server via WiFi, or to phone via BLE
 
 ### Portable Cellular (planned)
 - Same form factor as WiFi+BLE version
@@ -144,14 +144,13 @@ USB-C → TP4056 (charger) → DW01A+FS8205A (protection) → ME6211 (3.3V LDO) 
 
 ### Buttons
 
-4 tactile switches with hardware debounce (10kΩ pull-up + 100nF cap per button). Active low, pressed = GND.
+3 tactile switches with hardware debounce (10kΩ pull-up + 100nF cap per button). Active low, pressed = GND. Any button press wakes from deep sleep.
 
 | Button | Function |
 |---|---|
 | Approve | Accept approval/permission requests |
 | Reject | Reject approval/permission requests |
 | Action | Context-dependent: scroll, open menu, poke pet |
-| Wake/Power | Wake from deep sleep (RTC-capable GPIO), long-press for power off |
 
 ### Feedback
 
@@ -177,7 +176,6 @@ USB-C → TP4056 (charger) → DW01A+FS8205A (protection) → ME6211 (3.3V LDO) 
 | BTN_APPROVE | GPIO 4 | Pull-up, active low |
 | BTN_REJECT | GPIO 5 | Pull-up, active low |
 | BTN_ACTION | GPIO 6 | Pull-up, active low |
-| BTN_WAKE | GPIO 7 | RTC-capable for deep sleep wake |
 | **Feedback** | | |
 | LED_PWM | GPIO 38 | PWM for brightness control |
 | MOTOR_EN | GPIO 37 | Via N-channel MOSFET |
@@ -210,7 +208,7 @@ Real-world usage will be a mix — display on for a few seconds when events arri
 1. **Normal operation**: WiFi connected, display off. ESP32 in light sleep between events.
 2. **Event arrives** (via WiFi): Wake up, turn on display, show status/approval, vibrate if needed.
 3. **Approval request**: Display stays on with countdown timer until user responds or timeout.
-4. **No activity for N minutes**: Enter deep sleep. Wake on button press (side button is RTC-wake capable).
+4. **No activity for N minutes**: Enter deep sleep. Wake on any button press.
 5. **Deep sleep**: Everything off. Battery lasts weeks/months.
 6. **Display auto-off**: Display turns off after 30 seconds of no new events (configurable).
 

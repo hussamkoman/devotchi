@@ -8,10 +8,10 @@ This is built separately from the Node.js packages. Not part of the pnpm workspa
 
 - **MCU:** ESP32-S3-MINI-1 (dual-core 240MHz, WiFi + BLE 5.0, integrated PCB antenna)
 - **Display:** HS20HS072RX 2.0" 320x240 color TFT LCD (ST7789, SPI, IPS)
-- **Input:** 3 front buttons (approve/reject/action) + 1 side button (wake/power)
+- **Input:** 3 front buttons (approve/reject/action) — any button press wakes from deep sleep
 - **Output:** status LED (PWM), vibration motor (GPIO via MOSFET)
 - **Power:** LiPo battery, TP4056 charger, ME6211 3.3V LDO, USB-C charging
-- **Communication:** WiFi (WebSocket to broker) + BLE (to phone PWA)
+- **Communication:** WiFi (WebSocket to server) + BLE (to phone PWA)
 
 ## Build system
 
@@ -19,8 +19,8 @@ Will use ESP-IDF (not Arduino framework) with CMake. PlatformIO may be used as a
 
 ## Firmware responsibilities
 
-1. Connect to WiFi and establish WebSocket connection to broker
-2. Register as a consumer with pairing code
+1. Connect to WiFi and establish WebSocket connection to server
+2. Register as a consumer with token
 3. Receive protocol messages and render Tamagotchi character on TFT LCD
 4. Handle button presses and send responses back via WebSocket
 5. Manage power states (active, idle, light sleep, deep sleep)
@@ -30,4 +30,4 @@ Will use ESP-IDF (not Arduino framework) with CMake. PlatformIO may be used as a
 
 ## Status
 
-Not yet started. PCB design and component ordering are happening in parallel with the software stack (broker, MCP server, simulator). Firmware development will begin when the PCB arrives.
+Not yet started. PCB design is complete and boards have been ordered from JLCPCB. Firmware development will begin when the PCBs arrive.

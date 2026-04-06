@@ -2,27 +2,30 @@
 
 ## MVP (current)
 
-- [ ] Deploy broker to a remote server (Railway/Render/Fly.io)
-- [ ] Test with broker on remote URL instead of localhost
-- [ ] Add LICENSE file (MIT)
-- [ ] Add CONTRIBUTING.md
+- [ ] Deploy server to a hosted environment (Railway/Render/Fly.io)
+- [ ] Test with server on remote URL instead of localhost
 - [ ] ESP32 firmware — first prototype with TFT LCD + buttons
+- [ ] 3D print first case prototype
+
+## Research
+
+- [ ] Investigate Claude Code Buddy system — check how it works and whether Devotchi can integrate with it or replace hooks with it
 
 ## Soon
 
-- [ ] Simulator auto-reconnect when broker restarts
-- [ ] Structured logging in broker (timestamps, JSON output)
+- [ ] Web UI auto-reconnect when server restarts
+- [ ] Structured logging in server (timestamps, JSON output)
 - [ ] Rate limiting on HTTP hook endpoints
-- [ ] Max connection limit on broker
-- [ ] Cryptographically secure pairing code generation (`crypto.getRandomValues`)
-- [ ] CLI tool: `devotchi pair` / `devotchi config` / `devotchi test`
-- [ ] Setup script that generates settings.local.json from config.json automatically
+- [ ] Max connection limit on server
+- [ ] Web UI: show battery level, connection quality
+- [ ] Publish `devotchi` and `@devotchi/server` to npm
 
 ## Later
 
-- [ ] Authentication tokens (beyond pairing code)
-- [ ] TLS/WSS support for broker
+- [ ] Multi-user mode (accounts, signup, token management)
+- [ ] TLS/WSS support for production deployment
 - [ ] Phone PWA as BLE bridge to ESP32
-- [ ] Broker clustering / horizontal scaling
+- [ ] Server clustering / horizontal scaling
 - [ ] `ask_question` tool — freeform text input from device
 - [ ] Notification sounds/vibration patterns per event type
+- [ ] Community pet skins (pixel art sprite sets)
