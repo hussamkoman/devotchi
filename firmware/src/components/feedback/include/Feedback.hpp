@@ -4,6 +4,7 @@
 
 namespace devotchi::feedback {
 
+/** Drives the status LED and vibration motor. Synchronous; not thread-safe. */
 class Feedback {
 public:
     void init();

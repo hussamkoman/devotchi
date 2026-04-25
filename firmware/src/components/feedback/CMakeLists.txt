@@ -1,7 +1,8 @@
 idf_component_register(
     SRCS "Feedback.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES config driver
+    REQUIRES config esp_driver_gpio
+    # Add esp_driver_ledc when implementing PWM for LED + motor.
 )
 
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
