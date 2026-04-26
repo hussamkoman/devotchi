@@ -2,10 +2,9 @@ dependencies:
   idf: ">=5.1"
   # Moved out of ESP-IDF core in v6 — pulled from the registry.
   espressif/esp_websocket_client: "*"
+  espressif/button: "^4.0"
   # Add when implementing display:
   #   lovyan03/LovyanGFX: "^1.1"
-  # Add when implementing buttons:
-  #   espressif/button: "^3.2"
   # Add when implementing protocol parser (also moved to registry in v6):
   #   espressif/cjson: "*"           # or
   #   bblanchon/ArduinoJson: "^7.0"
