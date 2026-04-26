@@ -1,4 +1,28 @@
 dependencies:
+  espressif/button:
+    component_hash: d0afa32f0e50d60bc0c6fc23f7eea98adc6b02cfe70b590bc52c23c506745287
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 4.1.6
+  espressif/cmake_utilities:
+    component_hash: 05165f30922b422b4b90c08845e6d449329b97370fbd06309803d8cb539d79e3
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.1.1
   espressif/esp_websocket_client:
     component_hash: c5a067a9fddea370c478017e66fac302f4b79c3d4027e9bdd42a019786cceb92
     dependencies:
@@ -14,8 +38,9 @@ dependencies:
       type: idf
     version: 6.0.0
 direct_dependencies:
+- espressif/button
 - espressif/esp_websocket_client
 - idf
-manifest_hash: f1ab8d9a187929af3f604d35dab66918484bde132c549154531041b1aa7c623e
+manifest_hash: 7c133ac97c3f1b0409e79994b9d30aea104de978202325c75a449cdd9dd8ab4d
 target: esp32s3
 version: 3.0.0

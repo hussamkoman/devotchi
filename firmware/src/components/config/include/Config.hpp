@@ -39,8 +39,12 @@ namespace ui {
     constexpr uint32_t TICK_INTERVAL_MS         = 33;  // ~30 FPS
 }
 
+namespace feedback {
+    constexpr uint32_t PWM_HZ       = 5'000;
+    constexpr uint8_t  PWM_RES_BITS = 10;     // duty range 0..1023
+}
+
 namespace buttons {
-    constexpr uint32_t DEBOUNCE_MS    = 30;
     constexpr uint32_t LONG_PRESS_MS  = 1500;
     constexpr std::size_t QUEUE_DEPTH = 8;
 }
