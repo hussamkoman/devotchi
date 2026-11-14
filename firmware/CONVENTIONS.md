@@ -1,339 +1,365 @@
 # Firmware Coding Conventions
 
+The firmware is plain C, built by ESP-IDF v6.0 (`gnu17`). No C++ sources, no
+C++ dependencies. LVGL 9 is the graphics library. Architecture, pin map, NVS
+keys and the debug console are specified in `docs/architecture.md`; the wire
+protocol in `docs/protocol.md`.
+
 ## Layout
 
 ```
 firmware/
-├── CMakeLists.txt              project file
+├── CMakeLists.txt              project file (sets PROJECT_VER)
 ├── sdkconfig.defaults          IDF framework knobs (committed)
 ├── sdkconfig                   generated (gitignored)
-├── partitions.csv              flash partition table
+├── partitions.csv              flash partition table (nvs stays at 0x9000)
 ├── dependencies.lock           component manager lockfile (committed)
-├── .clangd                     LSP config
-└── src/
-    ├── main/                   App + entry point
-    └── components/<name>/
-        ├── CMakeLists.txt
-        ├── include/            public headers
-        ├── *.cpp               implementation
-        └── *Impl.hpp           private headers (sibling to .cpp)
+├── src/
+│   ├── main/
+│   │   ├── app_main.c          entry point: init order, nothing else
+│   │   ├── Kconfig.projbuild   the "Devotchi" menu
+│   │   └── idf_component.yml   managed dependencies
+│   └── components/<name>/
+│       ├── CMakeLists.txt
+│       ├── include/<name>.h    public API (more headers only when needed)
+│       ├── <name>.c            implementation
+│       └── <name>_priv.h       private header shared by the component's .c files
+├── host_test/                  host unit tests for src/components/core
+└── tools/                      Python host tools (serial console, mock server, e2e)
 ```
 
-Headers in `include/` are visible to other components; anything else is private.
-
----
+Headers in `include/` are the component's public API. Everything else is
+private to the component.
 
 ## Naming
 
-| Thing             | Convention                          | Example                          |
-|-------------------|-------------------------------------|----------------------------------|
-| Files             | `PascalCase.{hpp,cpp}` matching primary class | `Wifi.hpp`, `BlinkTask.cpp` |
-| Classes / structs | `PascalCase`                        | `WsClient`, `ButtonEvent`        |
-| Methods           | `snake_case`                        | `set_token`, `blink_loop`        |
-| Members           | `snake_case_` (trailing underscore) | `storage_`, `period_ms_`         |
-| Constants         | `UPPER_SNAKE`                       | `WIDTH`, `DEBOUNCE_MS`           |
-| Namespaces        | `lower_snake`                       | `devotchi::ws_client`            |
-| Enum values       | `PascalCase` (always `enum class`)  | `Mood::Happy`                    |
+| Thing | Convention | Example |
+|---|---|---|
+| Files | `snake_case.c` / `.h` | `ws_client.c`, `power_fsm.h` |
+| Public functions | `<module>_<verb>[_<object>]` | `storage_get_token()`, `ui_show_screen()` |
+| Static functions | `snake_case`, no module prefix | `parse_permission()` |
+| Types | `<module>_<name>_t` | `proto_msg_t`, `app_event_t` |
+| Enum constants | `<MODULE>_<NAME>` | `MOOD_HAPPY`, `APP_EV_BUTTON` |
+| Macros, constants | `UPPER_SNAKE` with module prefix | `PROTO_MAX_FRAME` |
+| File-scope variables | `s_` prefix | `s_queue`, `s_state` |
+| Kconfig symbols | `DEVOTCHI_<AREA>_<NAME>` | `CONFIG_DEVOTCHI_LONG_PRESS_MS` |
+| Log tag | the module name, one per `.c` | `static const char *TAG = "ws";` |
 
-Each component lives under `devotchi::<component_name>`. `using namespace` is
-forbidden in headers and discouraged in `.cpp` outside narrow scopes
-(`std::chrono_literals` is fine).
+The module prefix is the file or component name (`wifi_`, `ws_`, `proto_`,
+`ui_`, `app_`). Nothing public is unprefixed.
 
----
+## Headers and includes
 
-## Header / source split
+- Every header has `#pragma once` and compiles on its own.
+- A public header includes only what its declarations need. Heavy IDF headers
+  (`esp_wifi.h`, `lvgl.h` outside `ui`/`display`) stay in the `.c` file.
+- Include order in a `.c` file: own header, project headers, ESP-IDF and
+  third-party headers, C standard headers. Alphabetical within a group.
+  `freertos/FreeRTOS.h` comes before other FreeRTOS headers.
+- No function bodies in headers except `static inline` one-liners.
 
-Declarations in `.hpp`, bodies in `.cpp`.
+## Component structure
 
-Allowed in headers:
-- Class declarations.
-- Trivial one-expression accessors.
-- `constexpr` constants and functions.
-- `inline constexpr` globals.
-- Templates.
-
-Forbidden in headers:
-- Multi-line method bodies.
-- Heavy IDF includes (e.g. `esp_wifi.h`) — let the `.cpp` pull them in.
-- Free function definitions without `inline`.
-
----
-
-## Includes
-
-In each `.cpp`:
-
-```cpp
-#include "MyClass.hpp"          // own header first
-
-#include "Config.hpp"           // project headers, alphabetical
-#include "OtherComponent.hpp"
-
-#include "driver/gpio.h"        // ESP-IDF / system, alphabetical
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"  // IWYU pragma: keep — required first by task.h
-#include "freertos/task.h"
-
-#include <cstdint>              // C++ stdlib last
-```
-
-Own header first ensures it pulls everything it needs — no relying on transitive
-includes. Reference other components by bare header name; CMake handles paths.
-
-When clangd flags an include as unused but it's load-bearing (typically
-`freertos/FreeRTOS.h` before `task.h` / `queue.h`), suppress with
-`// IWYU pragma: keep — <reason>`.
-
----
-
-## Comments
-
-Default to none. Names carry intent; comments rot, names don't.
-
-Write a comment for:
-- Hardware or IDF quirks — link the upstream issue.
-- Invariants the type system can't express (`// caller must hold gpio_mutex_`).
-- A "wrong-looking" choice that's actually correct.
-- `TODO:` with a concrete trigger for removal.
-
-Never write a comment that:
-- Restates the name.
-- Encodes session state — "now", "for now", "will be", "used to", "temporary",
-  "previously", "added for ticket X". This belongs in commits and tickets.
-- Explains *what* the code does instead of *why*.
-
-If something really is throwaway, encode it in the type name (`Sample`, `Test`
-suffix) and pair with a `TODO:` that names its removal trigger.
-
----
-
-## Doc comments
-
-`/** ... */` for heads above types and public methods. `// ...` for inline notes.
-
-One-liner — opening, content, closing on one line:
-
-```cpp
-/** Spawns the FreeRTOS task. Idempotent — no-op if already running. */
-void spawn();
-```
-
-Multi-line — wrap at ~80 cols, blank lines as ` *`, present tense:
-
-```cpp
-/**
- * Owns one FreeRTOS task tied to a single hardware-backed responsibility.
- * Subclass and override run(); spawn() creates the underlying task and stop()
- * requests cooperative shutdown. Not copyable or movable.
- */
-class Task {
-```
-
-Default to one sentence. A second sentence only for a non-obvious gotcha
-(threading, lifetime). If you need three, the type does too much.
-
-Don't use `@param`, `@returns`, `@throws`, `@author`, `@date`, `@version`.
-Prose, not Doxygen ceremony. Git owns history.
-
----
-
-## Components
-
-A component owns distinct hardware or state and exposes a public API. It's not
-a file-grouping tool. No "utility" or "helpers" components — keep helpers next
-to their consumer until two consumers exist.
+A component owns one piece of hardware or one responsibility and exposes a
+small API. No `utils` or `helpers` components; a helper lives next to its only
+user until a second user exists.
 
 ```cmake
 idf_component_register(
-    SRCS "Wifi.cpp"
+    SRCS "wifi.c" "prov.c" "ws.c" "pairing.c" "net_worker.c"
     INCLUDE_DIRS "include"
-    REQUIRES        nvs_flash esp_wifi   # appears in public headers
-    PRIV_REQUIRES   esp_event            # only in .cpp
+    PRIV_INCLUDE_DIRS "."
+    REQUIRES        core                     # appears in public headers
+    PRIV_REQUIRES   esp_wifi esp_event ...   # used only in .c files
 )
 ```
 
-Be honest about the split — lying breaks the build for whoever depends on you.
+Dependency direction is one-way: `app` -> `ui`, drivers, `net`, `storage` ->
+`core`, `board`. A driver never includes `app` or `ui` headers; it reports by
+posting an event (see Tasks).
 
-If you have private headers, set `PRIV_INCLUDE_DIRS "."`.
+### `core` is pure C
 
----
+`src/components/core` contains every module with logic and no hardware:
+protocol, WebSocket message reassembly, text, URL parsing, request queue, pet
+model and poses, button logic, feedback sequencing, battery maths, power
+stages, backoff.
 
-## Tasks
+- It includes only the C standard library and `cJSON.h`. No `esp_*.h`, no
+  FreeRTOS, no LVGL, no logging macros.
+- Time is always a parameter (`uint32_t now_ms`), never read from a clock.
+  Randomness is a parameter or an injected function.
+- No heap allocation except inside cJSON calls in `proto`. Callers provide
+  the output structs.
+- Every `core` module has a test file in `host_test/`.
 
-Active Class pattern. The work is a method on the component; a `Task` subclass
-spawns the FreeRTOS task and calls into the component.
+If a function can be written in `core`, it belongs in `core`.
 
-```cpp
-class Feedback {
-public:
-    void blink_loop(uint32_t period_ms);   // task body, also directly callable
-};
+## Singletons and handles
 
-class BlinkTask : public runtime::Task {
-public:
-    BlinkTask(Feedback& target, uint32_t period_ms);
-protected:
-    void run() override;
-private:
-    Feedback& target_;
-    uint32_t  period_ms_;
-};
+The device has exactly one of each peripheral, so components are **static
+singletons**: file-scope `static` state, `<module>_init()` called once from
+`app_main`, no handle parameter.
+
+```c
+esp_err_t display_init(void);
+void      display_set_brightness(uint8_t percent);
 ```
 
-The component knows nothing about `xTaskCreate`. The spawner knows nothing
-about hardware.
+Use an **opaque handle** only where several instances exist at once or the
+type is pure data logic that tests instantiate freely (everything in `core`):
 
-Task name / stack / priority lives in `config::tasks`, never hardcoded:
-
-```cpp
-namespace tasks {
-    inline constexpr Spec FEEDBACK_BLINK = { "feedback_blink", 2048, 2 };
-}
+```c
+typedef struct reqq reqq_t;                    /* opaque when the layout is private */
+typedef struct { ... } battery_filter_t;       /* plain struct when callers own storage */
+void battery_filter_init(battery_filter_t *f);
 ```
 
-Inside the loop:
-- Always `vTaskDelay` somewhere — without it the watchdog trips.
-- Check `should_stop()` if the task supports cooperative shutdown.
-- Default stack 2 KB; bump only when `uxTaskGetStackHighWaterMark()` says so.
-
----
-
-## Configuration
-
-| What                       | Where                | Example                  |
-|----------------------------|----------------------|--------------------------|
-| ESP-IDF framework knobs    | `sdkconfig.defaults` | `CONFIG_FREERTOS_HZ=1000`|
-| App constants (pins, etc.) | `Config.hpp`         | `DEBOUNCE_MS = 30`       |
-
-Pin maps, server URLs, timing constants — all `constexpr` in
-`devotchi::config::*`.
-
-After editing `sdkconfig.defaults`, delete `sdkconfig` and run
-`idf.py reconfigure`.
-
----
-
-## Logging
-
-One tag per `.cpp`:
-
-```cpp
-namespace {
-constexpr const char* TAG = "Feedback";
-}
-```
-
-| Level | Use for                                                           |
-|-------|-------------------------------------------------------------------|
-| `E`   | Error — operation failed                                          |
-| `W`   | Warning — unexpected but handled                                  |
-| `I`   | Info — major lifecycle events (boot, connected, paired)           |
-| `D`   | Debug — verbose, off in release                                   |
-| `V`   | Verbose — every event                                             |
-
-Default level is INFO. Never `printf` directly.
-
----
+`core` types are caller-allocated plain structs so they need no heap and can
+live on a test's stack.
 
 ## Error handling
 
-```cpp
-// Init — no useful recovery
-ESP_ERROR_CHECK(gpio_config(&io));
+- Functions that can fail return `esp_err_t` (or `bool` in `core`, where
+  ESP-IDF types are not available) and deliver results through out
+  parameters.
+- Init path, no sensible recovery: `ESP_ERROR_CHECK(...)`. Storage and WiFi
+  are not in that class: a failed `nvs_flash_init` degrades to defaults, WiFi
+  is then initialised with `nvs_enable = 0`, and a failed WiFi init is an
+  application state shown to the user. The device must reach the console in
+  every case.
+- Runtime: check, log once at the place that can explain the failure, and
+  return the error. Use `ESP_RETURN_ON_ERROR` / `ESP_GOTO_ON_ERROR` from
+  `esp_check.h` for cleanup paths.
+- Never `abort()` on network, storage, or peer input. A malformed frame is
+  dropped and counted.
+- NVS: never call `nvs_flash_erase()`. Keys are erased only by the explicit
+  user actions (Unpair and `reset-pairing`: token and room id; Factory reset:
+  the `devotchi` namespace). An init failure degrades to defaults. NVS has no
+  multi-key transactions: when two keys belong together, write the one that
+  matters last and do not rely on atomicity.
+- Validate everything that crosses a boundary: every `snprintf` result, every
+  string copy (`strlcpy`), every length from the network. Fixed buffers have a
+  named size constant next to the type that owns them.
 
-// Runtime — handle
-esp_err_t err = nvs_set_str(handle, "token", value);
-if (err != ESP_OK) {
-    ESP_LOGW(TAG, "failed to save token: %s", esp_err_to_name(err));
-    return;
-}
-```
+## Tasks, queues, events
 
-C++ exceptions are enabled but reserved for "should never happen" cases
-(`std::variant` misuse, out-of-bounds). Hardware and network failures use
-`esp_err_t`.
+- One owner per piece of state. The `app` task owns application state and is
+  the only reader of the app event queue. Other contexts (WebSocket task,
+  system event loop, esp_timer callbacks, console, `pwr`, `net`) translate
+  what happened into an `app_event_t` and post it:
 
----
+  ```c
+  bool app_post(const app_event_t *ev);          /* from tasks, never blocks > 10 ms */
+  bool app_post_from_isr(const app_event_t *ev); /* from ISRs */
+  ```
+
+- Events are small fixed-size structs passed by value. Large payloads travel
+  as a pointer to a buffer from a static pool with a clear owner hand-off (the
+  receiver releases it).
+- Callbacks from ESP-IDF (event handlers, timer callbacks, the WebSocket
+  event handler, button callbacks) do no work beyond copying data and posting
+  an event. No blocking calls, no LVGL, no NVS in callbacks.
+- Task name, stack size and priority are constants in one table in
+  `app/include/app_tasks.h`. Create tasks with `xTaskCreate`; check the
+  result. Stack sizes are justified by `uxTaskGetStackHighWaterMark` (console
+  command `tasks`), not guessed upward.
+- Every loop blocks on a queue, a notification or a delay. No busy waiting.
+- Anything that can block for long (HTTP, TLS handshake) runs on the `net`
+  task as a job; the result comes back as an event.
+- Shared data read from another task goes through a function that copies a
+  snapshot under a mutex (`app_get_snapshot`). No bare shared globals; no
+  `volatile` flags as synchronisation.
+- Bounded waits everywhere: no `portMAX_DELAY` on sends, queue posts or
+  mutexes outside the task's own main receive.
+- A library call that waits without a time limit is treated like a blocking
+  network call and runs as a job on the `net` task. The known case:
+  `esp_websocket_client_stop()` and `_destroy()` wait for the client task with
+  `portMAX_DELAY`. The `app` task requests the stop and continues when
+  `APP_EV_WS_STOPPED` arrives; a new client is created only after that.
+- Read library event structs by their documented meaning, not by their field
+  names: `esp_websocket_event_data_t.payload_len`/`payload_offset` describe
+  one WebSocket frame, not one message, and the close code is delivered as a
+  data event with opcode 8.
+
+## LVGL
+
+- LVGL is not thread-safe. All `lv_*` calls happen in the `ui` task or between
+  `ui_lock()` and `ui_unlock()` (a recursive mutex). The public `ui_*`
+  functions take the lock themselves; code outside the `ui` component never
+  calls `lv_*` directly.
+- LVGL callbacks (events, timers, animations) run in the `ui` task with the
+  lock held. They must not block, and must not call into `net`, `storage` or
+  `feedback`; they post an app event.
+- Create a screen's objects once. Update labels and styles in place and only
+  when the value changed (compare with the cached value first), so an idle
+  screen causes no redraw.
+- No `lv_obj_clean()` plus rebuild to change content.
+- Colours, fonts, paddings come from `ui/ui_theme.h`. No literal colours in
+  screen files.
+- Fonts in use: Montserrat 14, 18, 28 and one monospace font for request
+  details. Text shown on screen is passed through `text_sanitize_ascii()`.
+- The flush callback hands the buffer to `esp_lcd`, blocks on a binary
+  semaphore that the panel's transfer-done callback gives from the ISR
+  (bounded wait), and then calls `lv_display_flush_ready()`. LVGL is never
+  told a flush is done before the transfer finished, and LVGL never spins in
+  its own `while (flushing)` loop.
+- `esp_lcd` handles are not thread-safe. Every panel call
+  (`esp_lcd_panel_draw_bitmap`, `_disp_sleep`, `_disp_on_off`) is made by the
+  `ui` task or with `ui_lock()` held. Because a flush completes inside the
+  flush callback, no transfer is in flight while the lock is free.
+  `esp_lcd_panel_disp_sleep()` on the ST7789 already delays 100 ms; do not
+  add the datasheet delay a second time.
 
 ## Memory
 
-- Stack-allocate by default. No `new` / `make_unique` without a reason.
-- PSRAM via `heap_caps_malloc(size, MALLOC_CAP_SPIRAM)` for large allocations
-  (display framebuffers, etc.).
-- No globals with non-trivial constructors — they run before `app_main` and
-  fail silently. `constexpr` only.
+- Prefer static storage with fixed capacity (queues, pools, the request
+  queue, message buffers). Size constants are named and live next to the type.
+- Stack: keep frames small; no buffers above 256 bytes on a task stack. JSON
+  documents, URLs and frames use static or pool buffers.
+- Heap: allowed at init (allocate once, never free) and inside libraries
+  (cJSON, LVGL, mbedTLS, IDF). Application code does not `malloc` per message.
+  Every `cJSON_Parse` has exactly one `cJSON_Delete` on every path.
+- PSRAM (`heap_caps_malloc(n, MALLOC_CAP_SPIRAM)`) for large, non-DMA,
+  non-ISR data: the shadow and snapshot framebuffers, the receive frame pool.
+  Internal RAM (`MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA`) for the LVGL draw
+  buffer handed to the SPI driver.
+- Library allocations go to PSRAM where the library allows it, to keep
+  internal RAM for WiFi, stacks and DMA: mbedTLS
+  (`CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC`), NimBLE
+  (`CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL`), WiFi/LWIP
+  (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`), and cJSON through
+  `cJSON_InitHooks()` set once in `app_main` (`core` itself stays free of
+  ESP-IDF calls).
+- Check every allocation. An init-time failure is fatal
+  (`ESP_ERROR_CHECK`/explicit abort with a log line); a runtime failure is an
+  error return.
+- Secrets (token, WiFi passphrase, proof-of-possession) are never logged and
+  never printed by the console.
 
----
+## Power management
 
-## Embedded C++ subset
+- `CONFIG_PM_ENABLE` is on; dynamic frequency scaling is configured by the
+  `power` component (`esp_pm_configure`), not by `CONFIG_PM_DFS_INIT_AUTO`.
+- Without a lock the CPU runs at the crystal frequency (40 MHz). Work that
+  must be fast holds an `ESP_PM_CPU_FREQ_MAX` lock. The `power` component
+  owns two locks and is the only code that takes them: `cpu` (held in stages
+  `active` and `dim`) and `no_light_sleep` (held unless light sleep is
+  allowed). Measure frame times and latencies with the `cpu` lock held.
+- LEDC timers use `LEDC_USE_XTAL_CLK` so PWM frequency does not move with DFS.
+- Nothing may sleep, light or deep, while `usb_serial_jtag_is_connected()`:
+  the board has no BOOT button and USB is the only way to reflash it.
+- Use the non-deprecated sleep API: `esp_sleep_get_wakeup_causes()` (a bit
+  mask), `esp_sleep_enable_ext1_wakeup_io()`,
+  `esp_sleep_get_ext1_wakeup_status()`.
 
-Use:
-- `constexpr` wherever legal.
-- `enum class` always; never plain `enum`.
-- `override` and `final` on every overridden virtual.
-- `[[nodiscard]]` on functions returning errors or values the caller must check.
-- `explicit` on every single-argument constructor.
-- `noexcept` on functions that genuinely don't throw.
-- `std::optional`, `std::variant`, `std::string_view`.
-- Strong types for IDs (e.g. `enum class TaskHandle : uint32_t`).
+## Configuration
 
-Avoid:
-- `new` / `delete` and `make_unique` for normal flow.
-- RTTI (`dynamic_cast`, `typeid`) — off in our build.
-- Exceptions for control flow.
-- Allocating STL containers (`vector`, `string`, `map`) in hot paths or ISRs.
-- `std::shared_ptr` in hot paths.
-- Multiple inheritance, except for purely-abstract interface mixins.
+| What | Where |
+|---|---|
+| ESP-IDF and component options | `sdkconfig.defaults` |
+| Pins, LEDC timers/channels, SPI host, panel geometry | `board/include/board_pins.h` (the only place a GPIO number appears) |
+| Tunable behaviour: default server URL, timeouts, thresholds, feature switches | `main/Kconfig.projbuild`, menu "Devotchi", read as `CONFIG_DEVOTCHI_*` |
+| User settings changed at runtime | NVS through `storage`, with the Kconfig value as the default |
+| Internal constants nobody should tune | `#define` in the owning module |
 
----
+A value belongs in Kconfig when someone building for a different desk, server
+or battery would reasonably change it. After editing `sdkconfig.defaults`,
+delete `sdkconfig` and rebuild.
 
-## Hardware-aware patterns
+## Logging
 
-- `volatile` for direct MMIO. (Driver APIs wrap most of it; if you ever poke
-  registers, document why.)
-- `alignas(N)` on DMA buffers. ESP32-S3 needs 4-byte minimum; some peripherals
-  need more.
-- ISR safety: only `*FromISR` variants. No `printf`, no `vTaskDelay`, no
-  blocking. Defer real work to a task via a queue.
-- `portYIELD_FROM_ISR()` after waking a higher-priority task.
+- `ESP_LOGx(TAG, ...)` only; one `TAG` per `.c` file. No `printf` outside the
+  `console` component, which owns the lines starting with `@@`.
+- The `console` component is the only writer to the USB port. Log output is
+  routed through it (`esp_log_set_vprintf`) and every line, log or console,
+  is written whole under one mutex.
+- Levels: `E` operation failed; `W` unexpected but handled; `I` lifecycle
+  events (boot, WiFi up, registered, paired, sleep); `D` per-message and
+  periodic detail; `V` raw data.
+- Nothing periodic at `I`. A steady-state device logs nothing.
+- `core` does not log; it returns results and the caller logs.
 
----
+## Comments
 
-## Initialization
+Default to none. Names carry intent.
 
-- Constructors do nothing fallible. Default-construct cheaply, then call
-  `init()` for hardware setup.
-- Initialize members in declaration order.
+Write a comment for:
+- A hardware or ESP-IDF quirk, with a link or the datasheet page.
+- An invariant the compiler cannot check (`/* caller holds ui_lock */`).
+- A choice that looks wrong and is correct.
+- `TODO:` with the concrete condition for removing it.
 
----
+Never write a comment that:
+- Restates the name or the code.
+- Describes history or the current state of the work: "now", "for now",
+  "temporary", "used to", "previously", "new", "added for X". That belongs in
+  commits.
+- Explains what the code does instead of why.
 
-## Resource ownership
+Doc comments: `/** ... */` above public declarations in headers, one sentence,
+present tense; a second sentence only for a threading or lifetime rule. No
+`@param`/`@return` boilerplate.
 
-- Rule of 0 if the class owns no resource — let the compiler default
-  copy/move/dtor.
-- Rule of 5 if it does — explicitly `= delete` whichever ops aren't safe. Half-
-  defined classes are a bug source. See `runtime::Task` for an example.
-
----
+```c
+/** Posts an event to the app task; returns false if the queue stayed full for 10 ms. */
+bool app_post(const app_event_t *ev);
+```
 
 ## Style
 
-- Always braces, even single-line `if` / `for` / `while`.
-- West const (`const T*`, not `T const*`).
-- `nullptr`, never `NULL` or `0`.
-- Numeric literals past 4 digits use `'` (`1'000'000`).
-- `0x` for bitmasks, `'\n'` for newlines.
+- 4 spaces, no tabs; braces on every block; K&R brace placement.
+- `const` on everything that can be; pointer star next to the name
+  (`const char *name`).
+- Fixed-width integer types for data with a defined size; `size_t` for sizes;
+  `bool` for flags.
+- `enum` for sets of states; `switch` over an enum has no `default` when all
+  values are handled, so the compiler reports a missing case.
+- Designated initialisers for config structs; zero-initialise with `= {0}`.
+- `static` on every function and variable not in a public header.
+- No function-like macros where a `static inline` function works.
+- Builds are warning-free. Do not silence a warning with a cast without a
+  comment explaining why it is safe.
+- ISR code uses only `*FromISR` APIs and `app_post_from_isr`.
 
----
+## Host unit tests
+
+```bash
+. ~/.espressif/tools/activate_idf_v6.0.sh
+cmake -S firmware/host_test -B /tmp/devotchi-host-test
+cmake --build /tmp/devotchi-host-test
+ctest --test-dir /tmp/devotchi-host-test --output-on-failure
+```
+
+- The host project compiles `src/components/core/*.c` with the host gcc
+  (`-std=gnu17 -Wall -Wextra -Werror`, AddressSanitizer and UBSan on).
+- cJSON comes from `managed_components/espressif__cjson/cJSON` and Unity from
+  `$IDF_PATH/components/unity/unity/src` when those directories exist.
+  Otherwise `host_test/CMakeLists.txt` fetches pinned releases with
+  `FetchContent` (cJSON `v1.7.19`, ThrowTheSwitch Unity `v2.6.1`), so the
+  tests build on a fresh clone and in CI with only gcc and cmake. The ESP-IDF
+  activation line above is optional. `CJSON_NESTING_LIMIT=1000` is defined as
+  in the IDF build.
+- One test file per module: `host_test/test_<module>.c`.
+- Tests are table-driven where inputs repeat, cover every branch of the state
+  machines (`power_fsm`, `btn_fsm`, `battery`, `reqq`), and include malformed
+  and oversized input for `proto`, `url` and `text`.
+- A change to `core` is not complete until its host tests pass.
+
+## Building and flashing
+
+```bash
+. ~/.espressif/tools/activate_idf_v6.0.sh
+cd firmware
+python "$IDF_PATH/tools/idf.py" build
+python "$IDF_PATH/tools/idf.py" -p /dev/ttyACM0 flash
+```
+
+Never run `erase-flash`, `erase_region` over 0x9000..0xFFFF, or esptool with
+`--erase-all`. The NVS partition holds WiFi credentials and the pairing.
 
 ## Commits
 
-Short subject under 72 chars, conventional prefix:
-
-```
-feat: scaffold ESP-IDF firmware with C++ component layout
-fix: correct sdkconfig flash size for N4R2 module
-refactor: extract Task base class for FreeRTOS spawning
-```
-
-No body unless needed. No `Co-authored-by`, no AI attribution, no emojis.
+Short subject under 72 characters with a conventional prefix (`feat:`, `fix:`,
+`docs:`, `chore:`, `refactor:`). No body unless needed. No `Co-authored-by`,
+no AI attribution.
