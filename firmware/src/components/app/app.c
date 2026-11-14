@@ -30,10 +30,12 @@ static const char *TAG = "app";
 #define POST_TIMEOUT_MS      10
 #define SNAPSHOT_TIMEOUT_MS  100
 #define TICK_PERIOD_US       1000000
+#define SETTING_TIMEOUT_MS   500
 
 static QueueHandle_t s_queue;
 static SemaphoreHandle_t s_snapshot_lock;
 static esp_timer_handle_t s_tick_timer;
+static SemaphoreHandle_t s_setting_applied;
 
 /* Written by the app task under s_snapshot_lock; other tasks read it through app_get_snapshot(). */
 static app_snapshot_t s_snapshot;
@@ -325,6 +327,7 @@ static void handle_event(const app_event_t *ev)
         break;
     case APP_EV_SETTING_CHANGED:
         handle_setting((storage_setting_t)ev->arg.u32);
+        xSemaphoreGive(s_setting_applied);
         break;
     }
 }
@@ -341,6 +344,14 @@ static void app_task(void *arg)
             handle_event(&ev);
         }
     }
+}
+
+bool app_setting_changed(storage_setting_t id)
+{
+    /* A wait that timed out leaves its signal behind; it must not answer this request. */
+    xSemaphoreTake(s_setting_applied, 0);
+    const app_event_t ev = {.id = APP_EV_SETTING_CHANGED, .arg.u32 = (uint32_t)id};
+    return app_post(&ev) && xSemaphoreTake(s_setting_applied, pdMS_TO_TICKS(SETTING_TIMEOUT_MS)) == pdTRUE;
 }
 
 static void tick_cb(void *arg)
@@ -376,7 +387,9 @@ esp_err_t app_init(void)
 {
     s_queue = xQueueCreate(APP_EVENT_QUEUE_DEPTH, sizeof(app_event_t));
     s_snapshot_lock = xSemaphoreCreateMutex();
-    ESP_RETURN_ON_FALSE(s_queue != NULL && s_snapshot_lock != NULL, ESP_ERR_NO_MEM, TAG, "queue");
+    s_setting_applied = xSemaphoreCreateBinary();
+    ESP_RETURN_ON_FALSE(s_queue != NULL && s_snapshot_lock != NULL && s_setting_applied != NULL, ESP_ERR_NO_MEM, TAG,
+                        "queue");
     s_snapshot.state = APP_STATE_BOOT;
     btn_fsm_init(&s_btn);
     /* The press that woke the device from deep sleep only wakes it. */

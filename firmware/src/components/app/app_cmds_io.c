@@ -198,9 +198,8 @@ static console_rc_t write_setting(storage_setting_t id, uint16_t value)
     if (err != ESP_OK) {
         return console_fail(CONSOLE_ERR_FAILED, "storage: %s", esp_err_to_name(err));
     }
-    const app_event_t ev = {.id = APP_EV_SETTING_CHANGED, .arg.u32 = (uint32_t)id};
-    if (!app_post(&ev)) {
-        return console_fail(CONSOLE_ERR_BUSY, "saved, not applied: app queue full");
+    if (!app_setting_changed(id)) {
+        return console_fail(CONSOLE_ERR_BUSY, "saved, not applied: app task busy");
     }
     return CONSOLE_OK;
 }
