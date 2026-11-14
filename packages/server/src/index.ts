@@ -2,8 +2,22 @@
 // Executable: configuration from the environment, signals, exit codes
 // (0 clean stop, 1 runtime or startup failure, 2 invalid configuration).
 
-import { ConfigError, StartupError, createServer, loadConfig, type DevotchiServer } from "./app.js";
+import type { DevotchiServer } from "./app.js";
 import { Logger, errorFields } from "./log.js";
+
+// Node 24 flags node:sqlite as experimental and prints a two-line warning to
+// stderr when it loads, which would break the one-JSON-line-per-event log and
+// the one-line error contract. Only that warning is dropped; app.js is
+// imported after the filter is in place because it loads node:sqlite.
+const emitWarning = process.emitWarning.bind(process) as (...args: unknown[]) => void;
+process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+  const text = typeof warning === "string" ? warning : warning.message;
+  const type = typeof rest[0] === "string" ? rest[0] : (rest[0] as { type?: unknown } | undefined)?.type;
+  if (type === "ExperimentalWarning" && text.startsWith("SQLite ")) return;
+  emitWarning(warning, ...rest);
+}) as typeof process.emitWarning;
+
+const { ConfigError, StartupError, createServer, loadConfig } = await import("./app.js");
 
 function fatal(message: string, code: number): never {
   process.stderr.write(`devotchi-server: ${message}\n`);

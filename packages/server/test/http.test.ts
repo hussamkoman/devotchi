@@ -231,6 +231,24 @@ describe("request hardening", () => {
     expect(res.status).toBe(413);
   });
 
+  it("finishes a request whose client disconnects in the middle of the body", async () => {
+    const t = await start();
+    const req = httpRequest(t.url + "/api/auth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": "1000" },
+    });
+    req.on("error", () => undefined);
+    req.write('{"label":"');
+    await delay(50);
+    req.destroy();
+    const deadline = Date.now() + 2000;
+    const finished = () =>
+      t.logs.map((l) => JSON.parse(l) as Record<string, unknown>).find((l) => l.msg === "request" && l.path === "/api/auth/token");
+    while (!finished() && Date.now() < deadline) await delay(10);
+    expect(finished()).toMatchObject({ method: "POST", status: 400 });
+    expect(t.logs.some((l) => l.includes('"unhandled error"'))).toBe(false);
+  });
+
   it("requires Content-Type application/json for bodies and valid JSON", async () => {
     const t = await start();
     const plain = await t.fetch("/api/auth/token", { method: "POST", body: "{}", headers: { "Content-Type": "text/plain" } });
