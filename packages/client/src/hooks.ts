@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { ClientConfig } from "@devotchi/shared";
+import type { ClientSettings } from "./config.js";
 
 interface HookDef {
   type: string;
@@ -20,7 +20,7 @@ interface SettingsFile {
   [key: string]: unknown;
 }
 
-export async function configureHooks(config: ClientConfig, projectDir: string): Promise<void> {
+export async function configureHooks(config: ClientSettings, projectDir: string): Promise<void> {
   const settingsDir = join(projectDir, ".claude");
   const settingsPath = join(settingsDir, "settings.local.json");
 

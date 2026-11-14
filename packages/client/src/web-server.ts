@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
-import type { ClientConfig } from "@devotchi/shared";
+import type { ClientSettings } from "./config.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const WEB_DIR = join(__dirname, "web");
@@ -41,11 +41,11 @@ async function serveStatic(res: ServerResponse, urlPath: string): Promise<void> 
   }
 }
 
-function wsServerUrl(config: ClientConfig): string {
+function wsServerUrl(config: ClientSettings): string {
   return config.serverUrl.replace(/^http/, "ws").replace(/\/$/, "");
 }
 
-export async function startWebServer(config: ClientConfig): Promise<void> {
+export async function startWebServer(config: ClientSettings): Promise<void> {
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = req.url || "/";
     const pathname = url.split("?")[0];

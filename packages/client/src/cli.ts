@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { loadConfig, saveConfig, provisionToken } from "./config.js";
+import { loadConfig, provisionToken } from "./config.js";
 import { startMcpServer } from "./mcp.js";
 import { startWebServer } from "./web-server.js";
 import { configureHooks } from "./hooks.js";

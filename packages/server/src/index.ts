@@ -19,10 +19,10 @@ async function main(): Promise<void> {
 
   app.use(
     cors({
-      origin: config.corsOrigins
+      origin: config.corsOrigins.length > 0
         ? (ctx) => {
             const origin = ctx.get("Origin");
-            return config.corsOrigins!.includes(origin) ? origin : "";
+            return config.corsOrigins.includes(origin) ? origin : "";
           }
         : "*",
     })

@@ -1,9 +1,16 @@
 import { WebSocket } from "ws";
-import type { ClientRole, DevotchiMessage } from "@devotchi/shared";
+import {
+  buildError,
+  serialize,
+  type ErrorCode,
+  type PermissionResponseMessage,
+  type Role,
+  type ServerToConsumerMessage,
+} from "@devotchi/shared";
 
 export interface ClientInfo {
   ws: WebSocket;
-  role: ClientRole;
+  role: Role;
   roomId: string;
   alive: boolean;
   messageTimestamps: number[];
@@ -15,7 +22,7 @@ export interface PairingRoom {
 }
 
 export interface PendingHook {
-  resolve: (msg: DevotchiMessage) => void;
+  resolve: (msg: PermissionResponseMessage) => void;
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -44,13 +51,13 @@ export class RoomState {
     return (room.producer ? 1 : 0) + room.consumers.size;
   }
 
-  send(ws: WebSocket, msg: DevotchiMessage): void {
+  send(ws: WebSocket, msg: ServerToConsumerMessage): void {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg));
+      ws.send(serialize(msg));
     }
   }
 
-  sendToConsumers(roomId: string, msg: DevotchiMessage): void {
+  sendToConsumers(roomId: string, msg: ServerToConsumerMessage): void {
     const room = this.rooms.get(roomId);
     if (!room) return;
     for (const consumer of room.consumers) {
@@ -58,8 +65,8 @@ export class RoomState {
     }
   }
 
-  sendError(ws: WebSocket, message: string, code: import("@devotchi/shared").ErrorCode): void {
-    this.send(ws, { type: "error", message, code });
+  sendError(ws: WebSocket, message: string, code: ErrorCode, id?: string): void {
+    this.send(ws, buildError(code, message, id));
   }
 
   get connectionCount(): number {

@@ -1,18 +1,24 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  type ClientConfig,
-  DEFAULT_CLIENT_WEB_PORT,
-  DEFAULT_SERVER_URL,
-} from "@devotchi/shared";
+import { DEFAULT_CLIENT_WEB_PORT, DEFAULT_SERVER_URL } from "@devotchi/shared";
+
+/** The settings file as this CLI reads and writes it. */
+export interface ClientSettings {
+  serverUrl: string;
+  token: string;
+  roomId: string;
+  pairingCode: string;
+  webPort: number;
+  localMode: boolean;
+}
 
 const CONFIG_DIR = join(homedir(), ".devotchi");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 
 export { CONFIG_DIR, CONFIG_PATH };
 
-const DEFAULTS: ClientConfig = {
+const DEFAULTS: ClientSettings = {
   serverUrl: DEFAULT_SERVER_URL,
   token: "",
   roomId: "",
@@ -21,11 +27,11 @@ const DEFAULTS: ClientConfig = {
   localMode: false,
 };
 
-export async function loadConfig(): Promise<ClientConfig> {
+export async function loadConfig(): Promise<ClientSettings> {
   try {
     const raw = await readFile(CONFIG_PATH, "utf-8");
     const loaded = JSON.parse(raw);
-    const config: ClientConfig = { ...DEFAULTS, ...loaded };
+    const config: ClientSettings = { ...DEFAULTS, ...loaded };
 
     if (typeof config.serverUrl !== "string" || !config.serverUrl.startsWith("http")) {
       config.serverUrl = DEFAULTS.serverUrl;
@@ -46,12 +52,12 @@ export async function loadConfig(): Promise<ClientConfig> {
   }
 }
 
-export async function saveConfig(config: ClientConfig): Promise<void> {
+export async function saveConfig(config: ClientSettings): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
-export async function provisionToken(config: ClientConfig): Promise<ClientConfig> {
+export async function provisionToken(config: ClientSettings): Promise<ClientSettings> {
   if (config.token && config.roomId) return config;
 
   const baseUrl = config.serverUrl.replace(/\/$/, "");

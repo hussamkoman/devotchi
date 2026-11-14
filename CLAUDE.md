@@ -23,6 +23,9 @@ pnpm run build            # Build all TypeScript packages
 pnpm run server           # Start the server on port 8080
 pnpm run client           # Start the client dashboard
 pnpm run dev              # Start client in dev mode (Vite HMR)
+pnpm test                 # Run all package tests (vitest)
+pnpm run typecheck        # tsc --noEmit for every package, the web UI and the tests
+pnpm run lint             # ESLint (typescript-eslint)
 ```
 
 ## MCP server registration

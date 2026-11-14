@@ -1,14 +1,22 @@
+import { basename } from "node:path";
 import WebSocket from "ws";
-import type { DevotchiMessage, ClientConfig } from "@devotchi/shared";
+import {
+  buildPong,
+  buildRegister,
+  serialize,
+  type InboundMessage,
+  type ServerToConsumerMessage,
+} from "@devotchi/shared";
+import type { ClientSettings } from "./config.js";
 
 let ws: WebSocket | null = null;
 let connected = false;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30_000;
 let shutdownRequested = false;
-let currentConfig: ClientConfig;
+let currentConfig: ClientSettings;
 
-type MessageHandler = (msg: DevotchiMessage) => void;
+type MessageHandler = (msg: ServerToConsumerMessage) => void;
 let onMessage: MessageHandler = () => {};
 
 export function setMessageHandler(handler: MessageHandler): void {
@@ -19,12 +27,12 @@ function log(...args: unknown[]): void {
   console.error("[devotchi]", ...args);
 }
 
-function wsUrl(config: ClientConfig): string {
+function wsUrl(config: ClientSettings): string {
   const base = config.serverUrl.replace(/^http/, "ws").replace(/\/$/, "");
   return `${base}/ws?token=${encodeURIComponent(config.token)}`;
 }
 
-export function connect(config: ClientConfig): void {
+export function connect(config: ClientSettings): void {
   currentConfig = config;
   shutdownRequested = false;
   doConnect();
@@ -44,17 +52,17 @@ function doConnect(): void {
     connected = true;
     reconnectDelay = 1000;
     log("Connected, registering as producer");
-    sendMessage({
-      type: "register",
-      role: "producer",
-      roomId: currentConfig.roomId,
-      token: currentConfig.token,
-    });
+    sendMessage(
+      buildRegister({
+        role: "producer",
+        client: { kind: "mcp", version: "0.1.0", project: basename(process.cwd()) },
+      })
+    );
   });
 
   ws.on("message", (data: Buffer) => {
     try {
-      const msg: DevotchiMessage = JSON.parse(data.toString());
+      const msg = JSON.parse(data.toString()) as ServerToConsumerMessage;
       handleMessage(msg);
     } catch (err) {
       log("Failed to parse message", err);
@@ -84,13 +92,13 @@ function scheduleReconnect(): void {
   }, reconnectDelay);
 }
 
-function handleMessage(msg: DevotchiMessage): void {
+function handleMessage(msg: ServerToConsumerMessage): void {
   switch (msg.type) {
     case "ping":
-      sendMessage({ type: "pong" });
+      sendMessage(buildPong());
       break;
     case "register_ack":
-      log(`Registered as ${msg.role}, ${msg.connectedPeers} peer(s)`);
+      log(`Registered as ${msg.role}, ${msg.peers.consumers} consumer(s)`);
       break;
     case "error":
       log(`Server error: ${msg.message} (${msg.code})`);
@@ -100,9 +108,9 @@ function handleMessage(msg: DevotchiMessage): void {
   }
 }
 
-export function sendMessage(msg: DevotchiMessage): boolean {
+export function sendMessage(msg: InboundMessage): boolean {
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-  ws.send(JSON.stringify(msg));
+  ws.send(serialize(msg));
   return true;
 }
 

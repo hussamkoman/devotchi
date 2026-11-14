@@ -1,14 +1,18 @@
+import { randomBytes } from "node:crypto";
 import Router from "@koa/router";
 import type { Database } from "../db/index.js";
 import {
-  type DevotchiMessage,
-  DEFAULT_APPROVAL_TIMEOUT,
+  DEFAULT_HOLD_MS,
+  buildDismiss,
+  buildPermission,
+  formatToolCall,
+  type PermissionResponseMessage,
 } from "@devotchi/shared";
 import type { RoomState } from "../ws/rooms.js";
 import { tokenFromQuery } from "../middleware/auth.js";
 
 function generateId(): string {
-  return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  return randomBytes(16).toString("hex");
 }
 
 export function hookRoutes(state: RoomState, db: Database): Router {
@@ -20,7 +24,7 @@ export function hookRoutes(state: RoomState, db: Database): Router {
     const room = state.rooms.get(roomId);
 
     if (!room || room.consumers.size === 0) {
-      console.log(`[hook/permission] no consumers for room ${roomId}, allowing`);
+      console.log(`[hook/permission] no consumers for room ${roomId}, neutral reply`);
       ctx.body = {};
       return;
     }
@@ -33,31 +37,25 @@ export function hookRoutes(state: RoomState, db: Database): Router {
     }
 
     const id = generateId();
-    const toolName = (body.tool_name as string) || "unknown";
-    const toolInput = body.tool_input || {};
-    const details =
-      typeof toolInput === "object"
-        ? JSON.stringify(toolInput).slice(0, 1000)
-        : String(toolInput).slice(0, 1000);
+    const formatted = formatToolCall(
+      body.tool_name,
+      body.tool_input,
+      typeof body.cwd === "string" ? body.cwd : undefined
+    );
 
-    const msg: DevotchiMessage = {
-      type: "permission",
-      id,
-      action: toolName,
-      details,
-      timeout: DEFAULT_APPROVAL_TIMEOUT,
-      timestamp: new Date().toISOString(),
-    };
-
-    state.sendToConsumers(roomId, msg);
-    console.log(`[hook/permission] ${toolName} -> room ${roomId} (id=${id})`);
+    state.sendToConsumers(
+      roomId,
+      buildPermission({ id, ...formatted, timeout: DEFAULT_HOLD_MS, timestamp: new Date().toISOString() })
+    );
+    console.log(`[hook/permission] ${formatted.tool} -> room ${roomId} (id=${id})`);
 
     const res = ctx.res;
-    const response = await new Promise<DevotchiMessage | null>((resolve) => {
+    const response = await new Promise<PermissionResponseMessage | null>((resolve) => {
       const timer = setTimeout(() => {
         state.pendingHookRequests.delete(id);
+        state.sendToConsumers(roomId, buildDismiss({ id, reason: "timeout" }));
         resolve(null);
-      }, DEFAULT_APPROVAL_TIMEOUT);
+      }, DEFAULT_HOLD_MS);
 
       state.pendingHookRequests.set(id, { resolve, timer });
 
@@ -67,14 +65,14 @@ export function hookRoutes(state: RoomState, db: Database): Router {
         if (pending) {
           clearTimeout(pending.timer);
           state.pendingHookRequests.delete(id);
-          state.sendToConsumers(roomId, { type: "dismiss", id });
+          state.sendToConsumers(roomId, buildDismiss({ id, reason: "cancelled" }));
           console.log(`[hook/permission] ${id} -> dismissed (client disconnected)`);
           resolve(null);
         }
       });
     });
 
-    if (response && response.type === "permission_response") {
+    if (response) {
       const granted = response.granted;
       console.log(`[hook/permission] ${id} -> ${granted ? "allow" : "deny"}`);
       ctx.body = {
@@ -84,13 +82,8 @@ export function hookRoutes(state: RoomState, db: Database): Router {
         },
       };
     } else {
-      console.log(`[hook/permission] ${id} -> timeout`);
-      ctx.body = {
-        hookSpecificOutput: {
-          hookEventName: "PermissionRequest",
-          decision: { behavior: "deny" },
-        },
-      };
+      console.log(`[hook/permission] ${id} -> timeout, neutral reply`);
+      ctx.body = {};
     }
   });
 
