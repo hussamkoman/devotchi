@@ -32,6 +32,9 @@ importers:
 
   packages/client:
     dependencies:
+      '@devotchi/server':
+        specifier: workspace:*
+        version: link:../server
       '@devotchi/shared':
         specifier: workspace:*
         version: link:../shared

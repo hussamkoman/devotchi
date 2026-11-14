@@ -39,7 +39,9 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
       chunks.push(chunk);
     });
     req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
+    // A client that disconnects mid-body ("aborted", ECONNRESET) is a client
+    // failure, not a server error worth a stack trace in the log.
+    req.on("error", () => reject(badRequest("Request body was not completed")));
   });
 }
 

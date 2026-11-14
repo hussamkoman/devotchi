@@ -12,6 +12,7 @@
     "dev": "vite --config web/vite.config.ts"
   },
   "dependencies": {
+    "@devotchi/server": "workspace:*",
     "@devotchi/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "commander": "^13.0.0",
