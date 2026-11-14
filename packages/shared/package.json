@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }

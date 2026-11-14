@@ -54,7 +54,7 @@ This is an active work-in-progress. The first prototype PCB has been designed an
 hardware/          KiCad schematics, PCB layout, BOM
 firmware/          ESP32 firmware (C, ESP-IDF) — not yet started
 packages/
-  shared/          Protocol types and constants
+  shared/          Protocol v2 types, validator, text and tool formatting
   server/          WebSocket server + REST API + SQLite
   client/          CLI, MCP server, web dashboard
 case/              3D-printable enclosure exploration
@@ -64,8 +64,11 @@ docs/              Architecture, protocol spec, datasheets
 ## Development
 
 ```bash
-pnpm install
+pnpm install       # Node >= 22.13, pnpm 10
 pnpm run build
+pnpm test          # All package tests (vitest)
+pnpm run typecheck
+pnpm run lint
 pnpm run server    # Start server on :8080
 pnpm run client    # Start client dashboard on :3456
 ```

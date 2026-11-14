@@ -1,10 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import type { ClientConfig, PetMood, StatusMood } from "@devotchi/shared";
+import { buildMood, buildNotify, buildStatus, type Mood } from "@devotchi/shared";
+import type { ClientSettings } from "./config.js";
 import { connect, sendMessage, disconnect } from "./connection.js";
 
-export async function startMcpServer(config: ClientConfig): Promise<void> {
+export async function startMcpServer(config: ClientSettings): Promise<void> {
   connect(config);
 
   const server = new McpServer({
@@ -24,12 +25,7 @@ export async function startMcpServer(config: ClientConfig): Promise<void> {
         .describe("Agent activity mood"),
     },
     async ({ msg, mood }) => {
-      const sent = sendMessage({
-        type: "status",
-        msg,
-        mood: mood as StatusMood,
-        timestamp: new Date().toISOString(),
-      });
+      const sent = sendMessage(buildStatus({ msg, mood: mood as Mood }));
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ ok: true, brokerConnected: sent }) }],
       };
@@ -47,13 +43,7 @@ export async function startMcpServer(config: ClientConfig): Promise<void> {
       detail: z.string().max(1000).optional().describe("Additional info to display"),
     },
     async ({ event, mood, detail }) => {
-      const sent = sendMessage({
-        type: "notify",
-        event,
-        mood: mood as PetMood,
-        detail,
-        timestamp: new Date().toISOString(),
-      });
+      const sent = sendMessage(buildNotify({ event, mood: mood as Mood, detail }));
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ ok: true, brokerConnected: sent }) }],
       };
@@ -70,12 +60,7 @@ export async function startMcpServer(config: ClientConfig): Promise<void> {
       reason: z.string().max(1000).optional().describe("Why this mood was set"),
     },
     async ({ mood, reason }) => {
-      const sent = sendMessage({
-        type: "mood",
-        mood: mood as PetMood,
-        reason,
-        timestamp: new Date().toISOString(),
-      });
+      const sent = sendMessage(buildMood({ mood: mood as Mood, reason }));
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ ok: true, brokerConnected: sent }) }],
       };

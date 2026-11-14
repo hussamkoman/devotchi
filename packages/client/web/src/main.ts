@@ -1,9 +1,11 @@
-import type {
-  DevotchiMessage,
-  PetMood,
-  StatusMood,
+import {
+  buildPermissionResponse,
+  buildPong,
+  isValidPairingCode,
+  serialize,
+  type Mood,
+  type ServerToConsumerMessage,
 } from "@devotchi/shared";
-import { isValidPairingCode } from "@devotchi/shared";
 import "./style.css";
 
 const statusDot = document.getElementById("status-dot")!;
@@ -26,7 +28,6 @@ const settingsStatus = document.getElementById("settings-status")!;
 
 let ws: WebSocket | null = null;
 let pendingRequestId: string | null = null;
-let pendingRequestType: "approval" | "permission" | null = null;
 let countdownInterval: ReturnType<typeof setInterval> | null = null;
 
 const MOOD_EMOJI: Record<string, string> = {
@@ -59,7 +60,7 @@ function addLog(type: string, message: string): void {
   }
 }
 
-function updatePet(mood: PetMood | StatusMood): void {
+function updatePet(mood: Mood): void {
   petCharacter.textContent = MOOD_EMOJI[mood] || "\u{1FAE5}";
   petMoodEl.textContent = mood;
   petCharacter.classList.remove("bounce");
@@ -68,18 +69,16 @@ function updatePet(mood: PetMood | StatusMood): void {
 }
 
 function showModal(
-  type: "approval" | "permission",
   id: string,
   desc: string,
   details: string | undefined,
   timeout: number
 ): void {
   pendingRequestId = id;
-  pendingRequestType = type;
-  modalType.textContent = type === "approval" ? "APPROVAL REQUEST" : "PERMISSION REQUEST";
+  modalType.textContent = "PERMISSION REQUEST";
   modalDesc.textContent = desc;
   modalDetails.textContent = details || "";
-  modalApprove.textContent = type === "approval" ? "Approve" : "Grant";
+  modalApprove.textContent = "Grant";
   modal.classList.remove("hidden");
   modal.classList.add("flash");
   setTimeout(() => modal.classList.remove("flash"), 300);
@@ -97,7 +96,6 @@ function showModal(
 function hideModal(): void {
   modal.classList.add("hidden");
   pendingRequestId = null;
-  pendingRequestType = null;
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
@@ -111,23 +109,18 @@ function formatSeconds(s: number): string {
 }
 
 function sendResponse(approved: boolean): void {
-  if (!ws || !pendingRequestId || !pendingRequestType) return;
-
-  const msg: DevotchiMessage =
-    pendingRequestType === "approval"
-      ? { type: "approval_response", id: pendingRequestId, approved, timestamp: new Date().toISOString() }
-      : { type: "permission_response", id: pendingRequestId, granted: approved, timestamp: new Date().toISOString() };
+  if (!ws || !pendingRequestId) return;
 
   try {
-    ws.send(JSON.stringify(msg));
+    ws.send(serialize(buildPermissionResponse(pendingRequestId, approved)));
   } catch {
     addLog("error", "Failed to send response");
   }
-  addLog("response", `${pendingRequestType} ${approved ? "approved" : "rejected"}`);
+  addLog("response", `permission ${approved ? "approved" : "rejected"}`);
   hideModal();
 }
 
-function connect(pairingCode: string): void {
+function connect(): void {
   if (ws) ws.close();
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -141,7 +134,7 @@ function connect(pairingCode: string): void {
   };
 
   ws.onmessage = (event) => {
-    let msg: DevotchiMessage;
+    let msg: ServerToConsumerMessage;
     try {
       msg = JSON.parse(event.data);
     } catch {
@@ -163,13 +156,13 @@ function connect(pairingCode: string): void {
   };
 }
 
-function handleMessage(msg: DevotchiMessage): void {
+function handleMessage(msg: ServerToConsumerMessage): void {
   switch (msg.type) {
     case "ping":
-      try { ws?.send(JSON.stringify({ type: "pong" })); } catch {}
+      try { ws?.send(serialize(buildPong())); } catch { /* socket closing */ }
       break;
     case "register_ack":
-      addLog("system", `Registered as ${msg.role}, ${msg.connectedPeers} peer(s)`);
+      addLog("system", `Registered as ${msg.role}, ${msg.peers.producers} producer(s)`);
       statusText.textContent = "Connected \u2014 waiting for agent...";
       break;
     case "status":
@@ -178,15 +171,10 @@ function handleMessage(msg: DevotchiMessage): void {
       if (msg.mood) updatePet(msg.mood);
       addLog("status", msg.msg);
       break;
-    case "approval":
-      updatePet("anxious");
-      showModal("approval", msg.id, msg.desc, msg.details, msg.timeout);
-      addLog("approval", msg.desc);
-      break;
     case "permission":
       updatePet("thinking");
-      showModal("permission", msg.id, msg.action, msg.details, msg.timeout);
-      addLog("permission", msg.action);
+      showModal(msg.id, `${msg.tool}: ${msg.summary}`, msg.details, msg.timeout);
+      addLog("permission", msg.summary);
       break;
     case "notify":
       updatePet(msg.mood);
@@ -223,7 +211,7 @@ async function init(): Promise<void> {
       settingsServer.textContent = cfg.serverUrl;
     }
     if (cfg.pairingCode) {
-      connect(cfg.pairingCode);
+      connect();
     }
   } catch {
     // config endpoint unavailable, manual mode
@@ -233,7 +221,7 @@ async function init(): Promise<void> {
 connectBtn.addEventListener("click", () => {
   const code = pairingInput.value.trim().toUpperCase();
   if (isValidPairingCode(code)) {
-    connect(code);
+    connect();
   } else {
     addLog("error", "Invalid pairing code");
   }
