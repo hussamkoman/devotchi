@@ -1,7 +1,6 @@
 idf_component_register(
-    SRCS "Display.cpp"
+    SRCS "display.c"
     INCLUDE_DIRS "include"
-    REQUIRES config esp_lcd esp_driver_gpio esp_driver_spi esp_driver_ledc
+    REQUIRES lvgl
+    PRIV_REQUIRES board esp_lcd esp_driver_ledc esp_driver_spi esp_driver_gpio esp_rom
 )
-
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

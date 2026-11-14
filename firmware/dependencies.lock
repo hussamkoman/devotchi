@@ -1,11 +1,4 @@
 dependencies:
-  bblanchon/arduinojson:
-    component_hash: 5e6aff2bc5bc988b36c8e90c01e637495ee895ad3af93911860c21ec6da79b6a
-    dependencies: []
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 7.4.3
   espressif/button:
     component_hash: d0afa32f0e50d60bc0c6fc23f7eea98adc6b02cfe70b590bc52c23c506745287
     dependencies:
@@ -27,7 +20,7 @@ dependencies:
       require: private
       version: '>=5.0'
     source:
-      registry_url: https://components.espressif.com
+      registry_url: https://components.espressif.com/
       type: service
     version: 1.7.19~2
   espressif/cmake_utilities:
@@ -78,12 +71,12 @@ dependencies:
       type: service
     version: 9.5.0
 direct_dependencies:
-- bblanchon/arduinojson
 - espressif/button
+- espressif/cjson
 - espressif/esp_websocket_client
 - espressif/network_provisioning
 - idf
 - lvgl/lvgl
-manifest_hash: 1ef5829c93490e74941a56ab0c296676c7d4eb3db34fc6b703c72368c709b65b
+manifest_hash: d8c41e79cf62a8a0a9f5c1d543e6d640e9b564a673071b7ce9545834c38001c0
 target: esp32s3
 version: 3.0.0

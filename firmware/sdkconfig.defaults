@@ -1,50 +1,52 @@
-# Target chip
+# Target: ESP32-S3-MINI-1-N4R2 (4 MB flash, 2 MB quad PSRAM)
 CONFIG_IDF_TARGET="esp32s3"
-
-# Flash — ESP32-S3-MINI-1-N4R2 has 4MB flash
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
-CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
-
-# PSRAM — N4R2 has 2MB QSPI PSRAM (verify mode against module datasheet if you swap variants)
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_QUAD=y
 CONFIG_SPIRAM_SPEED_80M=y
 
-# Custom partition table
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
-# C++ — exceptions on (allows std::optional, std::variant to throw on misuse)
-CONFIG_COMPILER_CXX_EXCEPTIONS=y
+# The image must stay below 1.9 MB so two OTA slots remain possible in 4 MB.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 
-# 1ms FreeRTOS ticks → snappier UI/button polling
-CONFIG_FREERTOS_HZ=1000
+# USB-Serial-JTAG is the board's only connector and the debug console.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
 
-# Power management — required for light sleep to work
-CONFIG_PM_ENABLE=y
-CONFIG_PM_DFS_INIT_AUTO=y
-
-# Bigger main stack — C++ stdlib + ArduinoJson eats stack quickly
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
-
-# Default log level
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
-# LVGL — RGB565, native byte order (panel is configured LCD_RGB_DATA_ENDIAN_LITTLE)
+CONFIG_FREERTOS_HZ=1000
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+
+# DFS is configured by the power component (esp_pm_configure), not at startup.
+CONFIG_PM_ENABLE=y
+
+# LVGL: RGB565 in native byte order (the panel is set to little-endian data).
 CONFIG_LV_COLOR_DEPTH_16=y
-CONFIG_LV_MEM_SIZE_KILOBYTES=48
-CONFIG_LV_USE_PERF_MONITOR=n
+CONFIG_LV_MEM_SIZE_KILOBYTES=64
 CONFIG_LV_USE_LOG=n
+CONFIG_LV_THEME_DEFAULT_DARK=y
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_18=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_UNSCII_16=y
 
-# Bluetooth — required for BLE wifi provisioning
+# Library allocations go to PSRAM; internal RAM is kept for WiFi, stacks and DMA.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+
+# Bluetooth (NimBLE) for WiFi provisioning, protocomm security 1.
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_CONTROLLER_ENABLED=y
-
-# WiFi provisioning over BLE
-CONFIG_WIFI_PROV_SCHEME_BLE=y
-CONFIG_WIFI_PROV_AUTOSTOP_FROM_PROV_APP=y
 CONFIG_ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_1=y
+
+# A WebSocket send does not wait for a read in progress.
+CONFIG_ESP_WS_CLIENT_SEPARATE_TX_LOCK=y
