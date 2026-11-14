@@ -401,7 +401,7 @@ export function startLocalBroker(port: number): Promise<ReturnType<typeof create
     }
 
     if (req.method === "POST" && pathname === "/api/pair") {
-      jsonResponse(res, 201, { pairingCode: "LOCAL", expiresAt: new Date(Date.now() + 300000).toISOString() });
+      jsonResponse(res, 201, { code: "LOCAL", expiresAt: new Date(Date.now() + 300000).toISOString() });
       return;
     }
 

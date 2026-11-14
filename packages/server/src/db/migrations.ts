@@ -2,12 +2,14 @@
 //   0: the sql.js era schema (tokens, users, user_tokens, pairings), or an
 //      empty file.
 //   1: architecture 2.2.
+//   2: device_pairings.token_id, so an undelivered flow A pairing removes
+//      exactly the token it minted even if the room re-paired that device id.
 
 import { randomBytes } from "node:crypto";
 import type { Logger } from "../log.js";
 import type { Db } from "./index.js";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** The v0 schema exactly as the sql.js server created it. */
 export const V0_SCHEMA = `
@@ -198,6 +200,10 @@ function migrateV0toV1(db: Db): { tokens: number; devices: number } {
   return { tokens, devices };
 }
 
+function migrateV1toV2(db: Db): void {
+  db.exec("ALTER TABLE device_pairings ADD COLUMN token_id TEXT REFERENCES tokens(id) ON DELETE SET NULL");
+}
+
 /** Brings the schema to SCHEMA_VERSION. Requires foreign keys to be off. */
 export function migrate(db: Db, log: Logger): void {
   const version = db.get<{ user_version: number }>("PRAGMA user_version")?.user_version ?? 0;
@@ -206,7 +212,9 @@ export function migrate(db: Db, log: Logger): void {
   }
   if (version === SCHEMA_VERSION) return;
   db.transaction(() => {
-    const counts = migrateV0toV1(db);
+    let counts = {};
+    if (version < 1) counts = migrateV0toV1(db);
+    if (version < 2) migrateV1toV2(db);
     const violations = db.all("PRAGMA foreign_key_check");
     if (violations.length > 0) throw new Error(`migration left ${violations.length} foreign key violations`);
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

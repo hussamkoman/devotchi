@@ -1,0 +1,49 @@
+# Hosted Devotchi: the server behind Caddy, which obtains a publicly trusted
+# certificate for DEVOTCHI_DOMAIN and proxies HTTPS and WSS to it.
+# See docs/deploy.md. Required: DEVOTCHI_DOMAIN (e.g. in a .env file next to
+# this file); its DNS record must point at this host and ports 80 and 443
+# must be reachable for the ACME challenge.
+
+services:
+  server:
+    build: .
+    image: devotchi-server:local
+    restart: unless-stopped
+    init: true
+    environment:
+      DEVOTCHI_HOST: 0.0.0.0
+      DEVOTCHI_PORT: "8080"
+      DEVOTCHI_DB_PATH: /data/devotchi.db
+      # Caddy is the only client; it appends the real client address to X-Forwarded-For.
+      DEVOTCHI_TRUST_PROXY: "1"
+      DEVOTCHI_MODE: ${DEVOTCHI_MODE:-multi-user}
+      DEVOTCHI_REGISTRATION: ${DEVOTCHI_REGISTRATION:-invite}
+      DEVOTCHI_INVITE_CODE: ${DEVOTCHI_INVITE_CODE:-}
+      DEVOTCHI_ADMIN_SECRET: ${DEVOTCHI_ADMIN_SECRET:-}
+      DEVOTCHI_LOG_LEVEL: ${DEVOTCHI_LOG_LEVEL:-info}
+    volumes:
+      - devotchi-data:/data
+    # Not published: only Caddy reaches it, over the compose network.
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      DEVOTCHI_DOMAIN: ${DEVOTCHI_DOMAIN:?set DEVOTCHI_DOMAIN to the public host name}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  devotchi-data:
+  caddy-data:
+  caddy-config:

@@ -8,8 +8,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { DatabaseError, createServer } from "../src/app.js";
 import { openDatabase } from "../src/db/index.js";
+import { SCHEMA_VERSION } from "../src/db/migrations.js";
 import { Logger } from "../src/log.js";
 import { TestSocket, makeTempDir, startTestServer, type TestServer } from "./helpers.js";
+import { ALLOW, requestPermission } from "./hook-helpers.js";
 
 const dirs: string[] = [];
 let ts: TestServer | undefined;
@@ -69,7 +71,7 @@ function writeV0Fixture(path: string): void {
     "p1",
     ROOM,
     "FBMNDP",
-    "2026-01-01T00:05:00.000Z",
+    "2099-01-01T00:05:00.000Z",
   );
   db.close();
 }
@@ -87,7 +89,7 @@ describe("migration from the v0 schema", () => {
     expect(ts.logs.some((l) => l.includes("v0.bak"))).toBe(true);
 
     const { db } = ts.server.internals;
-    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(1);
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(SCHEMA_VERSION);
     expect(db.get("SELECT name FROM sqlite_master WHERE name = 'user_tokens'")).toBeUndefined();
     const tokens = db.all("SELECT id, room_id, label, kind, user_id, created_at, last_used FROM tokens ORDER BY id");
     expect(tokens).toEqual([
@@ -124,6 +126,22 @@ describe("migration from the v0 schema", () => {
     expect(readFileSync(`${dbPath}.v0.bak`, "utf8")).toBe("older backup");
   });
 
+  it("adds device_pairings.token_id to a version 1 database", async () => {
+    const dir = await tempDir();
+    ts = await startTestServer({ dir });
+    const { dbPath } = ts;
+    await ts.close();
+    ts = undefined;
+    const raw = new DatabaseSync(dbPath);
+    raw.exec("ALTER TABLE device_pairings DROP COLUMN token_id; PRAGMA user_version = 1");
+    raw.close();
+    ts = await startTestServer({ dir, dbPath });
+    const { db } = ts.server.internals;
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(SCHEMA_VERSION);
+    expect(db.all<{ name: string }>("PRAGMA table_info(device_pairings)").map((c) => c.name)).toContain("token_id");
+    expect(existsSync(`${dbPath}.v0.bak`)).toBe(false);
+  });
+
   it("creates no backup for a new database", async () => {
     const dir = await tempDir();
     ts = await startTestServer({ dir });
@@ -131,6 +149,68 @@ describe("migration from the v0 schema", () => {
     const { db } = ts.server.internals;
     expect(db.get<{ journal_mode: string }>("PRAGMA journal_mode")?.journal_mode).toBe("wal");
     expect(db.get<{ foreign_keys: number }>("PRAGMA foreign_keys")?.foreign_keys).toBe(1);
+  });
+});
+
+describe("migrated device rows", () => {
+  async function migrated(): Promise<TestServer> {
+    const dir = await tempDir();
+    const dbPath = join(dir, "devotchi.db");
+    writeV0Fixture(dbPath);
+    ts = await startTestServer({ dir, dbPath, timing: { ackMs: 5000, aliveMs: 5000, holdMs: 8000 } });
+    return ts;
+  }
+
+  async function register(t: TestServer, token: string, deviceId: string): Promise<{ socket: TestSocket; ack: Record<string, unknown> }> {
+    const socket = await TestSocket.connect(t.wsUrl, { token });
+    const ack = await socket.register("consumer", { kind: "device", deviceId, version: "0.2.0" });
+    return { socket, ack };
+  }
+
+  const row = (t: TestServer, tokenId: string) =>
+    t.server.internals.db.get("SELECT id, adopt_id, fw FROM devices WHERE token_id = ?", tokenId);
+
+  it("adopts the registering device's id once and keeps answering under it", async () => {
+    const t = await migrated();
+    const first = await register(t, DEVICE_TOKEN, "dv-abcdef");
+    expect(first.ack.device).toEqual({ id: "dv-abcdef", name: "device" });
+    expect(row(t, "e356e4ff")).toEqual({ id: "dv-abcdef", adopt_id: 0, fw: "0.2.0" });
+
+    const held = await requestPermission(t, CLI_TOKEN, first.socket);
+    first.socket.send({ type: "holding", ids: [held.id] });
+    first.socket.send({ type: "permission_response", id: held.id, granted: true });
+    expect(await held.reply).toEqual(ALLOW);
+    expect(await first.socket.awaitMessage("dismiss")).toMatchObject({ by: "dv-abcdef" });
+    first.socket.close();
+    await first.socket.closed;
+
+    // A later register with another id does not rename the row again.
+    const second = await register(t, DEVICE_TOKEN, "dv-123456");
+    expect(second.ack.device).toEqual({ id: "dv-abcdef", name: "device" });
+    expect(row(t, "e356e4ff")).toEqual({ id: "dv-abcdef", adopt_id: 0, fw: "0.2.0" });
+    const list = await (await t.fetch("/api/devices", { token: CLI_TOKEN })).json();
+    expect(list.devices.map((d: { id: string; online: boolean }) => [d.id, d.online])).toEqual([
+      ["dv-abcdef", true],
+      ["dv-e356e5", false],
+    ]);
+    second.socket.close();
+  });
+
+  it("keeps the provisional id when the claimed id is taken in the room", async () => {
+    const t = await migrated();
+    const taken = await register(t, DEVICE_TOKEN_2, "dv-e356e4");
+    expect(taken.ack.device).toEqual({ id: "dv-e356e5", name: "device" });
+    expect(row(t, "e356e4aa")).toEqual({ id: "dv-e356e5", adopt_id: 0, fw: "0.2.0" });
+    taken.socket.close();
+    await taken.socket.closed;
+    const later = await register(t, DEVICE_TOKEN_2, "dv-777777");
+    expect(later.ack.device).toEqual({ id: "dv-e356e5", name: "device" });
+    later.socket.close();
+
+    // The same id is free in another room, so that room's migrated row may take it.
+    const other = await register(t, OTHER_ROOM_DEVICE, "dv-e356e5");
+    expect(other.ack.device).toEqual({ id: "dv-e356e5", name: "device" });
+    other.socket.close();
   });
 });
 

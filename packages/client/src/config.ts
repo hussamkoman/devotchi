@@ -87,9 +87,9 @@ export async function provisionToken(config: ClientSettings): Promise<ClientSett
   });
 
   if (pairRes.ok) {
-    const pairData = await pairRes.json() as { pairingCode: string; expiresAt: string };
-    config.pairingCode = pairData.pairingCode;
-    console.error(`[devotchi] Pairing code: ${pairData.pairingCode} (expires: ${pairData.expiresAt})`);
+    const pairData = await pairRes.json() as { code: string; expiresAt: string };
+    config.pairingCode = pairData.code;
+    console.error(`[devotchi] Pairing code: ${pairData.code} (expires: ${pairData.expiresAt})`);
   }
 
   await saveConfig(config);

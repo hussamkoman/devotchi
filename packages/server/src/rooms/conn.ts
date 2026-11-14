@@ -6,6 +6,7 @@ import {
   HOLDING_BUCKET,
   serialize,
   type ClientKind,
+  type DeviceTelemetry,
   type Role,
   type ServerTiming,
   type ServerToConsumerMessage,
@@ -21,10 +22,6 @@ export interface Registration {
    * registry id, sim id or "dashboard". Undefined for producers.
    */
   identity?: string;
-  /** Registry row of a device token, when one exists. */
-  deviceName?: string;
-  /** `client.deviceId` exactly as sent. */
-  claimedDeviceId?: string;
   model?: string;
   version?: string;
   /** Producers: default `project` for their status and notify messages. */
@@ -37,6 +34,12 @@ export class Conn {
   lastHoldAt: number | null = null;
   /** The `lastHoldAt` value last written to the device registry. */
   lastHoldWrittenAt: number | null = null;
+  /** The `lastFrameAt` value last written to the registry's `last_seen`. */
+  lastSeenWrittenAt: number | null = null;
+  /** Latest telemetry sample (protocol 4.12); for cli-token sims the only copy. */
+  lastTelemetry: { data: DeviceTelemetry; at: number } | null = null;
+  /** The `lastTelemetry.at` value last written to the registry. */
+  telemetryWrittenAt: number | null = null;
   registration: Registration | null = null;
   readonly content: RateLog;
   readonly holding: TokenBucket;

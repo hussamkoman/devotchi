@@ -127,6 +127,14 @@ export const HOLD_MAX_MS = 300_000;
 export const MIN_REPLAY_REMAINING_MS = 1_000;
 export const REPLAY_MAX_AGE_MS = 30 * 60_000;
 export const PAIRING_CODE_TTL_MS = 300_000;
+/** Flow A: how often the device polls (protocol 7.4). */
+export const PAIR_POLL_INTERVAL_MS = 2_000;
+/** Flow A: the token must be fetched within this time of the confirm, and stays retrievable this long after. */
+export const PAIR_DELIVERY_MS = 60_000;
+/** A device's `last_seen` and telemetry columns are written at most this often. */
+export const DEVICE_WRITE_INTERVAL_MS = 60_000;
+/** Multi-user login sessions (protocol 7.1). */
+export const LOGIN_SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
 
 export const ROOM_MAX_PENDING = 8;
 export const ROOM_MAX_PRODUCERS = 8;

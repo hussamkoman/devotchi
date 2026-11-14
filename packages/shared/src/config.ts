@@ -6,9 +6,12 @@ import {
   DEFAULT_ACK_MS,
   DEFAULT_ALIVE_MS,
   DEFAULT_HOLD_MS,
+  DEVICE_WRITE_INTERVAL_MS,
   HEARTBEAT_DEAD_MS,
   HEARTBEAT_INTERVAL_MS,
   HOLDING_REFILL_PER_S,
+  LOGIN_SESSION_TTL_MS,
+  PAIR_DELIVERY_MS,
   PAIRING_CODE_TTL_MS,
   REGISTER_DEADLINE_MS,
   REPLAY_MAX_AGE_MS,
@@ -54,6 +57,12 @@ export interface ServerTiming {
   holdWriteMs: number;
   /** Hook session state is forgotten after this much silence. */
   sessionTtlMs: number;
+  /** Flow A token delivery window and lost-response repeat window (protocol 7.4). */
+  pairDeliveryMs: number;
+  /** Minimum spacing of a device's `last_seen` and telemetry writes. */
+  deviceWriteMs: number;
+  /** Lifetime of a multi-user login session. */
+  loginSessionTtlMs: number;
 }
 
 export const DEFAULT_SERVER_TIMING: Readonly<ServerTiming> = {
@@ -72,6 +81,9 @@ export const DEFAULT_SERVER_TIMING: Readonly<ServerTiming> = {
   hookStatusIntervalMs: 500,
   holdWriteMs: 30_000,
   sessionTtlMs: 30 * 60_000,
+  pairDeliveryMs: PAIR_DELIVERY_MS,
+  deviceWriteMs: DEVICE_WRITE_INTERVAL_MS,
+  loginSessionTtlMs: LOGIN_SESSION_TTL_MS,
 };
 
 /** Architecture section 2.6. */
