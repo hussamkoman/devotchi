@@ -1,9 +1,13 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { readFile, stat } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
-import type { ClientSettings } from "./config.js";
+import { HARD_FRAME_BYTES, buildRegister, serialize } from "@devotchi/shared";
+import { serverWsUrl } from "./config.js";
+import { CliError } from "./errors.js";
+import { CLIENT_VERSION } from "./version.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const WEB_DIR = join(__dirname, "web");
@@ -17,6 +21,20 @@ const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
 };
+
+export interface DashboardOptions {
+  serverUrl: string;
+  token: string;
+  roomId: string;
+  /** 0 picks a free port. */
+  port: number;
+  local: boolean;
+}
+
+export interface Dashboard {
+  port: number;
+  close(): Promise<void>;
+}
 
 async function serveStatic(res: ServerResponse, urlPath: string): Promise<void> {
   let filePath = join(WEB_DIR, urlPath === "/" ? "index.html" : urlPath);
@@ -41,41 +59,42 @@ async function serveStatic(res: ServerResponse, urlPath: string): Promise<void> 
   }
 }
 
-function wsServerUrl(config: ClientSettings): string {
-  return config.serverUrl.replace(/^http/, "ws").replace(/\/$/, "");
+function listen(server: Server, port: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") reject(new CliError(`dashboard port ${port} is already in use; choose another with --port <n>`));
+      else reject(new CliError(`cannot start the dashboard on port ${port}: ${err.message}`));
+    });
+    server.listen(port, "127.0.0.1", () => resolve((server.address() as AddressInfo).port));
+  });
 }
 
-export async function startWebServer(config: ClientSettings): Promise<void> {
+export async function startWebServer(options: DashboardOptions): Promise<Dashboard> {
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = req.url || "/";
     const pathname = url.split("?")[0];
 
     if (req.method === "GET" && pathname === "/api/config") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        pairingCode: config.pairingCode,
-        roomId: config.roomId,
-        serverUrl: config.serverUrl,
-        localMode: config.localMode,
-      }));
+      res.end(JSON.stringify({ roomId: options.roomId, serverUrl: options.serverUrl, local: options.local }));
       return;
     }
 
     await serveStatic(res, pathname);
   });
 
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ server, path: "/ws", maxPayload: HARD_FRAME_BYTES });
 
   wss.on("connection", (clientWs: WebSocket) => {
-    const serverWsUrl = `${wsServerUrl(config)}/ws?token=${encodeURIComponent(config.token)}`;
-    const upstream = new WebSocket(serverWsUrl);
+    const upstream = new WebSocket(serverWsUrl(options.serverUrl), {
+      headers: { Authorization: `Bearer ${options.token}` },
+      maxPayload: HARD_FRAME_BYTES,
+    });
 
     upstream.on("open", () => {
-      upstream.send(JSON.stringify({
-        type: "register",
-        role: "consumer",
-        roomId: config.roomId,
-      }));
+      upstream.send(
+        serialize(buildRegister({ role: "consumer", client: { kind: "dashboard", version: CLIENT_VERSION } })),
+      );
     });
 
     upstream.on("message", (data) => {
@@ -105,10 +124,15 @@ export async function startWebServer(config: ClientSettings): Promise<void> {
     });
   });
 
-  return new Promise((resolve) => {
-    server.listen(config.webPort, () => {
-      console.log(`Devotchi dashboard: http://localhost:${config.webPort}`);
-      resolve();
-    });
-  });
+  const port = await listen(server, options.port);
+  return {
+    port,
+    close: () =>
+      new Promise<void>((resolve) => {
+        for (const client of wss.clients) client.terminate();
+        wss.close();
+        server.close(() => resolve());
+        server.closeAllConnections();
+      }),
+  };
 }
