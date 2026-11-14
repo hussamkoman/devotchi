@@ -25,6 +25,7 @@ import type { Db } from "../db/index.js";
 import { getRoomSettings, updateRoomSettings } from "../db/room-settings.js";
 import { authOf, requireAuth, requireCli, type Authenticator } from "../http/auth.js";
 import { badRequest } from "../http/errors.js";
+import { objectBody, optionalString } from "../http/fields.js";
 import { byToken, type RateLimits } from "../http/rate-limit.js";
 import type { PermissionManager } from "../permissions/manager.js";
 import type { RoomRegistry } from "../rooms/registry.js";
@@ -40,13 +41,6 @@ export interface RoomRouteDeps {
   permissions: PermissionManager;
   /** The `devices` array of GET /api/room. */
   listDevices: (roomId: string) => Device[];
-}
-
-type Fields = Record<string, unknown>;
-
-function objectBody(body: unknown): Fields {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) throw badRequest("Body must be a JSON object");
-  return body as Fields;
 }
 
 function parseSettings(body: unknown): Partial<RoomSettings> {
@@ -70,13 +64,6 @@ function parseSettings(body: unknown): Partial<RoomSettings> {
     changes.shareText = fields.shareText;
   }
   return changes;
-}
-
-function optionalString(fields: Fields, key: string): string | undefined {
-  const value = fields[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") throw badRequest(`${key} must be a string`);
-  return value;
 }
 
 export function roomRoutes(deps: RoomRouteDeps): Router {

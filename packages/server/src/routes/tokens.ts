@@ -1,6 +1,5 @@
 // Protocol 7.2 (GET /api/me) and the token routes of 7.3.
 
-import { createHash, timingSafeEqual } from "node:crypto";
 import Router from "@koa/router";
 import type { Middleware } from "koa";
 import {
@@ -13,7 +12,7 @@ import {
 import type { ResolvedConfig } from "../config.js";
 import type { Db } from "../db/index.js";
 import { allocateRoomId, deleteToken, insertToken, listTokens } from "../db/tokens.js";
-import { authOf, requireAuth, requireCli, requireSession, type Authenticator } from "../http/auth.js";
+import { authOf, requireAuth, requireCli, requireSession, secretMatches, type Authenticator } from "../http/auth.js";
 import { badRequest, notFound, unauthorized } from "../http/errors.js";
 import { byIp, type RateLimits } from "../http/rate-limit.js";
 import type { WsServer } from "../ws/server.js";
@@ -28,15 +27,6 @@ export interface TokenRouteDeps {
 
 const TOKEN_ID_RE = /^[0-9a-f]{8}$/;
 const ADMIN_HEADER = "X-Devotchi-Admin";
-
-function digest(value: string): Buffer {
-  return createHash("sha256").update(value).digest();
-}
-
-/** Constant-time comparison that does not leak the secret's length. */
-function secretMatches(given: string, secret: string): boolean {
-  return timingSafeEqual(digest(given), digest(secret));
-}
 
 function parseLabel(body: unknown): string | null {
   if (body === undefined) return null;

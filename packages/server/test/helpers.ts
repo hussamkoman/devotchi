@@ -9,7 +9,7 @@ import { WebSocket, type RawData } from "ws";
 import type { ClientKind, RegisterClient, Role } from "@devotchi/shared";
 import { createServer, type DevotchiServer, type ServerConfigInput } from "../src/app.js";
 import { allocateDeviceId, insertDevice } from "../src/db/devices.js";
-import { insertToken, type MintedToken } from "../src/db/tokens.js";
+import { allocateRoomId, insertToken, type MintedToken } from "../src/db/tokens.js";
 
 export type Json = Record<string, unknown>;
 
@@ -23,6 +23,8 @@ export interface TestServer {
   logs: string[];
   /** POST /api/auth/token; returns the minted cli token. */
   mintToken(label?: string): Promise<MintedToken>;
+  /** A cli token in a new room, inserted directly (not counted by the mint rate limit). */
+  cliToken(label?: string): MintedToken;
   /** A device token plus registry row in the room, inserted directly. */
   deviceToken(roomId: string, deviceId?: string, name?: string): MintedToken & { deviceId: string };
   fetch(path: string, init?: RequestInit & { json?: unknown; token?: string }): Promise<Response>;
@@ -76,6 +78,10 @@ export async function startTestServer(options: StartOptions = {}): Promise<TestS
       const res = await doFetch("/api/auth/token", { method: "POST", json: { label } });
       if (res.status !== 201) throw new Error(`mint failed: ${res.status} ${await res.text()}`);
       return (await res.json()) as MintedToken;
+    },
+    cliToken(label = "cli") {
+      const { db } = server.internals;
+      return db.transaction(() => insertToken(db, { roomId: allocateRoomId(db), kind: "cli", label }));
     },
     deviceToken(roomId, deviceId, name = "device") {
       const { db } = server.internals;

@@ -1,0 +1,9 @@
+# Reverse proxy for docker-compose.yml. Caddy obtains and renews the
+# certificate for {$DEVOTCHI_DOMAIN} automatically and redirects HTTP to
+# HTTPS. reverse_proxy passes WebSocket upgrades (/ws) through unchanged and
+# sets X-Forwarded-For to the address it saw (a client-sent value is not
+# trusted), which the server reads with DEVOTCHI_TRUST_PROXY=1.
+
+{$DEVOTCHI_DOMAIN} {
+	reverse_proxy server:8080
+}

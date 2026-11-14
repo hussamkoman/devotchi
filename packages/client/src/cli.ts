@@ -116,8 +116,8 @@ program
       process.exit(1);
     }
 
-    const data = await res.json() as { pairingCode: string; expiresAt: string };
-    console.log(`Pairing code: ${data.pairingCode}`);
+    const data = await res.json() as { code: string; expiresAt: string };
+    console.log(`Pairing code: ${data.code}`);
     console.log(`Expires: ${data.expiresAt}`);
     console.log("Enter this code on your Devotchi device to pair it.");
   });

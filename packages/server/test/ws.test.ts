@@ -336,10 +336,10 @@ describe("content routing", () => {
     await p.expectNoMessage("status");
   });
 
-  it("answers consumer system messages without a registered handler with NOT_ALLOWED", async () => {
+  it("answers telemetry from a dashboard with NOT_ALLOWED", async () => {
     const t = await start();
     const { token } = await t.mintToken();
-    const c = await track(consumer(t, token));
+    const c = await track(consumer(t, token, { kind: "dashboard" }));
     c.send({
       type: "telemetry",
       battery: { state: "absent", pct: null, mv: 4100 },

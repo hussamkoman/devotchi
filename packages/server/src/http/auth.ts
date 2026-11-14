@@ -1,6 +1,7 @@
 // Credentials (protocol 7.1): API tokens looked up by SHA-256 hash, and
 // session tokens (multi-user mode) resolved by a pluggable resolver.
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { Context, Middleware } from "koa";
 import { SESSION_TOKEN_PREFIX, type ServerMode, type TokenKind } from "@devotchi/shared";
 import type { Db } from "../db/index.js";
@@ -51,7 +52,16 @@ export class Authenticator {
   }
 }
 
-export type Credential = { ok: true; value: string } | { ok: false; reason: "missing" | "malformed" };
+const digest = (value: string) => createHash("sha256").update(value).digest();
+
+/** Constant-time comparison that does not leak the secret's length. */
+export function secretMatches(given: string, secret: string): boolean {
+  return timingSafeEqual(digest(given), digest(secret));
+}
+
+export type Credential =
+  | { ok: true; value: string; fromQuery: boolean }
+  | { ok: false; reason: "missing" | "malformed" };
 
 /**
  * The credential of a request: `Authorization: Bearer`, or `?token=` where
@@ -64,11 +74,11 @@ export function extractCredential(
 ): Credential {
   if (authorization !== undefined && authorization !== "") {
     const match = BEARER_RE.exec(authorization);
-    return match ? { ok: true, value: match[1] } : { ok: false, reason: "malformed" };
+    return match ? { ok: true, value: match[1], fromQuery: false } : { ok: false, reason: "malformed" };
   }
   if (allowQuery && queryToken !== undefined) {
     if (typeof queryToken !== "string" || queryToken === "") return { ok: false, reason: "malformed" };
-    return { ok: true, value: queryToken };
+    return { ok: true, value: queryToken, fromQuery: true };
   }
   return { ok: false, reason: "missing" };
 }
@@ -86,6 +96,8 @@ export function requireAuth(auth: Authenticator, options: { allowQuery?: boolean
     if (Array.isArray(query)) throw badRequest('Query parameter "token" is given more than once');
     const credential = extractCredential(ctx.get("Authorization") || undefined, query, options.allowQuery === true);
     if (!credential.ok) throw unauthorized(credential.reason === "missing" ? "Missing token" : "Invalid token");
+    // Query strings end up in proxy logs; ?token= is for API tokens only (protocol 7.1).
+    if (credential.fromQuery && credential.value.startsWith(SESSION_TOKEN_PREFIX)) throw unauthorized();
     const state = auth.authenticate(credential.value);
     if (!state) throw unauthorized();
     (ctx.state as { auth?: AuthState }).auth = state;

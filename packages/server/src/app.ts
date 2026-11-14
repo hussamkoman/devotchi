@@ -1,11 +1,14 @@
 // Package entry: createServer() builds one self-contained server instance.
 // Importing this module opens no socket and starts no timer.
 
+import { readFileSync } from "node:fs";
 import { createServer as createHttpServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import Koa from "koa";
+import { AccountService } from "./accounts/service.js";
 import { resolveConfig, type ResolvedConfig, type ServerConfigInput } from "./config.js";
 import { openDatabase, type Db } from "./db/index.js";
+import { DeviceService } from "./devices/service.js";
 import { HookDispatcher } from "./hooks/dispatcher.js";
 import { Authenticator } from "./http/auth.js";
 import { bodyParser, rejectDuplicateQuery } from "./http/body.js";
@@ -14,11 +17,14 @@ import { RateLimits } from "./http/rate-limit.js";
 import { requestLog } from "./http/request-log.js";
 import { cors, securityHeaders } from "./http/security.js";
 import { Logger, errorFields } from "./log.js";
+import { PairingService } from "./pairing/service.js";
 import { PermissionManager } from "./permissions/manager.js";
 import { RoomRegistry } from "./rooms/registry.js";
+import { accountRoutes } from "./routes/accounts.js";
 import { deviceRoutes } from "./routes/devices.js";
 import { healthRoutes } from "./routes/health.js";
 import { hookRoutes } from "./routes/hooks.js";
+import { pairingRoutes } from "./routes/pairing.js";
 import { roomRoutes } from "./routes/room.js";
 import { tokenRoutes } from "./routes/tokens.js";
 import { StartupError } from "./startup-error.js";
@@ -40,6 +46,10 @@ export interface ServerInternals {
   rooms: RoomRegistry;
   ws: WsServer;
   permissions: PermissionManager;
+  devices: DeviceService;
+  pairing: PairingService;
+  /** Multi-user mode only. */
+  accounts: AccountService | null;
   auth: Authenticator;
   limits: RateLimits;
   http: Server;
@@ -60,6 +70,15 @@ export interface DevotchiServer {
 /** In-flight HTTP responses get this long to finish after the shutdown hooks ran. */
 const DRAIN_MS = 500;
 const MAINTENANCE_MS = 60_000;
+const ACCOUNT_PAGE = new URL("../public/account.html", import.meta.url);
+
+function readAccountPage(): string {
+  try {
+    return readFileSync(ACCOUNT_PAGE, "utf8");
+  } catch (err) {
+    throw new StartupError(`cannot read the account page ${ACCOUNT_PAGE.pathname}: ${(err as Error).message}`);
+  }
+}
 
 function listen(server: Server, port: number, host: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -93,6 +112,7 @@ function baseUrl(host: string, port: number): string {
 export async function createServer(input: ServerConfigInput): Promise<DevotchiServer> {
   const config = resolveConfig(input);
   const log = new Logger(config.logLevel, config.logSink);
+  const accountPage = config.mode === "multi-user" ? readAccountPage() : "";
   const db = openDatabase(config.dbPath, log);
   const startedAt = Date.now();
   const rooms = new RoomRegistry();
@@ -101,12 +121,24 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   const ws = new WsServer({ config, db, rooms, auth, log });
   const permissions = new PermissionManager(rooms, db, log, config.timing);
   const dispatcher = new HookDispatcher({ config, db, rooms, permissions });
+  const devices = new DeviceService({ db, rooms, ws, permissions, log, writeIntervalMs: config.timing.deviceWriteMs });
+  const pairing = new PairingService({ db, ws, log, timing: config.timing });
+  // Nothing of a confirmed pairing's token survived the restart, so those pairings cannot be delivered.
+  pairing.prune();
+  const accounts = config.mode === "multi-user" ? new AccountService(db, config.bcryptCost, config.timing) : null;
+  if (accounts) {
+    accounts.prune();
+    auth.setSessionResolver((raw, now) => accounts.resolveSession(raw, now));
+  }
   ws.handle("holding", (conn, msg) => permissions.onHolding(conn, msg.ids));
   ws.handle("permission_response", (conn, msg) => permissions.onResponse(conn, msg.id, msg.granted));
   ws.handle("permission_defer", (conn, msg) => permissions.onDefer(conn, msg.id));
   ws.onConsumerRegistered((conn, room) => permissions.onConsumerRegistered(conn, room));
+  ws.handle("telemetry", (conn, msg) => devices.onTelemetry(conn, msg));
   ws.onConnectionClosed((conn, room) => {
-    if (conn.role === "consumer") permissions.onConsumerGone(conn, room);
+    if (conn.role !== "consumer") return;
+    permissions.onConsumerGone(conn, room);
+    devices.onClosed(conn);
   });
   // Held hooks are answered with the neutral reply before the sockets close.
   const shutdownHooks: ShutdownHook[] = [
@@ -129,9 +161,11 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   for (const router of [
     healthRoutes(config.mode, startedAt),
     tokenRoutes({ db, config, auth, limits, ws }),
-    deviceRoutes({ db, config, auth, limits, rooms }),
-    roomRoutes({ db, config, auth, limits, rooms, ws, permissions, listDevices: () => [] }),
+    pairingRoutes({ auth, limits, pairing }),
+    deviceRoutes({ auth, devices }),
+    roomRoutes({ db, config, auth, limits, rooms, ws, permissions, listDevices: (roomId) => devices.list(roomId) }),
     hookRoutes({ auth, limits, dispatcher, permissions, log }),
+    ...(accounts ? [accountRoutes({ config, auth, limits, accounts, accountPage })] : []),
   ]) {
     app.use(router.routes());
   }
@@ -155,8 +189,15 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
     const now = Date.now();
     limits.sweep(now);
     rooms.prune(now, config.timing.replayMaxAgeMs, config.timing.sessionTtlMs);
+    try {
+      pairing.prune(now);
+      accounts?.prune(now);
+    } catch (err) {
+      log.error("maintenance failed", errorFields(err));
+    }
   }, MAINTENANCE_MS);
   maintenance.unref();
+  devices.start();
 
   const port = (http.address() as AddressInfo).port;
   const url = baseUrl(config.host, port);
@@ -175,6 +216,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
         }
       }
       await ws.shutdown();
+      devices.stop();
       http.closeIdleConnections();
       let drainTimer: NodeJS.Timeout | undefined;
       await Promise.race([httpClosed, new Promise<void>((resolve) => (drainTimer = setTimeout(resolve, DRAIN_MS)))]);
@@ -198,6 +240,9 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
       rooms,
       ws,
       permissions,
+      devices,
+      pairing,
+      accounts,
       auth,
       limits,
       http,

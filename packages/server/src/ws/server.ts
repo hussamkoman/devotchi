@@ -29,7 +29,7 @@ import {
 } from "@devotchi/shared";
 import type { ResolvedConfig } from "../config.js";
 import type { Db } from "../db/index.js";
-import { findDeviceByToken } from "../db/devices.js";
+import { bindDeviceOnRegister } from "../db/devices.js";
 import { getRoomMode } from "../db/room-settings.js";
 import { extractCredential, type AuthState, type Authenticator } from "../http/auth.js";
 import { errorFields, type Logger } from "../log.js";
@@ -43,7 +43,6 @@ export type SystemMessage<T extends SystemMessageType> = Extract<InboundMessage,
 export type SystemHandler<T extends SystemMessageType> = (conn: Conn, msg: SystemMessage<T>, room: Room) => void;
 export type ConnHook = (conn: Conn, room: Room) => void;
 
-const DEFAULT_DEVICE_NAME = "device";
 /** Connections stuck in the close handshake are terminated after this. */
 const CLOSE_GRACE_MS = 300;
 
@@ -267,16 +266,24 @@ export class WsServer {
 
     const { client } = msg;
     const registration: Registration = { role: msg.role, kind: client.kind };
-    if (client.deviceId !== undefined) registration.claimedDeviceId = client.deviceId;
     if (client.model !== undefined) registration.model = client.model;
     if (client.version !== undefined) registration.version = client.version;
     if (client.project !== undefined) registration.project = client.project;
     let device: { id: string; name: string } | undefined;
     if (conn.tokenKind === "device") {
-      const row = findDeviceByToken(db, conn.tokenId);
-      device = row ? { id: row.id, name: row.name } : { id: client.deviceId as string, name: DEFAULT_DEVICE_NAME };
+      const row = bindDeviceOnRegister(db, conn.tokenId, {
+        claimedId: client.deviceId,
+        model: client.model,
+        version: client.version,
+      });
+      // A device token always has a registry row; without one the device is unpaired.
+      if (!row) {
+        this.sendError(conn, "NOT_ALLOWED", "this device is not paired");
+        conn.close(CLOSE_CODES.REVOKED, "device unpaired");
+        return;
+      }
+      device = { id: row.id, name: row.name };
       registration.identity = device.id;
-      registration.deviceName = device.name;
     } else if (client.kind === "sim") {
       registration.identity = client.deviceId;
     } else if (client.kind === "dashboard") {

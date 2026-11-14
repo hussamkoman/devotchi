@@ -1,0 +1,17 @@
+# Only the workspace manifests and the shared and server packages are needed.
+**/node_modules
+**/dist
+.git
+.claude
+case
+docs
+firmware
+hardware
+packages/client/*
+!packages/client/package.json
+packages/*/test
+**/*.db
+**/*.db-*
+**/*.v0.bak
+.env
+*.log

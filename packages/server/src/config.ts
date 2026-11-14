@@ -27,13 +27,15 @@ export class ConfigError extends Error {
 
 export const SERVER_MODES: readonly ServerMode[] = ["single-user", "multi-user"];
 export const DEFAULT_MAX_SOCKETS = 200;
+/** bcrypt cost of multi-user passwords (architecture 2.5). */
+export const DEFAULT_BCRYPT_COST = 12;
 /** Bind address when the server is embedded rather than started from the environment. */
 export const EMBEDDED_HOST = "127.0.0.1";
 
 /**
  * What createServer accepts: a full ServerConfig, or only the fields an
- * embedding caller cares about. `maxSockets` and `logSink` have no
- * environment variable; they exist for embedding and tests.
+ * embedding caller cares about. `maxSockets`, `logSink` and `bcryptCost`
+ * have no environment variable; they exist for embedding and tests.
  */
 export interface ServerConfigInput extends Partial<Omit<ServerConfig, "timing" | "dbPath">> {
   /** SQLite file, or ":memory:". */
@@ -43,11 +45,14 @@ export interface ServerConfigInput extends Partial<Omit<ServerConfig, "timing" |
   maxSockets?: number;
   /** Receives every log line; defaults to stdout. */
   logSink?: LogSink;
+  /** Tests lower it; production keeps DEFAULT_BCRYPT_COST. */
+  bcryptCost?: number;
 }
 
 export interface ResolvedConfig extends ServerConfig {
   maxSockets: number;
   logSink?: LogSink;
+  bcryptCost: number;
 }
 
 const HOSTNAME_RE = /^(?=.{1,253}$)[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
@@ -94,6 +99,9 @@ const TIMING_RANGES: Record<keyof ServerTiming, [number, number]> = {
   hookStatusIntervalMs: [0, 600_000],
   holdWriteMs: [0, 86_400_000],
   sessionTtlMs: [1, 86_400_000],
+  pairDeliveryMs: [1, 3_600_000],
+  deviceWriteMs: [0, 86_400_000],
+  loginSessionTtlMs: [1, 366 * 86_400_000],
 };
 
 /** Fills defaults and validates. Throws ConfigError. */
@@ -116,6 +124,7 @@ export function resolveConfig(input: ServerConfigInput): ResolvedConfig {
     timing,
     maxSockets: input.maxSockets ?? DEFAULT_MAX_SOCKETS,
     logSink: input.logSink,
+    bcryptCost: input.bcryptCost ?? DEFAULT_BCRYPT_COST,
   };
   if (typeof config.host !== "string" || (isIP(config.host) === 0 && !HOSTNAME_RE.test(config.host))) {
     fail(`host must be an IP address or a hostname (got "${String(config.host)}")`);
@@ -134,6 +143,7 @@ export function resolveConfig(input: ServerConfigInput): ResolvedConfig {
   }
   if (!LOG_LEVELS.includes(config.logLevel)) fail(`logLevel must be one of ${LOG_LEVELS.join(", ")}`);
   checkInt("maxSockets", config.maxSockets, 1, 1_000_000);
+  checkInt("bcryptCost", config.bcryptCost, 4, 31);
   return config;
 }
 

@@ -77,6 +77,7 @@ pnpm run client    # Start client dashboard on :3456
 
 - [Architecture](docs/architecture.md) — system overview, layers, data flow
 - [Protocol](docs/protocol.md) — wire protocol specification
+- [Deployment](docs/deploy.md) — LAN self-hosting, Docker Compose with Caddy, multi-user mode, backups
 - [Hardware](hardware/README.md) — components, pin assignments, PCB design
 
 ## License

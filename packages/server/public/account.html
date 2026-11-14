@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Devotchi account</title>
+<style>
+  :root { font-family: system-ui, sans-serif; line-height: 1.4; }
+  body { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.15rem; margin-top: 2rem; }
+  section { border: 1px solid #8884; border-radius: 6px; padding: 0.5rem 1rem 1rem; margin-bottom: 1rem; }
+  label { display: block; margin: 0.5rem 0 0.2rem; }
+  input { font: inherit; padding: 0.3rem 0.4rem; width: 100%; max-width: 22rem; box-sizing: border-box; }
+  button { font: inherit; padding: 0.3rem 0.8rem; margin: 0.5rem 0.4rem 0 0; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 0.3rem 0.4rem; border-bottom: 1px solid #8884; vertical-align: top; }
+  td button { margin: 0 0.3rem 0 0; }
+  code, .secret { font-family: ui-monospace, monospace; word-break: break-all; }
+  .secret { display: block; padding: 0.5rem; margin: 0.5rem 0; border: 1px dashed #888; }
+  .status { min-height: 1.4em; margin: 0.5rem 0; }
+  .error { color: #c62828; }
+  .ok { color: #2e7d32; }
+  .row { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .row > form { flex: 1 1 18rem; }
+  [hidden] { display: none !important; }
+  :focus-visible { outline: 2px solid #1e88e5; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<h1>Devotchi account</h1>
+<p id="status" class="status" role="status" aria-live="polite"></p>
+
+<div id="signed-out">
+  <div class="row">
+    <form id="login-form">
+      <h2>Log in</h2>
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" autocomplete="username" required>
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required>
+      <button type="submit">Log in</button>
+    </form>
+    <form id="register-form">
+      <h2>Create an account</h2>
+      <label for="register-email">Email</label>
+      <input id="register-email" type="email" autocomplete="username" required>
+      <label for="register-password">Password (10 to 72 bytes)</label>
+      <input id="register-password" type="password" autocomplete="new-password" minlength="10" required>
+      <label for="register-invite">Invite code (if the server asks for one)</label>
+      <input id="register-invite" type="text" autocomplete="off">
+      <button type="submit">Create account</button>
+    </form>
+  </div>
+</div>
+
+<div id="signed-in" hidden>
+  <p>Signed in as <strong id="me-email"></strong> (room <code id="me-room"></code>).
+    <button id="logout" type="button">Log out</button></p>
+
+  <section>
+    <h2>Pair a device</h2>
+    <p>Enter the code the device shows on its pairing screen.</p>
+    <form id="confirm-form">
+      <label for="confirm-code">Pairing code</label>
+      <input id="confirm-code" type="text" autocomplete="off" placeholder="K7M 2QX" required>
+      <label for="confirm-name">Device name (optional, up to 24 bytes)</label>
+      <input id="confirm-name" type="text" autocomplete="off" maxlength="24">
+      <button type="submit">Confirm pairing</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Devices</h2>
+    <table>
+      <thead><tr><th>Name</th><th>Id</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="devices"></tbody>
+    </table>
+    <p id="devices-empty" hidden>No devices paired yet.</p>
+  </section>
+
+  <section>
+    <h2>API tokens</h2>
+    <p>A token lets the Devotchi CLI and Claude Code hooks use your room.</p>
+    <form id="token-form">
+      <label for="token-label">Label</label>
+      <input id="token-label" type="text" autocomplete="off" maxlength="64" value="cli">
+      <button type="submit">Create token</button>
+    </form>
+    <div id="new-token" hidden>
+      <p>Copy this token now; it is not shown again.</p>
+      <code id="new-token-value" class="secret"></code>
+    </div>
+    <table>
+      <thead><tr><th>Label</th><th>Kind</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+      <tbody id="tokens"></tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+"use strict";
+(() => {
+  const KEY = "devotchi.session";
+  const $ = (id) => document.getElementById(id);
+  let session = sessionStorage.getItem(KEY);
+
+  function show(message, ok) {
+    const el = $("status");
+    el.textContent = message;
+    el.className = "status " + (ok ? "ok" : "error");
+  }
+
+  async function api(method, path, body) {
+    const headers = {};
+    if (session) headers.Authorization = "Bearer " + session;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (res.status === 204) return null;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 401 && session && path !== "/api/auth/login") signOut();
+      const err = new Error(data.error || "Request failed (" + res.status + ")");
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  function cell(row, text) {
+    const td = document.createElement("td");
+    td.textContent = text;
+    row.appendChild(td);
+    return td;
+  }
+
+  function button(parent, label, onClick) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    parent.appendChild(b);
+    return b;
+  }
+
+  function when(iso) {
+    return iso ? new Date(iso).toLocaleString() : "never";
+  }
+
+  function signOut() {
+    session = null;
+    sessionStorage.removeItem(KEY);
+    $("signed-in").hidden = true;
+    $("signed-out").hidden = false;
+  }
+
+  async function refreshDevices() {
+    const { devices } = await api("GET", "/api/devices");
+    const body = $("devices");
+    body.replaceChildren();
+    $("devices-empty").hidden = devices.length > 0;
+    for (const device of devices) {
+      const row = document.createElement("tr");
+      cell(row, device.name);
+      cell(row, device.id);
+      cell(row, device.online ? "online" : "offline, last seen " + when(device.lastSeen));
+      const actions = cell(row, "");
+      button(actions, "Rename", async () => {
+        const name = prompt("New name for " + device.id, device.name);
+        if (name === null) return;
+        try {
+          await api("PATCH", "/api/devices/" + encodeURIComponent(device.id), { name });
+          show("Renamed " + device.id, true);
+          await refreshDevices();
+        } catch (err) { show(err.message); }
+      });
+      button(actions, "Unpair", async () => {
+        if (!confirm("Unpair " + device.name + " (" + device.id + ")? The device returns to its pairing screen.")) return;
+        try {
+          await api("DELETE", "/api/devices/" + encodeURIComponent(device.id));
+          show("Unpaired " + device.id, true);
+          await refresh();
+        } catch (err) { show(err.message); }
+      });
+      body.appendChild(row);
+    }
+  }
+
+  async function refreshTokens() {
+    const { tokens } = await api("GET", "/api/tokens");
+    const body = $("tokens");
+    body.replaceChildren();
+    for (const token of tokens) {
+      const row = document.createElement("tr");
+      cell(row, token.label || "");
+      cell(row, token.kind);
+      cell(row, when(token.createdAt));
+      cell(row, when(token.lastUsed));
+      const actions = cell(row, "");
+      button(actions, "Revoke", async () => {
+        if (!confirm("Revoke token " + (token.label || token.id) + "? Everything using it stops working.")) return;
+        try {
+          await api("DELETE", "/api/tokens/" + encodeURIComponent(token.id));
+          show("Token revoked", true);
+          await refresh();
+        } catch (err) { show(err.message); }
+      });
+      body.appendChild(row);
+    }
+  }
+
+  async function refresh() {
+    await Promise.all([refreshDevices(), refreshTokens()]);
+  }
+
+  async function signIn() {
+    const me = await api("GET", "/api/me");
+    $("me-email").textContent = me.email || "";
+    $("me-room").textContent = me.roomId;
+    $("signed-out").hidden = true;
+    $("signed-in").hidden = false;
+    await refresh();
+  }
+
+  $("login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const result = await api("POST", "/api/auth/login", { email: $("login-email").value, password: $("login-password").value });
+      session = result.sessionToken;
+      sessionStorage.setItem(KEY, session);
+      $("login-password").value = "";
+      await signIn();
+      show("Logged in", true);
+    } catch (err) { show(err.message); }
+  });
+
+  $("register-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = { email: $("register-email").value, password: $("register-password").value };
+    const invite = $("register-invite").value.trim();
+    if (invite) body.inviteCode = invite;
+    try {
+      await api("POST", "/api/auth/register", body);
+      $("login-email").value = body.email;
+      $("register-password").value = "";
+      show("Account created. Log in to continue.", true);
+    } catch (err) { show(err.message); }
+  });
+
+  $("logout").addEventListener("click", async () => {
+    try { await api("POST", "/api/auth/logout"); } catch (err) { /* the session is dropped locally either way */ }
+    signOut();
+    show("Logged out", true);
+  });
+
+  $("confirm-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = { code: $("confirm-code").value };
+    const name = $("confirm-name").value.trim();
+    if (name) body.name = name;
+    try {
+      const result = await api("POST", "/api/pair/confirm", body);
+      $("confirm-code").value = "";
+      $("confirm-name").value = "";
+      show("Paired " + result.name + " (" + result.deviceId + ")", true);
+      setTimeout(() => refreshDevices().catch(() => undefined), 3000);
+      await refreshDevices();
+    } catch (err) { show(err.message); }
+  });
+
+  $("token-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const label = $("token-label").value.trim();
+    try {
+      const result = await api("POST", "/api/auth/token", label ? { label } : {});
+      $("new-token-value").textContent = result.token;
+      $("new-token").hidden = false;
+      show("Token created", true);
+      await refreshTokens();
+    } catch (err) { show(err.message); }
+  });
+
+  if (session) signIn().catch((err) => { signOut(); show(err.message); });
+})();
+</script>
+</body>
+</html>
