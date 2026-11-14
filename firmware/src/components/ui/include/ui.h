@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define UI_DIAG_LINES    4
+#define UI_DIAG_LINES    6
 #define UI_TEXT_SIZE     96
 #define UI_MAX_TEXTS     24
 

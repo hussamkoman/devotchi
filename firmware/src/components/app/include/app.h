@@ -1,5 +1,6 @@
 #pragma once
 
+#include "btn_fsm.h"
 #include "esp_err.h"
 
 #include <stdbool.h>
@@ -12,15 +13,30 @@
 
 typedef enum {
     APP_EV_TICK,
+    /** arg.u8: btn_id_t, btn_raw_t. */
+    APP_EV_BTN_RAW,
+    /** arg.u8: btn_id_t, btn_kind_t (console injection). */
+    APP_EV_BTN_INJECT,
+    /** Console `wake`. */
+    APP_EV_USER_ACTIVITY,
+    /** arg.u8: fb_seq_id_t, step (FEEDBACK_STEP_END at the end), LED percent, motor percent. */
+    APP_EV_FB_STEP,
+    /** arg.u32: 1 when the debounced external power flipped. */
+    APP_EV_POWER,
+    /** arg.u32: storage_setting_t that was written. */
+    APP_EV_SETTING_CHANGED,
 } app_event_id_t;
 
 /** Passed by value through the app queue; payloads larger than this travel as a pool pointer. */
 typedef struct {
     app_event_id_t id;
+    /** Milliseconds since boot when the source observed the event; 0 when it does not matter. */
+    uint32_t t_ms;
     union {
         uint32_t u32;
         int32_t i32;
         void *ptr;
+        uint8_t u8[4];
     } arg;
 } app_event_t;
 
@@ -38,13 +54,22 @@ typedef enum {
 typedef struct {
     app_state_t state;
     uint32_t events_dropped;
+    uint32_t last_user_ms;
+    bool has_last_btn;
+    btn_fsm_out_t last_btn;
+    uint32_t last_btn_ms;
 } app_snapshot_t;
 
-/** Creates the event queue and registers the application's console commands. */
+/**
+ * Creates the event queue, initialises the drivers that report to the app
+ * (buttons, feedback, power) and registers the application's console commands.
+ */
 esp_err_t app_init(void);
 
-/** Starts the app task and the 1 Hz tick. */
+/** Starts the app task, the pwr task and the 1 Hz tick. */
 esp_err_t app_start(void);
+
+uint32_t app_now_ms(void);
 
 /** Posts an event to the app task; returns false if the queue stayed full for 10 ms. */
 bool app_post(const app_event_t *ev);

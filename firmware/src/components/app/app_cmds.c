@@ -2,8 +2,10 @@
 
 #include "app.h"
 #include "app_tasks.h"
+#include "battery.h"
 #include "console.h"
 #include "display.h"
+#include "power.h"
 #include "storage.h"
 #include "ui.h"
 
@@ -100,6 +102,31 @@ static console_rc_t cmd_state(int argc, char **argv, const char *raw_args)
     cJSON *settings = cJSON_AddObjectToObject(root, "settings");
     for (storage_setting_t s = 0; s < STORAGE_SETTING_COUNT; s++) {
         cJSON_AddNumberToObject(settings, storage_setting_name(s), storage_get_setting(s));
+    }
+
+    const uint32_t now = app_now_ms();
+    cJSON_AddNumberToObject(root, "idleS", (now - snap.last_user_ms) / 1000);
+
+    power_battery_t batt;
+    power_get_battery(&batt);
+    cJSON *battery = cJSON_AddObjectToObject(root, "battery");
+    cJSON_AddStringToObject(battery, "state", batt.valid ? battery_state_name(batt.state) : "unknown");
+    cJSON_AddNumberToObject(battery, "pct", batt.pct);
+    cJSON_AddNumberToObject(battery, "mv", batt.mv);
+    cJSON_AddBoolToObject(battery, "extPower", batt.ext_power);
+    cJSON_AddBoolToObject(battery, "low", batt.low);
+    cJSON_AddBoolToObject(battery, "critical", batt.critical);
+    cJSON_AddBoolToObject(battery, "injected", batt.injected);
+    cJSON_AddStringToObject(battery, "presence", battery_presence_name(batt.presence));
+
+    if (snap.has_last_btn) {
+        cJSON *btn = cJSON_AddObjectToObject(root, "lastButton");
+        cJSON_AddStringToObject(btn, "id", btn_id_name(snap.last_btn.id));
+        cJSON_AddStringToObject(btn, "kind", btn_kind_name(snap.last_btn.kind));
+        cJSON_AddBoolToObject(btn, "swallowed", snap.last_btn.swallowed);
+        cJSON_AddNumberToObject(btn, "agoMs", now - snap.last_btn_ms);
+    } else {
+        cJSON_AddNullToObject(root, "lastButton");
     }
     return send(root);
 }
@@ -222,11 +249,12 @@ static console_rc_t cmd_tasks(int argc, char **argv, const char *raw_args)
 }
 
 static const console_cmd_t CMDS[] = {
-    {"version", "firmware, IDF, protocol, device id, reset reason, uptime", cmd_version},
     {"state", "application state as one JSON object", cmd_state},
     {"screen", "current screen id and visible texts", cmd_screen},
     {"screenshot", "dump the panel content (RGB565LE, base64, CRC-32)", cmd_screenshot},
     {"tasks", "stack high-water marks in bytes", cmd_tasks},
+    /* Last: answering `version` tells host tools that every command exists. */
+    {"version", "firmware, IDF, protocol, device id, reset reason, uptime", cmd_version},
 };
 
 esp_err_t app_cmds_register(void)
