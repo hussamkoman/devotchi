@@ -39,13 +39,23 @@ claude mcp add devotchi -- node packages/client/dist/cli.js mcp
 ## Client CLI
 
 ```bash
-devotchi start                    # Start dashboard (default: connects to hosted server)
-devotchi start --local            # Start with embedded local server
+devotchi start                    # Start dashboard (connects to the configured server)
+devotchi start --local [--lan]    # Run the real server in-process (127.0.0.1, or all interfaces with --lan)
 devotchi start --server <url>     # Connect to custom server
 devotchi mcp                      # Run MCP server on stdio
-devotchi setup                    # Auto-configure Claude Code hooks
-devotchi config                   # Show current configuration
+devotchi setup [--dir D] [--check|--remove]  # Install, check or remove the nine Claude Code hooks
+devotchi pair <CODE> | pair --new # Confirm a device's code / create one for the device console
+devotchi devices [list|rename|identify|rm]   # Device registry with liveness
+devotchi status | doctor          # Reachability, token, devices, last request / ordered read-only checks
+devotchi mode [ask|desk] | hold [s]          # Room mode and hold time (10..300 s)
+devotchi notify <event> [detail] | run -- <cmd...>  # Notify from scripts / wrap a command
+devotchi sim [--approve all|none|defer|after=MS|manual]  # Headless virtual device (JSON lines)
+devotchi login | logout           # Multi-user accounts
+devotchi config [get|set|path]    # Show or change configuration
 ```
+
+Every command that talks to a server takes `--server <url>`. Tests set
+`DEVOTCHI_CONFIG_DIR` to a temporary directory and listen on ephemeral ports.
 
 ## Key design decisions
 
