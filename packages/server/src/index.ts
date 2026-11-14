@@ -1,108 +1,65 @@
-import "./types.js";
-import { createServer } from "node:http";
-import Koa from "koa";
-import cors from "@koa/cors";
-import { loadConfig } from "./config.js";
-import { initDatabase, saveDatabase } from "./db/index.js";
-import { authRoutes } from "./routes/auth.js";
-import { deviceRoutes } from "./routes/devices.js";
-import { hookRoutes } from "./routes/hooks.js";
-import { RoomState } from "./ws/rooms.js";
-import { attachWebSocket } from "./ws/router.js";
+#!/usr/bin/env node
+// Executable: configuration from the environment, signals, exit codes
+// (0 clean stop, 1 runtime or startup failure, 2 invalid configuration).
 
-async function main(): Promise<void> {
-  const config = loadConfig();
-  const db = await initDatabase(config.dbPath);
-  const state = new RoomState();
+import { ConfigError, StartupError, createServer, loadConfig, type DevotchiServer } from "./app.js";
+import { Logger, errorFields } from "./log.js";
 
-  const app = new Koa();
-
-  app.use(
-    cors({
-      origin: config.corsOrigins.length > 0
-        ? (ctx) => {
-            const origin = ctx.get("Origin");
-            return config.corsOrigins.includes(origin) ? origin : "";
-          }
-        : "*",
-    })
-  );
-
-  app.use(async (ctx, next) => {
-    if (ctx.is("application/json")) {
-      const chunks: Buffer[] = [];
-      for await (const chunk of ctx.req) {
-        chunks.push(chunk as Buffer);
-      }
-      const raw = Buffer.concat(chunks).toString();
-      if (raw) {
-        try {
-          ctx.request.body = JSON.parse(raw);
-        } catch {
-          ctx.status = 400;
-          ctx.body = { error: "Invalid JSON" };
-          return;
-        }
-      }
-    }
-    await next();
-  });
-
-  const health = new (await import("@koa/router")).default();
-  health.get("/", async (ctx) => {
-    ctx.body = {
-      status: "ok",
-      connections: state.connectionCount,
-      mode: config.mode,
-    };
-  });
-
-  const auth = authRoutes(db, config);
-  const devices = deviceRoutes(db);
-  const hooks = hookRoutes(state, db);
-
-  app.use(health.routes()).use(health.allowedMethods());
-  app.use(auth.routes()).use(auth.allowedMethods());
-  app.use(devices.routes()).use(devices.allowedMethods());
-  app.use(hooks.routes()).use(hooks.allowedMethods());
-
-  const server = createServer(app.callback());
-  const { wss, heartbeatInterval } = attachWebSocket(server, state, db);
-
-  function shutdown(): void {
-    console.log("[shutdown] closing connections...");
-    clearInterval(heartbeatInterval);
-
-    for (const [id, pending] of state.pendingHookRequests) {
-      clearTimeout(pending.timer);
-      state.pendingHookRequests.delete(id);
-    }
-
-    for (const [ws] of state.clients) {
-      ws.close(1001, "server shutting down");
-    }
-
-    saveDatabase();
-
-    wss.close(() => {
-      server.close(() => {
-        console.log("[shutdown] done");
-        process.exit(0);
-      });
-    });
-
-    setTimeout(() => process.exit(0), 5000).unref();
-  }
-
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
-
-  server.listen(config.port, () => {
-    console.log(`Devotchi server listening on port ${config.port} (${config.mode} mode)`);
-  });
+function fatal(message: string, code: number): never {
+  process.stderr.write(`devotchi-server: ${message}\n`);
+  process.exit(code);
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
+async function main(): Promise<void> {
+  let env;
+  try {
+    env = loadConfig(process.env);
+  } catch (err) {
+    if (err instanceof ConfigError) fatal(err.message, 2);
+    throw err;
+  }
+  const log = new Logger(env.config.logLevel);
+  for (const warning of env.warnings) log.warn(warning);
+
+  process.on("uncaughtException", (err) => {
+    log.error("uncaught exception", errorFields(err));
+    process.exit(1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    log.error("unhandled rejection", errorFields(reason));
+    process.exit(1);
+  });
+
+  let server: DevotchiServer;
+  try {
+    server = await createServer(env.config);
+  } catch (err) {
+    if (err instanceof ConfigError) fatal(err.message, 2);
+    if (err instanceof StartupError) fatal(err.message, 1);
+    throw err;
+  }
+
+  let stopping = false;
+  const stop = (signal: string) => {
+    if (stopping) {
+      log.warn("second signal, exiting immediately", { signal });
+      process.exit(1);
+    }
+    stopping = true;
+    log.info("shutting down", { signal });
+    server.close().then(
+      () => process.exit(0),
+      (err: unknown) => {
+        log.error("shutdown failed", errorFields(err));
+        process.exit(1);
+      },
+    );
+  };
+  process.on("SIGINT", () => stop("SIGINT"));
+  process.on("SIGTERM", () => stop("SIGTERM"));
+}
+
+main().catch((err: unknown) => {
+  process.stderr.write(`devotchi-server: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
 });

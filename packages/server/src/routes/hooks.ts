@@ -1,144 +1,147 @@
+// Claude Code HTTP hooks (protocol section 8): the v1 routes
+// /hook/permission, /hook/status and /hook/stop.
+
 import { randomBytes } from "node:crypto";
 import Router from "@koa/router";
-import type { Database } from "../db/index.js";
 import {
-  DEFAULT_HOLD_MS,
   buildDismiss,
+  buildError,
+  buildNotify,
   buildPermission,
+  buildStatus,
   formatToolCall,
-  type PermissionResponseMessage,
+  type HookReply,
 } from "@devotchi/shared";
-import type { RoomState } from "../ws/rooms.js";
-import { tokenFromQuery } from "../middleware/auth.js";
+import type { ResolvedConfig } from "../config.js";
+import { authOf, requireAuth, requireCli, type Authenticator } from "../http/auth.js";
+import { byToken, type RateLimits } from "../http/rate-limit.js";
+import type { Logger } from "../log.js";
+import type { RoomRegistry } from "../rooms/registry.js";
+import type { WsServer } from "../ws/server.js";
 
-function generateId(): string {
-  return randomBytes(16).toString("hex");
+export interface HookRouteDeps {
+  config: ResolvedConfig;
+  auth: Authenticator;
+  limits: RateLimits;
+  rooms: RoomRegistry;
+  ws: WsServer;
+  log: Logger;
 }
 
-export function hookRoutes(state: RoomState, db: Database): Router {
+interface PendingHook {
+  roomId: string;
+  timer: NodeJS.Timeout;
+  resolve: (reply: HookReply | null) => void;
+}
+
+type HookBody = Record<string, unknown>;
+
+function hookBody(body: unknown): HookBody {
+  return typeof body === "object" && body !== null && !Array.isArray(body) ? (body as HookBody) : {};
+}
+
+export interface HookRoutes {
+  router: Router;
+  /** Answers every held request with the neutral reply. */
+  shutdown(): void;
+}
+
+export function hookRoutes(deps: HookRouteDeps): HookRoutes {
+  const { config, auth, limits, rooms, ws, log } = deps;
   const router = new Router({ prefix: "/hook" });
-  const auth = tokenFromQuery(db);
+  const guard = [requireAuth(auth, { allowQuery: true }), requireCli(), limits.middleware(600, byToken)];
+  const pending = new Map<string, PendingHook>();
 
-  router.post("/permission", auth, async (ctx) => {
-    const roomId = ctx.state.roomId as string;
-    const room = state.rooms.get(roomId);
+  ws.handle("permission_response", (conn, msg, room) => {
+    const request = pending.get(msg.id);
+    if (!request || request.roomId !== room.id) {
+      conn.send(buildError("UNKNOWN_REQUEST", "not pending", msg.id));
+      return;
+    }
+    clearTimeout(request.timer);
+    pending.delete(msg.id);
+    const outcome = msg.granted ? "allow" : "deny";
+    rooms.broadcastToConsumers(
+      room,
+      buildDismiss({ id: msg.id, reason: "answered", outcome, by: conn.registration?.identity ?? "unknown" }),
+    );
+    request.resolve({
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: msg.granted ? { behavior: "allow" } : { behavior: "deny", message: "Denied on Devotchi" },
+      },
+    });
+  });
 
+  router.post("/permission", ...guard, async (ctx) => {
+    const roomId = authOf(ctx).roomId;
+    const room = rooms.get(roomId);
     if (!room || room.consumers.size === 0) {
-      console.log(`[hook/permission] no consumers for room ${roomId}, neutral reply`);
       ctx.body = {};
       return;
     }
-
-    const body = ctx.request.body as Record<string, unknown> | undefined;
-    if (!body) {
-      ctx.status = 400;
-      ctx.body = { error: "Invalid JSON body" };
-      return;
-    }
-
-    const id = generateId();
-    const formatted = formatToolCall(
-      body.tool_name,
-      body.tool_input,
-      typeof body.cwd === "string" ? body.cwd : undefined
+    const body = hookBody(ctx.request.body);
+    const id = randomBytes(16).toString("hex");
+    const formatted = formatToolCall(body.tool_name, body.tool_input, typeof body.cwd === "string" ? body.cwd : undefined);
+    const holdMs = config.timing.holdMs;
+    rooms.broadcastToConsumers(
+      room,
+      buildPermission({ id, ...formatted, timeout: holdMs, timestamp: new Date().toISOString() }),
     );
-
-    state.sendToConsumers(
-      roomId,
-      buildPermission({ id, ...formatted, timeout: DEFAULT_HOLD_MS, timestamp: new Date().toISOString() })
-    );
-    console.log(`[hook/permission] ${formatted.tool} -> room ${roomId} (id=${id})`);
 
     const res = ctx.res;
-    const response = await new Promise<PermissionResponseMessage | null>((resolve) => {
+    const reply = await new Promise<HookReply | null>((resolve) => {
       const timer = setTimeout(() => {
-        state.pendingHookRequests.delete(id);
-        state.sendToConsumers(roomId, buildDismiss({ id, reason: "timeout" }));
-        resolve(null);
-      }, DEFAULT_HOLD_MS);
-
-      state.pendingHookRequests.set(id, { resolve, timer });
-
+        pending.delete(id);
+        rooms.broadcastToConsumers(room, buildDismiss({ id, reason: "timeout" }));
+        resolve({});
+      }, holdMs);
+      pending.set(id, { roomId, timer, resolve });
+      // The response stream closing before a reply was written is a client
+      // abort; the request stream closes as soon as the body has been read.
       res.on("close", () => {
-        if (res.writableEnded) return;
-        const pending = state.pendingHookRequests.get(id);
-        if (pending) {
-          clearTimeout(pending.timer);
-          state.pendingHookRequests.delete(id);
-          state.sendToConsumers(roomId, buildDismiss({ id, reason: "cancelled" }));
-          console.log(`[hook/permission] ${id} -> dismissed (client disconnected)`);
-          resolve(null);
-        }
+        if (res.writableEnded || !pending.has(id)) return;
+        clearTimeout(timer);
+        pending.delete(id);
+        rooms.broadcastToConsumers(room, buildDismiss({ id, reason: "cancelled" }));
+        resolve(null);
       });
     });
-
-    if (response) {
-      const granted = response.granted;
-      console.log(`[hook/permission] ${id} -> ${granted ? "allow" : "deny"}`);
-      ctx.body = {
-        hookSpecificOutput: {
-          hookEventName: "PermissionRequest",
-          decision: { behavior: granted ? "allow" : "deny" },
-        },
-      };
-    } else {
-      console.log(`[hook/permission] ${id} -> timeout, neutral reply`);
-      ctx.body = {};
-    }
+    log.info("permission request resolved", { decided: reply !== null && "hookSpecificOutput" in reply });
+    ctx.body = reply ?? {};
   });
 
-  router.post("/status", auth, async (ctx) => {
-    const roomId = ctx.state.roomId as string;
+  router.post("/status", ...guard, (ctx) => {
+    const body = hookBody(ctx.request.body);
+    const room = rooms.get(authOf(ctx).roomId);
+    if (room) {
+      const { summary } = formatToolCall(body.tool_name, body.tool_input);
+      rooms.broadcastToConsumers(room, buildStatus({ msg: summary, timestamp: new Date().toISOString() }));
+    }
+    ctx.body = {};
+  });
 
-    try {
-      const body = ctx.request.body as Record<string, unknown> | undefined;
-      const toolName = (body?.tool_name as string) || "unknown";
-      const toolInput = (body?.tool_input as Record<string, unknown>) || {};
+  router.post("/stop", ...guard, (ctx) => {
+    const room = rooms.get(authOf(ctx).roomId);
+    if (room) {
+      rooms.broadcastToConsumers(
+        room,
+        buildNotify({ event: "task_complete", mood: "sleeping", urgency: 2, detail: "Done", timestamp: new Date().toISOString() }),
+      );
+    }
+    ctx.body = {};
+  });
 
-      let description = toolName;
-      if (toolName === "Bash" && toolInput.command) {
-        description = String(toolInput.command).slice(0, 200);
-      } else if (
-        (toolName === "Write" || toolName === "Edit") &&
-        toolInput.file_path
-      ) {
-        description = `${toolName}: ${toolInput.file_path}`;
+  return {
+    router,
+    shutdown() {
+      for (const [id, request] of pending) {
+        clearTimeout(request.timer);
+        pending.delete(id);
+        const room = rooms.get(request.roomId);
+        if (room) rooms.broadcastToConsumers(room, buildDismiss({ id, reason: "released" }));
+        request.resolve({});
       }
-
-      state.sendToConsumers(roomId, {
-        type: "status",
-        msg: description.slice(0, 200),
-        mood: "working",
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[hook/status] error:", message);
-    }
-
-    ctx.body = {};
-  });
-
-  router.post("/stop", auth, async (ctx) => {
-    const roomId = ctx.state.roomId as string;
-
-    state.sendToConsumers(roomId, {
-      type: "notify",
-      event: "task_complete",
-      mood: "idle",
-      detail: "Agent stopped",
-      timestamp: new Date().toISOString(),
-    });
-
-    state.sendToConsumers(roomId, {
-      type: "mood",
-      mood: "sleeping",
-      reason: "Waiting for instructions",
-      timestamp: new Date().toISOString(),
-    });
-
-    ctx.body = {};
-  });
-
-  return router;
+    },
+  };
 }
