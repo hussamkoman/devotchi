@@ -5,11 +5,15 @@
 #include "fb_seq.h"
 #include "feedback.h"
 #include "pet_model.h"
+#include "pet_pose.h"
 #include "proto.h"
 #include "reqq.h"
+#include "storage.h"
 #include "text.h"
 #include "ui.h"
+#include "wifi.h"
 
+#include "esp_app_desc.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -38,6 +42,8 @@ static const char *TAG = "flow";
 #define EVT_SIZE            256
 #define TOAST_SIZE          UI_TEXT_SIZE
 #define VIEW_LOCK_MS        100
+/* The About page gives way to the face after this long without a button press. */
+#define PAGE_IDLE_MS        20000
 
 /* Everything below belongs to the app task, except s_view (guarded by s_view_lock). */
 
@@ -62,6 +68,9 @@ static char s_banner_shown[TOAST_SIZE];
 static bool s_banner_visible;
 
 static ui_screen_id_t s_screen = UI_SCREEN_PET;
+static ui_pet_page_t s_page = UI_PET_PAGE_PET;
+static uint32_t s_page_at;
+static pet_pokes_t s_pokes;
 
 static SemaphoreHandle_t s_view_lock;
 static app_flow_view_t s_view;
@@ -106,7 +115,7 @@ static void json_escape(char *dst, size_t cap, const char *src)
     dst[n] = '\0';
 }
 
-static void toast(const char *text)
+void app_toast(const char *text)
 {
     ui_toast(text, UI_TOAST_DEFAULT_MS);
     /* Static: app task only, and too large for its stack. */
@@ -306,14 +315,14 @@ static void on_dismiss(const proto_dismiss_t *d, uint32_t now)
     if (visible && !ours) {
         switch (d->reason) {
         case PROTO_DISMISS_ANSWERED:
-            toast("Answered elsewhere");
+            app_toast("Answered elsewhere");
             play(FB_SEQ_TICK, 0);
             break;
         case PROTO_DISMISS_CANCELLED:
-            toast("Handled in terminal");
+            app_toast("Handled in terminal");
             break;
         case PROTO_DISMISS_TIMEOUT:
-            toast("Timed out - use terminal");
+            app_toast("Timed out - use terminal");
             break;
         case PROTO_DISMISS_RELEASED:
             break;
@@ -332,11 +341,11 @@ static void on_error(const proto_error_t *err, uint32_t now)
     if (strcmp(err->code, "UNKNOWN_REQUEST") == 0) {
         reqq_remove(&s_q, err->id);
         request_evt("remove", err->id, "unknown");
-        toast("No longer pending");
+        app_toast("No longer pending");
         queue_changed(now);
     } else if (strcmp(err->code, "INVALID_MESSAGE") == 0) {
         e->answered = false;
-        toast("Not delivered");
+        app_toast("Not delivered");
     } else {
         ESP_LOGD(TAG, "server error %s for a queued request", err->code);
     }
@@ -362,7 +371,7 @@ static void on_notify(const proto_notify_t *n, uint32_t now)
     }
     char text[TOAST_SIZE];
     pet_notify_text(text, sizeof(text), n);
-    toast(text);
+    app_toast(text);
     if (n->urgency < 2) {
         return;
     }
@@ -439,7 +448,7 @@ void app_flow_on_link_lost(uint32_t now)
         reqq_remove(&s_q, id);
         request_evt("remove", id, "link_lost");
     }
-    toast("Connection lost - answer in terminal");
+    app_toast("Connection lost - answer in terminal");
     queue_changed(now);
 }
 
@@ -463,7 +472,7 @@ static void answer(reqq_entry_t *e, bool granted, uint32_t now)
         still->answered_ms = now;
         schedule_nag(now);
     } else {
-        toast("Not delivered");
+        app_toast("Not delivered");
     }
 }
 
@@ -483,7 +492,7 @@ static void defer(reqq_entry_t *e, uint32_t now)
         still->answered = true;
         still->answered_ms = now;
     } else {
-        toast("Not delivered");
+        app_toast("Not delivered");
     }
 }
 
@@ -496,7 +505,7 @@ static void on_approval_button(const btn_fsm_out_t *out, uint32_t now)
     if (out->id == BTN_APPROVE && out->kind == BTN_CLICK) {
         play(FB_SEQ_CLICK, 0);
         if (e->risk == PROTO_RISK_HIGH) {
-            toast("Hold to approve");
+            app_toast("Hold to approve");
         } else {
             answer(e, true, now);
         }
@@ -518,20 +527,51 @@ static void on_approval_button(const btn_fsm_out_t *out, uint32_t now)
     }
 }
 
-static void on_pet_button(const btn_fsm_out_t *out, uint32_t now)
+static void pet_evt(ui_pet_reaction_t r)
 {
-    if (out->id != BTN_REJECT || out->kind != BTN_LONG) {
-        return;
-    }
-    const proto_mode_t next = app_link_mode() == PROTO_MODE_DESK ? PROTO_MODE_ASK : PROTO_MODE_DESK;
-    char extra[24];
-    snprintf(extra, sizeof(extra), ",\"mode\":\"%s\"", proto_mode_name(next));
-    app_link_send(now, "set_mode", s_tx, proto_write_set_mode(s_tx, sizeof(s_tx), next), extra);
-    toast(next == PROTO_MODE_DESK ? "At desk: on" : "At desk: off");
-    play(FB_SEQ_TICK, 0);
+    char evt[48];
+    snprintf(evt, sizeof(evt), "{\"evt\":\"pet\",\"action\":\"%s\"}", ui_pet_reaction_name(r));
+    console_evt(evt);
 }
 
-void app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
+static void set_page(ui_pet_page_t page, uint32_t now)
+{
+    s_page = page;
+    s_page_at = now;
+    char evt[48];
+    snprintf(evt, sizeof(evt), "{\"evt\":\"page\",\"page\":\"%s\"}", page == UI_PET_PAGE_ABOUT ? "about" : "pet");
+    console_evt(evt);
+}
+
+static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
+{
+    if (out->id == BTN_ACTION && out->kind == BTN_LONG) {
+        return false;
+    }
+    if (out->id == BTN_REJECT && out->kind == BTN_LONG) {
+        const proto_mode_t next = app_link_mode() == PROTO_MODE_DESK ? PROTO_MODE_ASK : PROTO_MODE_DESK;
+        char extra[24];
+        snprintf(extra, sizeof(extra), ",\"mode\":\"%s\"", proto_mode_name(next));
+        app_link_send(now, "set_mode", s_tx, proto_write_set_mode(s_tx, sizeof(s_tx), next), extra);
+        app_toast(next == PROTO_MODE_DESK ? "At desk: on" : "At desk: off");
+        play(FB_SEQ_TICK, 0);
+    } else if (out->id == BTN_ACTION) {
+        set_page(s_page == UI_PET_PAGE_PET ? UI_PET_PAGE_ABOUT : UI_PET_PAGE_PET, now);
+    } else if (s_page == UI_PET_PAGE_ABOUT) {
+        s_page_at = now;
+    } else if (out->id == BTN_APPROVE) {
+        ui_pet_react(UI_PET_REACT_PAT);
+        play(FB_SEQ_TICK, 0);
+        pet_evt(UI_PET_REACT_PAT);
+    } else {
+        const ui_pet_reaction_t r = pet_pokes_add(&s_pokes, now) ? UI_PET_REACT_DIZZY : UI_PET_REACT_POKE;
+        ui_pet_react(r);
+        pet_evt(r);
+    }
+    return true;
+}
+
+bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
 {
     if (s_attention) {
         /* The press that acknowledges an urgent notification does nothing else. */
@@ -539,16 +579,26 @@ void app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
         if (feedback_current() == FB_SEQ_ATTENTION) {
             feedback_stop();
         }
-        return;
+        return true;
     }
     if (identify_active(now)) {
-        return;
+        return true;
     }
     if (s_screen == UI_SCREEN_APPROVAL) {
         on_approval_button(out, now);
-    } else {
-        on_pet_button(out, now);
+        return true;
     }
+    return on_pet_button(out, now);
+}
+
+void app_flow_show_about(uint32_t now)
+{
+    set_page(UI_PET_PAGE_ABOUT, now);
+}
+
+bool app_flow_takes_over(uint32_t now)
+{
+    return identify_active(now) || reqq_head(&s_q) != NULL;
 }
 
 /* ---- timers ---- */
@@ -569,7 +619,7 @@ static void run_deadlines(uint32_t now)
         expired = true;
     }
     if (expired) {
-        toast("Timed out - use terminal");
+        app_toast("Timed out - use terminal");
         queue_changed(now);
         if (reqq_count(&s_q) > 0) {
             schedule_nag(now);
@@ -579,7 +629,7 @@ static void run_deadlines(uint32_t now)
         reqq_entry_t *e = &s_q.entries[i];
         if (e->answered && now - e->answered_ms >= CONFIRM_MS) {
             e->answered = false;
-            toast("Not delivered");
+            app_toast("Not delivered");
             schedule_nag(now);
         }
     }
@@ -596,6 +646,9 @@ static void run_deadlines(uint32_t now)
     }
     if (s_identify_until != 0 && due(s_identify_until, now)) {
         s_identify_until = 0;
+    }
+    if (s_page == UI_PET_PAGE_ABOUT && due(after(s_page_at, PAGE_IDLE_MS), now)) {
+        set_page(UI_PET_PAGE_PET, now);
     }
 }
 
@@ -620,6 +673,9 @@ void app_flow_arm_timer(uint32_t now)
     }
     if (s_screen == UI_SCREEN_APPROVAL && reqq_count(&s_q) > 0) {
         at = earliest(at, after(now, BAR_REFRESH_MS), now);
+    }
+    if (s_page == UI_PET_PAGE_ABOUT) {
+        at = earliest(at, after(s_page_at, PAGE_IDLE_MS), now);
     }
     esp_timer_stop(s_timer);
     if (at == 0) {
@@ -733,6 +789,48 @@ static void preview_entry(reqq_entry_t *e, bool high, uint32_t now)
     e->deadline_ms = now + 21000;
 }
 
+static void render_about(void)
+{
+    /* Static: app task only, and the snapshot is too large for its stack. */
+    static app_snapshot_t snap;
+    static char server[STORAGE_URL_SIZE];
+    char uptime[24];
+    char rssi[16];
+    char link[40];
+    char id[APP_DEVICE_ID_SIZE];
+    wifi_status_t w;
+    storage_url_source_t source;
+
+    app_get_snapshot(&snap);
+    wifi_get_status(&w);
+    storage_get_server_url(server, &source);
+    app_get_device_id(id);
+    const uint32_t up = app_uptime_s();
+    snprintf(uptime, sizeof(uptime), "%luh %02lum %02lus", (unsigned long)(up / 3600), (unsigned long)(up / 60 % 60),
+             (unsigned long)(up % 60));
+    if (w.connected) {
+        snprintf(rssi, sizeof(rssi), "%d dBm", w.rssi);
+    } else {
+        strlcpy(rssi, "-", sizeof(rssi));
+    }
+    snprintf(link, sizeof(link), "%s (%s)", app_state_name(snap.state), app_ws_state_name(snap.link.ws));
+    const char *values[UI_ABOUT_COUNT] = {
+        [UI_ABOUT_NAME] = snap.link.name[0] != '\0' ? snap.link.name : "-",
+        [UI_ABOUT_FW] = esp_app_get_description()->version,
+        [UI_ABOUT_DEVICE_ID] = id,
+        [UI_ABOUT_UPTIME] = uptime,
+        [UI_ABOUT_RESET] = app_reset_reason(),
+        [UI_ABOUT_SSID] = snap.link.ssid[0] != '\0' ? snap.link.ssid : "-",
+        [UI_ABOUT_IP] = w.connected ? w.ip : "-",
+        [UI_ABOUT_RSSI] = rssi,
+        [UI_ABOUT_SERVER] = snap.link.server[0] != '\0' ? snap.link.server : server,
+        [UI_ABOUT_LINK] = link,
+        [UI_ABOUT_ERROR] = snap.link.last_error[0] != '\0' ? snap.link.last_error : "-",
+        [UI_ABOUT_NVS] = storage_is_degraded() ? "error, defaults in use" : "ok",
+    };
+    ui_about_set(values);
+}
+
 ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flow_preview_t preview)
 {
     /* Static: the view is larger than the app task's stack allows for one buffer. */
@@ -757,9 +855,13 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
     }
 
     const bool identify = identify_active(now);
-    /* Identify is full-screen: the name must not sit under a banner. */
-    set_banner(identify ? NULL : s_attention ? s_attention_text : offline_banner);
     const reqq_entry_t *head = reqq_head(&s_q);
+    if (identify || head != NULL) {
+        s_page = UI_PET_PAGE_PET;
+    }
+    /* Identify is full-screen: the name must not sit under a banner; the About page shows the link itself. */
+    const bool about = s_page == UI_PET_PAGE_ABOUT;
+    set_banner(identify ? NULL : s_attention ? s_attention_text : about ? NULL : offline_banner);
     if (identify) {
         screen = UI_SCREEN_IDENTIFY;
     } else if (head != NULL) {
@@ -767,8 +869,13 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
         screen = UI_SCREEN_APPROVAL;
     } else {
         ui_pet_set(s_pet.project, s_pet.mood, s_pet.status);
+        if (about) {
+            render_about();
+        }
+        ui_pet_page_set(s_page);
         screen = UI_SCREEN_PET;
     }
+    view.page = s_page;
     s_screen = screen;
     publish_view(&view);
     return screen;
@@ -778,6 +885,7 @@ esp_err_t app_flow_init(void)
 {
     reqq_init(&s_q);
     pet_model_init(&s_pet);
+    pet_pokes_init(&s_pokes);
     app_get_device_id(s_device_id);
     s_view_lock = xSemaphoreCreateMutex();
     ESP_RETURN_ON_FALSE(s_view_lock != NULL, ESP_ERR_NO_MEM, TAG, "lock");

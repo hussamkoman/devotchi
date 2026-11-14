@@ -6,6 +6,7 @@
 #include "console.h"
 #include "display.h"
 #include "power.h"
+#include "settings_menu.h"
 #include "storage.h"
 #include "ui.h"
 #include "wifi.h"
@@ -173,7 +174,11 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "id", ui_screen_name(screen));
-    cJSON_AddStringToObject(root, "page", screen == UI_SCREEN_PET ? "pet" : "main");
+    const char *page = "main";
+    if (screen == UI_SCREEN_PET) {
+        page = s_view.page == UI_PET_PAGE_ABOUT ? "about" : "pet";
+    }
+    cJSON_AddStringToObject(root, "page", page);
     cJSON_AddBoolToObject(root, "preview", s_snap.link.preview);
     cJSON *texts = cJSON_AddArrayToObject(root, "texts");
     for (size_t i = 0; i < count; i++) {
@@ -212,6 +217,15 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
         cJSON_AddBoolToObject(req, "sent", s_view.request.answered);
     } else {
         cJSON_AddNullToObject(root, "request");
+    }
+    app_settings_view_t settings;
+    app_settings_get_view(&settings);
+    if (screen == UI_SCREEN_SETTINGS) {
+        cJSON *set = cJSON_AddObjectToObject(root, "settings");
+        cJSON_AddBoolToObject(set, "active", settings.active);
+        cJSON_AddNumberToObject(set, "cursor", settings.cursor);
+        cJSON_AddStringToObject(set, "row", settings_menu_key((settings_row_t)settings.cursor));
+        cJSON_AddBoolToObject(set, "confirming", settings.confirming);
     }
     if (s_toast[0] != '\0') {
         cJSON_AddStringToObject(root, "toast", s_toast);

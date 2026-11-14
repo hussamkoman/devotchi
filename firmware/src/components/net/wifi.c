@@ -129,3 +129,11 @@ void wifi_get_status(wifi_status_t *out)
         snprintf(out->ip, sizeof(out->ip), IPSTR, IP2STR(&ip.ip));
     }
 }
+
+esp_err_t wifi_restore(void)
+{
+    if (!atomic_load(&s_ready)) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return esp_wifi_restore();
+}

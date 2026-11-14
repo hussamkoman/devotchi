@@ -140,6 +140,7 @@ esp_err_t ui_init(void)
     s_screens[UI_SCREEN_PET] = screen_pet_create();
     s_screens[UI_SCREEN_APPROVAL] = screen_approval_create();
     s_screens[UI_SCREEN_IDENTIFY] = screen_identify_create();
+    s_screens[UI_SCREEN_SETTINGS] = screen_settings_create();
     ui_status_bar_create();
     ui_overlay_create();
     ui_status_bar_set_visible(false);
@@ -172,6 +173,7 @@ esp_err_t ui_show_screen(ui_screen_id_t id)
     if (id != s_current) {
         s_current = id;
         lv_screen_load(s_screens[id]);
+        screen_pet_set_shown(id == UI_SCREEN_PET);
         ui_status_bar_set_visible(id != UI_SCREEN_SPLASH && id != UI_SCREEN_LOWBATT && id != UI_SCREEN_IDENTIFY);
     }
     ui_unlock();

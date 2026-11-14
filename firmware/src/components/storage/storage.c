@@ -385,6 +385,17 @@ esp_err_t storage_set_setting(storage_setting_t id, uint16_t value)
     return end_write(h, err, "set setting");
 }
 
+esp_err_t storage_erase_all(void)
+{
+    nvs_handle_t h;
+    ESP_RETURN_ON_ERROR(begin_write(&h), TAG, "open");
+    const esp_err_t err = nvs_erase_all(h);
+    if (err == ESP_OK) {
+        ESP_LOGW(TAG, "namespace erased");
+    }
+    return end_write(h, err, "erase all");
+}
+
 bool storage_get_prov_request(void)
 {
     uint8_t value = 0;

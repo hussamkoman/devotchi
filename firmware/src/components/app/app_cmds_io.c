@@ -6,12 +6,17 @@
 #include "console.h"
 #include "fb_seq.h"
 #include "feedback.h"
+#include "pet_pose.h"
 #include "power.h"
+#include "proto.h"
+#include "settings_menu.h"
 #include "storage.h"
+#include "ui.h"
 
 #include "esp_check.h"
 
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -20,30 +25,33 @@ static const char *TAG = "app_cmds_io";
 #define INJECT_MV_MAX     5000
 #define FB_DURATION_MAX   600000
 
+/* Settings that are also on the Settings screen share its value tables (settings_menu.c). */
 typedef struct {
     const char *key;
     storage_setting_t id;
-    const uint16_t *values;
-    size_t count;
+    /** SETTINGS_ROW_COUNT for a setting the screen does not show. */
+    settings_row_t row;
 } setting_def_t;
 
-static const uint16_t BRIGHTNESS_VALUES[] = {25, 50, 75, 100};
-static const uint16_t DIM_S_VALUES[] = {15, 30, 60, 120};
-static const uint16_t DEEP_MIN_VALUES[] = {0, 10, 20, 60};
-static const uint16_t HAPTIC_VALUES[] = {0, 1, 2};
-static const uint16_t LED_VALUES[] = {0, 1};
-static const uint16_t BATT_VALUES[] = {0, 1, 2};
-
-#define VALUES(a) (a), (sizeof(a) / sizeof((a)[0]))
+static const uint16_t BATT_VALUES[] = {BATTERY_PRESENCE_AUTO, BATTERY_PRESENCE_YES, BATTERY_PRESENCE_NO};
 
 static const setting_def_t SETTINGS[] = {
-    {"brightness", STORAGE_SETTING_BRIGHTNESS, VALUES(BRIGHTNESS_VALUES)},
-    {"dim_s", STORAGE_SETTING_DIM_S, VALUES(DIM_S_VALUES)},
-    {"deep_min", STORAGE_SETTING_DEEP_MIN, VALUES(DEEP_MIN_VALUES)},
-    {"haptic", STORAGE_SETTING_HAPTIC, VALUES(HAPTIC_VALUES)},
-    {"led", STORAGE_SETTING_LED, VALUES(LED_VALUES)},
-    {"batt", STORAGE_SETTING_BATT, VALUES(BATT_VALUES)},
+    {"brightness", STORAGE_SETTING_BRIGHTNESS, SETTINGS_ROW_BRIGHTNESS},
+    {"dim_s", STORAGE_SETTING_DIM_S, SETTINGS_ROW_SCREEN_TIMEOUT},
+    {"deep_min", STORAGE_SETTING_DEEP_MIN, SETTINGS_ROW_DEEP_SLEEP},
+    {"haptic", STORAGE_SETTING_HAPTIC, SETTINGS_ROW_HAPTICS},
+    {"led", STORAGE_SETTING_LED, SETTINGS_ROW_LED},
+    {"batt", STORAGE_SETTING_BATT, SETTINGS_ROW_COUNT},
 };
+
+static const uint16_t *setting_values(const setting_def_t *def, size_t *count)
+{
+    if (def->row < SETTINGS_ROW_COUNT) {
+        return settings_menu_choices(def->row, count);
+    }
+    *count = sizeof(BATT_VALUES) / sizeof(BATT_VALUES[0]);
+    return BATT_VALUES;
+}
 
 #define SETTING_COUNT (sizeof(SETTINGS) / sizeof(SETTINGS[0]))
 
@@ -247,8 +255,10 @@ static console_rc_t set_list(void)
         cJSON_AddStringToObject(item, "key", def->key);
         cJSON_AddNumberToObject(item, "value", storage_get_setting(def->id));
         cJSON *allowed = cJSON_AddArrayToObject(item, "allowed");
-        for (size_t v = 0; v < def->count; v++) {
-            cJSON_AddItemToArray(allowed, cJSON_CreateNumber(def->values[v]));
+        size_t count;
+        const uint16_t *values = setting_values(def, &count);
+        for (size_t v = 0; v < count; v++) {
+            cJSON_AddItemToArray(allowed, cJSON_CreateNumber(values[v]));
         }
         cJSON_AddItemToArray(list, item);
     }
@@ -270,9 +280,11 @@ static console_rc_t cmd_set(int argc, char **argv, const char *raw_args)
             continue;
         }
         long value;
+        size_t count;
+        const uint16_t *values = setting_values(def, &count);
         if (parse_long(argv[2], 0, UINT16_MAX, &value)) {
-            for (size_t v = 0; v < def->count; v++) {
-                if (def->values[v] == value) {
+            for (size_t v = 0; v < count; v++) {
+                if (values[v] == value) {
                     return write_setting(def->id, (uint16_t)value);
                 }
             }
@@ -282,6 +294,102 @@ static console_rc_t cmd_set(int argc, char **argv, const char *raw_args)
     return console_fail(CONSOLE_ERR_BAD_ARGS, "unknown key %s", argv[1]);
 }
 
+#define PET_REQUEST_TIMEOUT_MS  3000
+
+static console_rc_t pet_mood(const char *name)
+{
+    for (int m = 0; m < MOOD_COUNT; m++) {
+        if (strcmp(name, proto_mood_name((proto_mood_t)m)) != 0) {
+            continue;
+        }
+        char frame[64];
+        snprintf(frame, sizeof(frame), "{\"type\":\"mood\",\"mood\":\"%s\"}", name);
+        bool ok;
+        char message[APP_REQUEST_MESSAGE_SIZE];
+        if (app_request(APP_REQUEST_MSG, frame, NULL, PET_REQUEST_TIMEOUT_MS, &ok, message) != APP_REQUEST_DONE) {
+            return console_fail(CONSOLE_ERR_BUSY, "no answer from the app task");
+        }
+        return ok ? CONSOLE_OK : console_fail(CONSOLE_ERR_FAILED, "%s", message);
+    }
+    return console_fail(CONSOLE_ERR_BAD_ARGS, "unknown mood %s", name);
+}
+
+static void add_pose(cJSON *obj, const pet_pose_t *p)
+{
+    char color[8];
+    snprintf(color, sizeof(color), "#%06lx", (unsigned long)(p->body_color & 0xFFFFFF));
+    cJSON_AddNumberToObject(obj, "eyeOpen", p->eye_open);
+    cJSON_AddNumberToObject(obj, "eyeSize", p->eye_size);
+    cJSON_AddNumberToObject(obj, "pupilSize", p->pupil_size);
+    cJSON_AddNumberToObject(obj, "pupilDx", p->pupil_dx);
+    cJSON_AddNumberToObject(obj, "pupilDy", p->pupil_dy);
+    cJSON_AddNumberToObject(obj, "browAngle", p->brow_angle);
+    cJSON_AddNumberToObject(obj, "mouthCurve", p->mouth_curve);
+    cJSON_AddNumberToObject(obj, "mouthOpen", p->mouth_open);
+    cJSON_AddNumberToObject(obj, "bobAmpPx", p->bob_amp_px);
+    cJSON_AddNumberToObject(obj, "bobPeriodMs", p->bob_period_ms);
+    cJSON_AddNumberToObject(obj, "blinkMinMs", p->blink_min_ms);
+    cJSON_AddNumberToObject(obj, "blinkMaxMs", p->blink_max_ms);
+    cJSON_AddNumberToObject(obj, "jitterPx", p->jitter_px);
+    cJSON_AddStringToObject(obj, "bodyColor", color);
+    cJSON_AddStringToObject(obj, "accessory", pet_accessory_name((pet_accessory_t)p->accessory));
+    static const char *const GLANCE[] = {[PET_GLANCE_OFF] = "off", [PET_GLANCE_LOOK] = "look",
+                                         [PET_GLANCE_SCAN] = "scan"};
+    cJSON_AddStringToObject(obj, "glance", p->glance <= PET_GLANCE_SCAN ? GLANCE[p->glance] : "off");
+}
+
+static console_rc_t pet_pose(void)
+{
+    ui_pet_state_t st;
+    ui_pet_get_state(&st);
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "mood", proto_mood_name(st.mood));
+    cJSON_AddNumberToObject(root, "tweenPermille", st.tween_permille);
+    cJSON_AddBoolToObject(root, "frozen", st.frozen);
+    cJSON_AddBoolToObject(root, "animating", st.animating);
+    cJSON_AddBoolToObject(root, "blinking", st.blinking);
+    cJSON_AddStringToObject(root, "reaction", ui_pet_reaction_name(st.reaction));
+    cJSON *drawn = cJSON_AddObjectToObject(root, "drawn");
+    cJSON_AddNumberToObject(drawn, "eyeOpen", st.eye_open);
+    cJSON_AddNumberToObject(drawn, "pupilDx", st.pupil_dx);
+    cJSON_AddNumberToObject(drawn, "pupilDy", st.pupil_dy);
+    cJSON_AddNumberToObject(drawn, "bobPx", st.bob_px);
+    cJSON_AddNumberToObject(drawn, "jitterPx", st.jitter_px);
+    add_pose(cJSON_AddObjectToObject(root, "pose"), &st.pose);
+    return send(root);
+}
+
+static console_rc_t cmd_pet(int argc, char **argv, const char *raw_args)
+{
+    (void)raw_args;
+    static const char USAGE[] = "pet mood <mood> | pet pose | pet freeze on|off";
+    if (argc == 3 && strcmp(argv[1], "mood") == 0) {
+        return pet_mood(argv[2]);
+    }
+    if (argc == 2 && strcmp(argv[1], "pose") == 0) {
+        return pet_pose();
+    }
+    if (argc == 3 && strcmp(argv[1], "freeze") == 0 && (strcmp(argv[2], "on") == 0 || strcmp(argv[2], "off") == 0)) {
+        ui_pet_freeze(strcmp(argv[2], "on") == 0);
+        return CONSOLE_OK;
+    }
+    return console_fail(CONSOLE_ERR_BAD_ARGS, "%s", USAGE);
+}
+
+static console_rc_t cmd_factory_reset(int argc, char **argv, const char *raw_args)
+{
+    (void)raw_args;
+    if (argc != 2 || strcmp(argv[1], "--yes-erase-wifi-and-pairing") != 0) {
+        return console_fail(CONSOLE_ERR_BAD_ARGS, "factory-reset --yes-erase-wifi-and-pairing");
+    }
+    bool ok;
+    char message[APP_REQUEST_MESSAGE_SIZE];
+    if (app_request(APP_REQUEST_FACTORY_RESET, NULL, NULL, PET_REQUEST_TIMEOUT_MS, &ok, message) != APP_REQUEST_DONE) {
+        return console_fail(CONSOLE_ERR_BUSY, "no answer from the app task");
+    }
+    return CONSOLE_OK;
+}
+
 static const console_cmd_t CMDS[] = {
     {"btn", "btn <approve|reject|action> <press|long>: inject a click or long press (wake rule applies)", cmd_btn},
     {"wake", "user activity without a button", cmd_wake},
@@ -289,6 +397,9 @@ static const console_cmd_t CMDS[] = {
     {"batt", "batt | batt inject <mv> <chrg 0|1> <stdby 0|1> | batt inject off | batt present auto|yes|no "
              "(chrg/stdby 1 = pin asserted)", cmd_batt},
     {"set", "set [<key> <value>]: list or change a setting (persisted, applied at once)", cmd_set},
+    {"pet", "pet mood <mood> | pet pose | pet freeze on|off: drive and inspect the face", cmd_pet},
+    {"factory-reset", "factory-reset --yes-erase-wifi-and-pairing: erase WiFi, pairing and settings, then restart",
+     cmd_factory_reset},
 };
 
 esp_err_t app_cmds_io_register(void)

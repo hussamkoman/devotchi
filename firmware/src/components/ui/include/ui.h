@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pet_pose.h"
 #include "proto.h"
 
 #include "esp_err.h"
@@ -121,6 +122,88 @@ void ui_overlay_get(char toast[UI_TEXT_SIZE], char banner[UI_TEXT_SIZE]);
 
 /** Pet screen: project header, face for the mood, status line. */
 void ui_pet_set(const char *project, proto_mood_t mood, const char *status);
+
+typedef enum {
+    UI_PET_PAGE_PET,
+    UI_PET_PAGE_ABOUT,
+    UI_PET_PAGE_COUNT,
+} ui_pet_page_t;
+
+/** Shows the face or the About page of the pet screen; the face animates only on its own page. */
+void ui_pet_page_set(ui_pet_page_t page);
+
+/** Rows of the About page; each is shown as "<label>: <value>". */
+typedef enum {
+    UI_ABOUT_NAME,
+    UI_ABOUT_FW,
+    UI_ABOUT_DEVICE_ID,
+    UI_ABOUT_UPTIME,
+    UI_ABOUT_RESET,
+    UI_ABOUT_SSID,
+    UI_ABOUT_IP,
+    UI_ABOUT_RSSI,
+    UI_ABOUT_SERVER,
+    UI_ABOUT_LINK,
+    UI_ABOUT_ERROR,
+    UI_ABOUT_NVS,
+    UI_ABOUT_COUNT,
+} ui_about_row_t;
+
+void ui_about_set(const char *const values[UI_ABOUT_COUNT]);
+
+typedef enum {
+    UI_PET_REACT_NONE,
+    /** Happy arc eyes for 1.5 s. */
+    UI_PET_REACT_PAT,
+    /** Squish and squint for 600 ms. */
+    UI_PET_REACT_POKE,
+    /** Spiral eyes for 2 s. */
+    UI_PET_REACT_DIZZY,
+} ui_pet_reaction_t;
+
+const char *ui_pet_reaction_name(ui_pet_reaction_t r);
+
+void ui_pet_react(ui_pet_reaction_t r);
+
+/** Lets the face animate (the power stage is active); false stops every animation timer. */
+void ui_pet_set_running(bool running);
+
+/** Frozen: no blink, bob, glance or jitter, and mood changes land at once (reproducible screenshots). */
+void ui_pet_freeze(bool frozen);
+
+typedef struct {
+    proto_mood_t mood;
+    /** The pose the mood tween is at. */
+    pet_pose_t pose;
+    uint16_t tween_permille;
+    /** What is drawn: eye openness after blink and reaction, pupils with the glance, offsets in pixels. */
+    int16_t eye_open;
+    int16_t pupil_dx;
+    int16_t pupil_dy;
+    int16_t bob_px;
+    int16_t jitter_px;
+    bool blinking;
+    ui_pet_reaction_t reaction;
+    bool frozen;
+    /** The animation timer runs (pet page on screen and the stage allows it). */
+    bool animating;
+} ui_pet_state_t;
+
+void ui_pet_get_state(ui_pet_state_t *out);
+
+#define UI_SETTINGS_ROWS        10
+#define UI_SETTINGS_VALUE_SIZE  16
+
+typedef struct {
+    const char *labels[UI_SETTINGS_ROWS];
+    char values[UI_SETTINGS_ROWS][UI_SETTINGS_VALUE_SIZE];
+    uint8_t cursor;
+    /** The cursor row asks for the second ACTION click. */
+    bool confirming;
+} ui_settings_t;
+
+/** Settings list; rows are restyled only when the cursor or the confirmation changed. */
+void ui_settings_set(const ui_settings_t *s);
 
 typedef struct {
     const char *tool;

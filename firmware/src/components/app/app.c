@@ -432,9 +432,10 @@ static void handle_power(const app_event_t *ev)
              battery_state_name(b.state), b.pct, (long)b.mv, b.ext_power ? "true" : "false",
              ev->arg.u32 != 0 ? "true" : "false", b.low ? "true" : "false", b.critical ? "true" : "false");
     console_evt(evt);
+    app_telemetry_tick(app_now_ms());
 }
 
-static void handle_setting(storage_setting_t id)
+void app_apply_setting(storage_setting_t id)
 {
     switch (id) {
     case STORAGE_SETTING_BRIGHTNESS:
@@ -487,7 +488,7 @@ static void handle_event(const app_event_t *ev)
         handle_power(ev);
         break;
     case APP_EV_SETTING_CHANGED:
-        handle_setting((storage_setting_t)ev->arg.u32);
+        app_apply_setting((storage_setting_t)ev->arg.u32);
         xSemaphoreGive(s_setting_applied);
         break;
     }

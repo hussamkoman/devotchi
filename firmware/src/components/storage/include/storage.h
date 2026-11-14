@@ -72,6 +72,12 @@ const char *storage_setting_name(storage_setting_t id);
 uint16_t storage_get_setting(storage_setting_t id);
 esp_err_t storage_set_setting(storage_setting_t id, uint16_t value);
 
+/**
+ * Factory reset: erases every key of the devotchi namespace (nvs_erase_all on
+ * that namespace, never the partition), backups included.
+ */
+esp_err_t storage_erase_all(void);
+
 bool storage_get_prov_request(void);
 esp_err_t storage_set_prov_request(bool requested);
 

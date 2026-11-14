@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proto.h"
+#include "ui.h"
 
 #include "lvgl.h"
 
@@ -15,16 +16,26 @@ lv_obj_t *screen_pairing_create(void);
 lv_obj_t *screen_pet_create(void);
 lv_obj_t *screen_approval_create(void);
 lv_obj_t *screen_identify_create(void);
+lv_obj_t *screen_settings_create(void);
+
+/** Caller holds the ui lock; tells the pet screen whether it is the loaded screen. */
+void screen_pet_set_shown(bool shown);
 
 /* Status bar, toast and banner live on lv_layer_top(); created once from ui_init(). */
 void ui_status_bar_create(void);
 void ui_status_bar_set_visible(bool visible);
 void ui_overlay_create(void);
 
-/** Face of the pet inside parent; the rest of the ui only uses these two calls. */
+/* The animated face; every call below needs the ui lock. */
 void pet_view_create(lv_obj_t *parent);
-/** Caller holds the ui lock. */
 void pet_view_set_mood(proto_mood_t mood);
+/** On screen: the pet screen is loaded and shows its face page; the face is hidden otherwise. */
+void pet_view_set_visible(bool visible);
+/** The power stage allows animation. */
+void pet_view_set_powered(bool powered);
+void pet_view_set_frozen(bool frozen);
+void pet_view_react(ui_pet_reaction_t r);
+void pet_view_get_state(ui_pet_state_t *out);
 
 /** Marks a label whose text ui_get_texts() must not reveal (the provisioning proof-of-possession). */
 #define UI_FLAG_SECRET  LV_OBJ_FLAG_USER_1

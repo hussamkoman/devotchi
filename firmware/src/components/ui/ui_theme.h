@@ -18,6 +18,13 @@
 #define UI_COLOR_DIVIDER     lv_color_hex(0x30343A)
 #define UI_COLOR_TOAST_BG    lv_color_hex(0x2C3036)
 #define UI_COLOR_INACTIVE    lv_color_hex(0x4A4F55)
+/* The pet's body colour comes from its pose (pet_pose.c); these draw the features on it. */
+#define UI_COLOR_PET_INK     lv_color_hex(0x1B1E22)
+#define UI_COLOR_PET_EYE     lv_color_hex(0xFFFFFF)
+#define UI_COLOR_PET_DROP    lv_color_hex(0xB3E5FC)
+#define UI_COLOR_PET_SPARKLE UI_COLOR_WARN
+#define UI_COLOR_PET_ZZZ     UI_COLOR_TEXT_DIM
+#define UI_COLOR_PET_DOTS    UI_COLOR_TEXT
 
 #define UI_FONT_SMALL        (&lv_font_montserrat_14)
 #define UI_FONT_BODY         (&lv_font_montserrat_18)

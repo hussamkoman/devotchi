@@ -75,6 +75,7 @@ typedef enum {
     PREVIEW_APPROVAL_LOW,
     PREVIEW_APPROVAL_HIGH,
     PREVIEW_IDENTIFY,
+    PREVIEW_SETTINGS,
 } preview_t;
 
 /* Everything below belongs to the app task. */
@@ -691,6 +692,7 @@ static void on_register_ack(const proto_register_ack_t *ack, uint32_t now)
     }
     set_state(APP_STATE_ONLINE);
     ESP_LOGI(TAG, "registered");
+    app_telemetry_on_registered(now);
 }
 
 static void handle_message(const char *json, size_t len, uint32_t now)
@@ -1042,6 +1044,8 @@ static void handle_request(app_request_t *req, uint32_t now)
             s_preview = PREVIEW_APPROVAL_HIGH;
         } else if (strcmp(req->text, "identify") == 0) {
             s_preview = PREVIEW_IDENTIFY;
+        } else if (strcmp(req->text, "settings") == 0) {
+            s_preview = PREVIEW_SETTINGS;
         } else if (strcmp(req->text, "off") == 0) {
             s_preview = PREVIEW_OFF;
         } else {
@@ -1050,6 +1054,10 @@ static void handle_request(app_request_t *req, uint32_t now)
         }
         s_info.preview = s_preview != PREVIEW_OFF;
         app_request_complete(true, "");
+        return;
+    case APP_REQUEST_FACTORY_RESET:
+        app_request_complete(true, "restarting");
+        app_factory_reset();
         return;
     }
 }
@@ -1108,6 +1116,7 @@ static void run_deadlines(uint32_t now)
         }
     }
     submit_next_job();
+    app_settings_run_deadlines(now);
 }
 
 static uint32_t earliest(uint32_t a, uint32_t b, uint32_t now)
@@ -1132,6 +1141,7 @@ static void arm_timer(uint32_t now)
         at = earliest(at, s_pair.next_poll_at, now);
         at = earliest(at, s_pair.retry_at, now);
     }
+    at = earliest(at, app_settings_deadline(), now);
     esp_timer_stop(s_timer);
     if (at == 0) {
         return;
@@ -1344,8 +1354,21 @@ static void render(uint32_t now)
     case PREVIEW_IDENTIFY:
         render_flow(now, APP_FLOW_PREVIEW_IDENTIFY);
         return;
+    case PREVIEW_SETTINGS:
+        app_settings_render(true);
+        show(UI_SCREEN_SETTINGS);
+        return;
     case PREVIEW_OFF:
         break;
+    }
+    if (app_settings_active()) {
+        if (app_flow_takes_over(now)) {
+            render_flow(now, APP_FLOW_PREVIEW_OFF);
+        } else {
+            app_settings_render(false);
+            show(UI_SCREEN_SETTINGS);
+        }
+        return;
     }
     switch (s_state) {
     case APP_STATE_BOOT:
@@ -1386,8 +1409,17 @@ void app_link_on_button(const btn_fsm_out_t *out)
         return;
     }
     const uint32_t now = app_now_ms();
-    if (s_flow_shown) {
-        app_flow_on_button(out, now);
+    const bool settings_long = out->id == BTN_ACTION && out->kind == BTN_LONG;
+    if (app_settings_active() && s_screen_valid && s_screen == UI_SCREEN_SETTINGS) {
+        app_settings_on_button(out, now);
+    } else if (s_flow_shown) {
+        if (!app_flow_on_button(out, now) && settings_long && s_screen == UI_SCREEN_PET) {
+            app_settings_open(now);
+        }
+    } else if (settings_long && s_screen_valid &&
+               (s_screen == UI_SCREEN_WIFI || s_screen == UI_SCREEN_CONNECTING || s_screen == UI_SCREEN_PAIRING ||
+                s_screen == UI_SCREEN_PROVISIONING)) {
+        app_settings_open(now);
     } else if (out->kind != BTN_CLICK) {
         return;
     } else if (s_state == APP_STATE_PAIRING && out->id == BTN_ACTION && s_pair.phase != PAIR_STARTING && s_wifi_up) {
@@ -1410,12 +1442,24 @@ void app_link_on_button(const btn_fsm_out_t *out)
     app_flow_arm_timer(now);
 }
 
+bool app_link_online(void)
+{
+    return s_info.ws == APP_WS_REGISTERED;
+}
+
+void app_link_unpair(uint32_t now)
+{
+    forget_pairing();
+    reconnect_now(now);
+}
+
 bool app_link_handle_event(const app_event_t *ev)
 {
     const uint32_t now = app_now_ms();
     switch (ev->id) {
     case APP_EV_TICK:
         s_splash_done = true;
+        app_telemetry_tick(now);
         break;
     case APP_EV_LINK_TIMER:
     case APP_EV_FLOW_TIMER:

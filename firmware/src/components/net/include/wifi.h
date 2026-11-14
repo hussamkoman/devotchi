@@ -28,3 +28,6 @@ esp_err_t wifi_connect(const char *ssid, const char *psk);
 
 /** Safe from any task. */
 void wifi_get_status(wifi_status_t *out);
+
+/** Factory reset: clears the WiFi driver's own stored configuration (esp_wifi_restore). */
+esp_err_t wifi_restore(void);
