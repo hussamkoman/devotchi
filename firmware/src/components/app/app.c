@@ -24,6 +24,7 @@
 #include "freertos/task.h"
 
 #include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "app";
 
@@ -36,6 +37,19 @@ static QueueHandle_t s_queue;
 static SemaphoreHandle_t s_snapshot_lock;
 static esp_timer_handle_t s_tick_timer;
 static SemaphoreHandle_t s_setting_applied;
+
+typedef enum {
+    REQUEST_FREE,
+    REQUEST_PENDING,
+    REQUEST_DONE,
+    /** The console stopped waiting; the app task frees the slot when it completes the request. */
+    REQUEST_ABANDONED,
+} request_phase_t;
+
+/* One request from the console task to the app task. s_request_phase is guarded by s_snapshot_lock. */
+static app_request_t s_request;
+static request_phase_t s_request_phase;
+static SemaphoreHandle_t s_request_done;
 
 /* Written by the app task under s_snapshot_lock; other tasks read it through app_get_snapshot(). */
 static app_snapshot_t s_snapshot;
@@ -64,6 +78,55 @@ const char *app_state_name(app_state_t state)
         return "online";
     case APP_STATE_OFFLINE:
         return "offline";
+    }
+    return "";
+}
+
+const char *app_wifi_state_name(app_wifi_state_t state)
+{
+    switch (state) {
+    case APP_WIFI_OFF:
+        return "off";
+    case APP_WIFI_INIT_FAILED:
+        return "init_failed";
+    case APP_WIFI_NO_CREDENTIALS:
+        return "no_credentials";
+    case APP_WIFI_PROVISIONING:
+        return "provisioning";
+    case APP_WIFI_CONNECTING:
+        return "connecting";
+    case APP_WIFI_FAILED:
+        return "failed";
+    case APP_WIFI_CONNECTED:
+        return "connected";
+    }
+    return "";
+}
+
+const char *app_ws_state_name(app_ws_state_t state)
+{
+    switch (state) {
+    case APP_WS_DOWN:
+        return "down";
+    case APP_WS_CONNECTING:
+        return "connecting";
+    case APP_WS_CONNECTED:
+        return "connected";
+    case APP_WS_REGISTERED:
+        return "registered";
+    }
+    return "";
+}
+
+const char *app_ws_phase_name(app_ws_phase_t phase)
+{
+    switch (phase) {
+    case APP_WS_PHASE_IDLE:
+        return "idle";
+    case APP_WS_PHASE_RUNNING:
+        return "running";
+    case APP_WS_PHASE_STOPPING:
+        return "stopping";
     }
     return "";
 }
@@ -138,7 +201,7 @@ void app_get_snapshot(app_snapshot_t *out)
     }
 }
 
-static void show_screen(ui_screen_id_t id)
+void app_show_screen(ui_screen_id_t id)
 {
     if (ui_show_screen(id) != ESP_OK) {
         ESP_LOGE(TAG, "screen %s unavailable", ui_screen_name(id));
@@ -151,27 +214,128 @@ static void show_screen(ui_screen_id_t id)
 
 static void fill_diag_screen(void)
 {
-    char line[STORAGE_URL_SIZE + 16];
+    char line[64];
     char id[APP_DEVICE_ID_SIZE];
-    char url[STORAGE_URL_SIZE];
-    storage_url_source_t source;
 
     app_get_device_id(id);
     snprintf(line, sizeof(line), "fw %s  reset %s", esp_app_get_description()->version, app_reset_reason());
     ui_diag_set_line(0, line);
-    snprintf(line, sizeof(line), "id %s", id);
+    snprintf(line, sizeof(line), "id %s  nvs %s", id, storage_is_degraded() ? "error" : "ok");
     ui_diag_set_line(1, line);
-    snprintf(line, sizeof(line), "nvs %s  wifi %s  paired %s", storage_is_degraded() ? "error" : "ok",
-             storage_has_wifi() ? "yes" : "no", storage_is_paired() ? "yes" : "no");
-    ui_diag_set_line(2, line);
-    storage_get_server_url(url, &source);
-    snprintf(line, sizeof(line), "%s (%s)", url, source == STORAGE_URL_SOURCE_NVS ? "nvs" : "default");
-    ui_diag_set_line(3, line);
 }
 
 static bool snapshot_lock(void)
 {
     return xSemaphoreTake(s_snapshot_lock, pdMS_TO_TICKS(SNAPSHOT_TIMEOUT_MS)) == pdTRUE;
+}
+
+void app_set_state(app_state_t state)
+{
+    if (!snapshot_lock()) {
+        return;
+    }
+    const bool changed = s_snapshot.state != state;
+    s_snapshot.state = state;
+    xSemaphoreGive(s_snapshot_lock);
+    if (changed) {
+        ESP_LOGI(TAG, "state %s", app_state_name(state));
+        char evt[64];
+        snprintf(evt, sizeof(evt), "{\"evt\":\"app\",\"state\":\"%s\"}", app_state_name(state));
+        console_evt(evt);
+    }
+}
+
+void app_publish_link(const app_link_info_t *info)
+{
+    if (!snapshot_lock()) {
+        return;
+    }
+    const bool changed = s_snapshot.link.wifi != info->wifi || s_snapshot.link.ws != info->ws ||
+                         s_snapshot.link.ws_phase != info->ws_phase;
+    s_snapshot.link = *info;
+    xSemaphoreGive(s_snapshot_lock);
+    if (changed) {
+        char evt[112];
+        snprintf(evt, sizeof(evt), "{\"evt\":\"link\",\"wifi\":\"%s\",\"ws\":\"%s\",\"wsPhase\":\"%s\"}",
+                 app_wifi_state_name(info->wifi), app_ws_state_name(info->ws), app_ws_phase_name(info->ws_phase));
+        console_evt(evt);
+    }
+}
+
+app_request_rc_t app_request(app_request_kind_t kind, const char *text, const char *arg, uint32_t timeout_ms,
+                             bool *ok, char message[APP_REQUEST_MESSAGE_SIZE])
+{
+    *ok = false;
+    message[0] = '\0';
+    if (!snapshot_lock()) {
+        return APP_REQUEST_BUSY;
+    }
+    if (s_request_phase != REQUEST_FREE) {
+        xSemaphoreGive(s_snapshot_lock);
+        return APP_REQUEST_BUSY;
+    }
+    memset(&s_request, 0, sizeof(s_request));
+    s_request.kind = kind;
+    strlcpy(s_request.text, text != NULL ? text : "", sizeof(s_request.text));
+    strlcpy(s_request.arg, arg != NULL ? arg : "", sizeof(s_request.arg));
+    s_request_phase = REQUEST_PENDING;
+    xSemaphoreTake(s_request_done, 0);
+    xSemaphoreGive(s_snapshot_lock);
+
+    const app_event_t ev = {.id = APP_EV_REQUEST};
+    const bool posted = app_post(&ev);
+    const bool done = posted && xSemaphoreTake(s_request_done, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+
+    app_request_rc_t rc = APP_REQUEST_TIMEOUT;
+    /* The slot must be released or abandoned whatever happens, so this wait is retried. */
+    while (!snapshot_lock()) {
+    }
+    if (done || s_request_phase == REQUEST_DONE) {
+        *ok = s_request.ok;
+        strlcpy(message, s_request.message, APP_REQUEST_MESSAGE_SIZE);
+        s_request_phase = REQUEST_FREE;
+        rc = APP_REQUEST_DONE;
+    } else if (!posted) {
+        s_request_phase = REQUEST_FREE;
+        rc = APP_REQUEST_BUSY;
+    } else {
+        s_request_phase = REQUEST_ABANDONED;
+    }
+    /* Secrets (a WiFi passphrase) do not stay in the slot after the command. */
+    if (s_request_phase == REQUEST_FREE) {
+        memset(&s_request, 0, sizeof(s_request));
+    }
+    xSemaphoreGive(s_snapshot_lock);
+    return rc;
+}
+
+app_request_t *app_request_current(void)
+{
+    app_request_t *req = NULL;
+    if (snapshot_lock()) {
+        if (s_request_phase == REQUEST_PENDING || s_request_phase == REQUEST_ABANDONED) {
+            req = &s_request;
+        }
+        xSemaphoreGive(s_snapshot_lock);
+    }
+    return req;
+}
+
+void app_request_complete(bool ok, const char *message)
+{
+    if (!snapshot_lock()) {
+        return;
+    }
+    if (s_request_phase == REQUEST_PENDING) {
+        s_request.ok = ok;
+        strlcpy(s_request.message, message != NULL ? message : "", sizeof(s_request.message));
+        s_request_phase = REQUEST_DONE;
+        xSemaphoreGive(s_request_done);
+    } else if (s_request_phase == REQUEST_ABANDONED) {
+        memset(&s_request, 0, sizeof(s_request));
+        s_request_phase = REQUEST_FREE;
+    }
+    xSemaphoreGive(s_snapshot_lock);
 }
 
 static void user_activity(uint32_t now_ms)
@@ -200,6 +364,10 @@ static void on_button(const btn_fsm_out_t *out, uint32_t now_ms)
     snprintf(line, sizeof(line), "btn %s %s%s", btn_id_name(out->id), btn_kind_name(out->kind),
              out->swallowed ? " (swallowed)" : "");
     ui_diag_set_line(APP_DIAG_LINE_BTN, line);
+
+    if (!out->swallowed) {
+        app_link_on_button(out);
+    }
 }
 
 static void handle_btn_raw(const app_event_t *ev)
@@ -306,9 +474,17 @@ static void handle_event(const app_event_t *ev)
 {
     switch (ev->id) {
     case APP_EV_TICK:
-        if (ui_current_screen() == UI_SCREEN_SPLASH) {
-            show_screen(UI_SCREEN_DIAG);
-        }
+    case APP_EV_WIFI_UP:
+    case APP_EV_WIFI_DOWN:
+    case APP_EV_PROV:
+    case APP_EV_WS_UP:
+    case APP_EV_WS_MSG:
+    case APP_EV_WS_DOWN:
+    case APP_EV_WS_STOPPED:
+    case APP_EV_NET_JOB:
+    case APP_EV_LINK_TIMER:
+    case APP_EV_REQUEST:
+        app_link_handle_event(ev);
         break;
     case APP_EV_BTN_RAW:
         handle_btn_raw(ev);
@@ -338,6 +514,7 @@ static void app_task(void *arg)
     fill_diag_screen();
     ui_diag_set_line(APP_DIAG_LINE_BATT, "batt --");
     ui_diag_set_line(APP_DIAG_LINE_BTN, "btn --");
+    app_link_start();
     for (;;) {
         app_event_t ev;
         if (xQueueReceive(s_queue, &ev, portMAX_DELAY) == pdTRUE) {
@@ -388,8 +565,10 @@ esp_err_t app_init(void)
     s_queue = xQueueCreate(APP_EVENT_QUEUE_DEPTH, sizeof(app_event_t));
     s_snapshot_lock = xSemaphoreCreateMutex();
     s_setting_applied = xSemaphoreCreateBinary();
-    ESP_RETURN_ON_FALSE(s_queue != NULL && s_snapshot_lock != NULL && s_setting_applied != NULL, ESP_ERR_NO_MEM, TAG,
-                        "queue");
+    s_request_done = xSemaphoreCreateBinary();
+    ESP_RETURN_ON_FALSE(s_queue != NULL && s_snapshot_lock != NULL && s_setting_applied != NULL &&
+                            s_request_done != NULL,
+                        ESP_ERR_NO_MEM, TAG, "queue");
     s_snapshot.state = APP_STATE_BOOT;
     btn_fsm_init(&s_btn);
     /* The press that woke the device from deep sleep only wakes it. */
@@ -401,8 +580,10 @@ esp_err_t app_init(void)
     ESP_RETURN_ON_ERROR(buttons_init(on_button_raw), TAG, "buttons");
     ESP_RETURN_ON_ERROR(feedback_init(on_feedback_step), TAG, "feedback");
     ESP_RETURN_ON_ERROR(power_init(on_power), TAG, "power");
+    ESP_RETURN_ON_ERROR(app_link_init(), TAG, "link");
     /* Host tools poll `version` to detect readiness, so it is registered after every other command. */
     ESP_RETURN_ON_ERROR(app_cmds_io_register(), TAG, "io commands");
+    ESP_RETURN_ON_ERROR(app_cmds_net_register(), TAG, "net commands");
     return app_cmds_register();
 }
 

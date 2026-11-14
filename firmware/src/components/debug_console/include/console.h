@@ -58,5 +58,8 @@ bool console_payload(const char *line);
 /** Records the message for the "@@ERR" terminator and returns rc, for `return console_fail(...)`. */
 console_rc_t console_fail(console_rc_t rc, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
+/** For command handlers: restarts the device once the command's terminator line is written. */
+void console_reboot_after_command(void);
+
 /** Writes "@@EVT <json>" from any task; dropped when the host is not reading. */
 void console_evt(const char *json);

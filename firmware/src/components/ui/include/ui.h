@@ -9,6 +9,8 @@
 #define UI_DIAG_LINES    6
 #define UI_TEXT_SIZE     96
 #define UI_MAX_TEXTS     24
+/** What ui_get_texts() reports in place of a secret shown on screen. */
+#define UI_TEXT_HIDDEN   "<hidden>"
 
 typedef enum {
     UI_SCREEN_SPLASH,
@@ -55,6 +57,20 @@ const char *ui_current_screen_name(void);
 
 /** Sets one text line of the diag screen; the text is reduced to printable ASCII. */
 void ui_diag_set_line(size_t line, const char *text);
+
+/** Service name and proof-of-possession the phone app asks for, and what the attempt is doing. */
+void ui_provisioning_set(const char *service_name, const char *pop, const char *status);
+
+/** WiFi screen lines; an empty string hides nothing but leaves the line blank. */
+void ui_wifi_set(const char *ssid, const char *state, const char *reason, const char *retry, const char *hint);
+
+void ui_connecting_set(const char *host, const char *state, const char *error, const char *retry);
+
+/**
+ * code is the six-character pairing code ("" while none is known);
+ * remaining_s of total_s drives the expiry bar.
+ */
+void ui_pairing_set(const char *code, const char *host, const char *error, uint32_t remaining_s, uint32_t total_s);
 
 /**
  * Copies the text of every visible label on the current screen and the top
