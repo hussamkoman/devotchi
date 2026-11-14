@@ -27,3 +27,6 @@ hardware/gerbers/
 
 # OpenSCAD rough drafts
 scad/
+
+# Firmware host tests built outside the IDF tree (CI)
+build-host/

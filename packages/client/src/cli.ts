@@ -68,6 +68,7 @@ interface StartOptions {
   serverPort?: number;
   port?: number;
   open: boolean;
+  dev?: boolean;
 }
 
 program
@@ -79,6 +80,7 @@ program
   .option("--server-port <n>", `With --local: server port (default ${DEFAULT_SERVER_PORT}, 0 picks a free one)`, portOption)
   .option("--port <n>", "Dashboard port (default: webPort from the configuration, 0 picks a free one)", portOption)
   .option("--no-open", "Do not open the browser")
+  .option("--dev", "Serve the session secret on /dev-session for the web UI dev server (pnpm run dev)")
   .action(async (opts: StartOptions) => {
     if (opts.local !== true && (opts.lan === true || opts.serverPort !== undefined)) {
       throw new UsageError("--lan and --server-port only apply together with --local");
@@ -108,15 +110,15 @@ program
       dashboard = await startWebServer({
         serverUrl: url,
         token: creds.token,
-        roomId: creds.roomId,
         port: opts.port ?? config.webPort,
         local: local !== null,
+        dev: opts.dev === true,
       });
     } catch (err) {
       await shutdownLocal();
       throw err;
     }
-    const dashboardUrl = `http://localhost:${dashboard.port}`;
+    const dashboardUrl = dashboard.url;
     say(`Dashboard: ${dashboardUrl}`);
 
     let stopping = false;

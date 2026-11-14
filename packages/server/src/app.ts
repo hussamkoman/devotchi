@@ -72,7 +72,11 @@ const DRAIN_MS = 500;
 const MAINTENANCE_MS = 60_000;
 const ACCOUNT_PAGE = new URL("../public/account.html", import.meta.url);
 
+/** Set by the client's bundler, which ships the server without its public/ directory. */
+declare const __DEVOTCHI_ACCOUNT_PAGE__: string | undefined;
+
 function readAccountPage(): string {
+  if (typeof __DEVOTCHI_ACCOUNT_PAGE__ === "string") return __DEVOTCHI_ACCOUNT_PAGE__;
   try {
     return readFileSync(ACCOUNT_PAGE, "utf8");
   } catch (err) {
