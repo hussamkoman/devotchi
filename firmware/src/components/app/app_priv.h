@@ -17,6 +17,9 @@ esp_err_t app_cmds_register(void);
  */
 bool app_setting_changed(storage_setting_t id);
 
+/** App task: brings a written setting into effect (brightness, feedback, battery detection). */
+void app_apply_setting(storage_setting_t id);
+
 /** Commands for buttons, feedback, battery and settings. */
 esp_err_t app_cmds_io_register(void);
 
@@ -55,6 +58,12 @@ proto_mode_t app_link_mode(void);
 /** Device name the server assigned ("" before the first registration). */
 const char *app_link_name(void);
 
+/** True while the socket is registered, so a frame sent now reaches the server. */
+bool app_link_online(void);
+
+/** App task: Unpair from Settings: erases token and room id (backup rule), stops the socket, starts pairing. */
+void app_link_unpair(uint32_t now);
+
 /* ---- app.c: activity hooks for the power stages (architecture 4.8) ---- */
 
 /** Something the user should see happened: resets the idle timers. */
@@ -75,6 +84,7 @@ typedef enum {
 /** What the flow screens show, for the console `screen` command. */
 typedef struct {
     proto_mood_t mood;
+    ui_pet_page_t page;
     bool has_request;
     struct {
         char id[PROTO_ID_SIZE];
@@ -98,8 +108,17 @@ void app_flow_on_message(const proto_msg_t *msg, uint32_t now);
 /** App task: the socket is going away, so the queued requests can no longer be answered here. */
 void app_flow_on_link_lost(uint32_t now);
 
-/** App task: a button while a flow screen (pet, approval, identify) is shown. */
-void app_flow_on_button(const btn_fsm_out_t *out, uint32_t now);
+/** App task: a button while a flow screen (pet, approval, identify) is shown; false when it was not used. */
+bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now);
+
+/** App task: switches the pet screen to its About page. */
+void app_flow_show_about(uint32_t now);
+
+/** App task: an identify or a request owns the screen, so Settings must give way. */
+bool app_flow_takes_over(uint32_t now);
+
+/** App task: a toast, also reported as `@@EVT {"evt":"toast",...}`. */
+void app_toast(const char *text);
 
 /** App task: a pattern ended; resumes the pending-request or attention loop. */
 void app_flow_on_feedback_end(void);
@@ -119,6 +138,45 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
 /** Any task: copies the last rendered view. */
 void app_flow_get_view(app_flow_view_t *out);
 
+/* ---- app_settings.c: the Settings screen (architecture 4.5) ---- */
+
+bool app_settings_active(void);
+
+/** App task: opens Settings on its first row with the stored values. */
+void app_settings_open(uint32_t now);
+
+/** App task: a button while Settings is on screen. */
+void app_settings_on_button(const btn_fsm_out_t *out, uint32_t now);
+
+/** App task: drops a confirmation prompt whose time ran out. */
+void app_settings_run_deadlines(uint32_t now);
+
+/** The confirmation timeout, 0 when none runs. */
+uint32_t app_settings_deadline(void);
+
+/** App task: pushes the rows to the screen (the mode row follows the room mode); preview shows them closed too. */
+void app_settings_render(bool preview);
+
+/** App task: erases the devotchi namespace and the WiFi driver's configuration, then restarts. */
+void app_factory_reset(void);
+
+/** What the Settings screen shows, for the console `screen` command. */
+typedef struct {
+    bool active;
+    uint8_t cursor;
+    bool confirming;
+} app_settings_view_t;
+
+void app_settings_get_view(app_settings_view_t *out);
+
+/* ---- app_telemetry.c: protocol 4.12 ---- */
+
+/** App task: the server acknowledged the registration. */
+void app_telemetry_on_registered(uint32_t now);
+
+/** App task, once a second and on every battery change: periodic and change-driven samples while registered. */
+void app_telemetry_tick(uint32_t now);
+
 /* ---- requests from the console task to the app task ---- */
 
 #define APP_REQUEST_TEXT_SIZE     1025
@@ -136,8 +194,10 @@ typedef enum {
     APP_REQUEST_MSG,
     APP_REQUEST_RESET_PAIRING,
     APP_REQUEST_PAIR_RESTORE,
-    /** text: `pairing`, `provisioning`, `approval-low`, `approval-high`, `identify` or `off`. */
+    /** text: `pairing`, `provisioning`, `approval-low`, `approval-high`, `identify`, `settings` or `off`. */
     APP_REQUEST_PREVIEW,
+    /** Erases the devotchi namespace and the WiFi configuration, then restarts. */
+    APP_REQUEST_FACTORY_RESET,
 } app_request_kind_t;
 
 typedef struct {

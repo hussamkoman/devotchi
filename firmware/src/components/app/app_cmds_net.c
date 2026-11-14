@@ -161,7 +161,7 @@ static console_rc_t cmd_preview(int argc, char **argv, const char *raw_args)
 {
     (void)raw_args;
     if (argc != 2) {
-        return console_fail(CONSOLE_ERR_BAD_ARGS, "preview pairing|provisioning|approval-low|approval-high|identify|off");
+        return console_fail(CONSOLE_ERR_BAD_ARGS, "preview pairing|provisioning|approval-low|approval-high|identify|settings|off");
     }
     return run(APP_REQUEST_PREVIEW, argv[1], NULL, REQUEST_TIMEOUT_MS);
 }
@@ -175,7 +175,7 @@ static const console_cmd_t CMDS[] = {
     {"reset-pairing", "erase token and room id (the first pairing is kept as a backup)", cmd_reset_pairing},
     {"pair-backup", "pair-backup [--force]: copy token, room id and server URL to the backup keys", cmd_pair_backup},
     {"pair-restore", "write the backup back and reconnect", cmd_pair_restore},
-    {"preview", "preview pairing|provisioning|approval-low|approval-high|identify|off: show a screen with sample data", cmd_preview},
+    {"preview", "preview pairing|provisioning|approval-low|approval-high|identify|settings|off: show a screen with sample data", cmd_preview},
 };
 
 esp_err_t app_cmds_net_register(void)
