@@ -8,12 +8,6 @@
 
 #include <stdbool.h>
 
-/* Diag screen lines: 0 and 1 are fixed at start, the link state machine owns 2 and 3. */
-#define APP_DIAG_LINE_LINK    2
-#define APP_DIAG_LINE_SERVER  3
-#define APP_DIAG_LINE_BATT    4
-#define APP_DIAG_LINE_BTN     5
-
 esp_err_t app_cmds_register(void);
 
 /**
@@ -53,6 +47,78 @@ bool app_link_handle_event(const app_event_t *ev);
 /** App task: a click or long press that was not swallowed. */
 void app_link_on_button(const btn_fsm_out_t *out);
 
+/** App task: hands a frame to the socket and reports `@@EVT {"evt":"tx",...}`; extra is appended to the event. */
+bool app_link_send(uint32_t now, const char *type, const char *frame, int len, const char *extra);
+
+proto_mode_t app_link_mode(void);
+
+/** Device name the server assigned ("" before the first registration). */
+const char *app_link_name(void);
+
+/* ---- app.c: activity hooks for the power stages (architecture 4.8) ---- */
+
+/** Something the user should see happened: resets the idle timers. */
+void app_user_activity(uint32_t now);
+
+/** Agent traffic: postpones deep sleep without waking the screen. */
+void app_agent_activity(uint32_t now);
+
+/* ---- app_flow.c: pet model, request queue and the approval flow (protocol 4.3-4.13) ---- */
+
+typedef enum {
+    APP_FLOW_PREVIEW_OFF,
+    APP_FLOW_PREVIEW_APPROVAL_LOW,
+    APP_FLOW_PREVIEW_APPROVAL_HIGH,
+    APP_FLOW_PREVIEW_IDENTIFY,
+} app_flow_preview_t;
+
+/** What the flow screens show, for the console `screen` command. */
+typedef struct {
+    proto_mood_t mood;
+    bool has_request;
+    struct {
+        char id[PROTO_ID_SIZE];
+        char tool[PROTO_TOOL_SIZE];
+        char summary[PROTO_SUMMARY_SIZE];
+        proto_risk_t risk;
+        uint8_t position;
+        uint8_t count;
+        uint8_t page;
+        uint8_t pages;
+        uint32_t deadline_ms;
+        bool answered;
+    } request;
+} app_flow_view_t;
+
+esp_err_t app_flow_init(void);
+
+/** App task: status, mood, notify, permission, dismiss, identify, and errors that name a request. */
+void app_flow_on_message(const proto_msg_t *msg, uint32_t now);
+
+/** App task: the socket is going away, so the queued requests can no longer be answered here. */
+void app_flow_on_link_lost(uint32_t now);
+
+/** App task: a button while a flow screen (pet, approval, identify) is shown. */
+void app_flow_on_button(const btn_fsm_out_t *out, uint32_t now);
+
+/** App task: a pattern ended; resumes the pending-request or attention loop. */
+void app_flow_on_feedback_end(void);
+
+/** App task, before rendering: expiry, holding acks and heartbeats, nags, answer confirmation. */
+void app_flow_run_deadlines(uint32_t now);
+
+/** App task, after rendering: arms the timer for the next flow deadline. */
+void app_flow_arm_timer(uint32_t now);
+
+/**
+ * App task: pushes the content of the flow screen and returns which one to
+ * show. offline_banner is NULL while the link is up.
+ */
+ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flow_preview_t preview);
+
+/** Any task: copies the last rendered view. */
+void app_flow_get_view(app_flow_view_t *out);
+
 /* ---- requests from the console task to the app task ---- */
 
 #define APP_REQUEST_TEXT_SIZE     1025
@@ -70,7 +136,7 @@ typedef enum {
     APP_REQUEST_MSG,
     APP_REQUEST_RESET_PAIRING,
     APP_REQUEST_PAIR_RESTORE,
-    /** text: `pairing`, `provisioning` or `off`. */
+    /** text: `pairing`, `provisioning`, `approval-low`, `approval-high`, `identify` or `off`. */
     APP_REQUEST_PREVIEW,
 } app_request_kind_t;
 

@@ -7,7 +7,7 @@
 #include <stdio.h>
 
 #define BAR_HEIGHT  6
-#define BAR_Y       140
+#define BAR_Y       146
 
 static lv_obj_t *s_code;
 static lv_obj_t *s_how;
@@ -19,13 +19,13 @@ lv_obj_t *screen_pairing_create(void)
 {
     lv_obj_t *scr = ui_screen_base_create();
 
-    lv_obj_t *title = ui_label_create(scr, UI_FONT_TITLE, UI_COLOR_ACCENT, UI_PAD, true);
+    lv_obj_t *title = ui_label_create(scr, UI_FONT_TITLE, UI_COLOR_ACCENT, UI_TOP, true);
     lv_label_set_text_static(title, "Pair device");
 
-    s_code = ui_label_create(scr, UI_FONT_TITLE, UI_COLOR_TEXT, 58, true);
+    s_code = ui_label_create(scr, UI_FONT_TITLE, UI_COLOR_TEXT, 66, true);
     lv_obj_set_style_text_align(s_code, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_letter_space(s_code, 4, 0);
-    s_how = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_TEXT, 108, true);
+    s_how = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_TEXT, 112, true);
     lv_obj_set_style_text_align(s_how, LV_TEXT_ALIGN_CENTER, 0);
 
     s_bar = lv_bar_create(scr);
@@ -37,8 +37,8 @@ lv_obj_t *screen_pairing_create(void)
     lv_bar_set_range(s_bar, 0, 1);
     lv_bar_set_value(s_bar, 0, LV_ANIM_OFF);
 
-    s_host = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_TEXT_DIM, 158, true);
-    s_error = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_WARN, 186, false);
+    s_host = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_TEXT_DIM, 164, true);
+    s_error = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_WARN, 190, false);
     return scr;
 }
 

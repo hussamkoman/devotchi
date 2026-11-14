@@ -6,6 +6,7 @@
 #include "console.h"
 #include "net_worker.h"
 #include "pair_code.h"
+#include "power.h"
 #include "prov.h"
 #include "proto.h"
 #include "storage.h"
@@ -71,6 +72,9 @@ typedef enum {
     PREVIEW_OFF,
     PREVIEW_PAIRING,
     PREVIEW_PROVISIONING,
+    PREVIEW_APPROVAL_LOW,
+    PREVIEW_APPROVAL_HIGH,
+    PREVIEW_IDENTIFY,
 } preview_t;
 
 /* Everything below belongs to the app task. */
@@ -80,6 +84,8 @@ static app_link_info_t s_info;
 static bool s_splash_done;
 static bool s_screen_valid;
 static ui_screen_id_t s_screen;
+/* The pet, approval or identify screen is up, so buttons belong to the request flow. */
+static bool s_flow_shown;
 static preview_t s_preview;
 static esp_timer_handle_t s_timer;
 
@@ -261,19 +267,18 @@ static void on_timer(void *arg)
 static void request_stop(uint32_t now);
 static void link_lost(uint32_t now, const char *why, uint32_t min_delay_ms);
 
-/* extra is appended to the tx event, e.g. `,"id":"..."`. */
-static bool link_send(uint32_t now, const char *type, int len, const char *extra)
+bool app_link_send(uint32_t now, const char *type, const char *frame, int len, const char *extra)
 {
     bool sent = false;
     if (len > 0 && s_info.ws_phase == APP_WS_PHASE_RUNNING && s_ws_connected) {
-        sent = ws_send(s_tx, (size_t)len);
+        sent = ws_send(frame, (size_t)len);
         if (sent) {
             s_send_failures = 0;
         } else {
             s_send_failures++;
         }
     }
-    char evt[160];
+    char evt[192];
     snprintf(evt, sizeof(evt), "{\"evt\":\"tx\",\"type\":\"%s\",\"sent\":%s%s}", type, sent ? "true" : "false",
              extra != NULL ? extra : "");
     console_evt(evt);
@@ -283,6 +288,21 @@ static bool link_send(uint32_t now, const char *type, int len, const char *extra
         link_lost(now, "Send failed", 0);
     }
     return sent;
+}
+
+static bool link_send(uint32_t now, const char *type, int len, const char *extra)
+{
+    return app_link_send(now, type, s_tx, len, extra);
+}
+
+proto_mode_t app_link_mode(void)
+{
+    return s_info.mode;
+}
+
+const char *app_link_name(void)
+{
+    return s_info.name;
 }
 
 /* ---- WebSocket lifecycle ---- */
@@ -299,6 +319,8 @@ static void request_stop(uint32_t now)
     s_stop_warned = false;
     s_stop_submitted = ws_request_stop();
     s_stop_retry_at = s_stop_submitted ? 0 : after(now, STOP_RESUBMIT_MS);
+    /* The server resolves held requests as holder_lost once the socket is gone (protocol 8.3). */
+    app_flow_on_link_lost(now);
 }
 
 static void try_connect(uint32_t now)
@@ -693,23 +715,26 @@ static void handle_message(const char *json, size_t len, uint32_t now)
         link_send(now, "pong", proto_write_pong(s_tx, sizeof(s_tx)), NULL);
         break;
     case PROTO_ERROR:
-        ESP_LOGW(TAG, "server error %s", s_msg.u.error.code);
         if (strcmp(s_msg.u.error.code, "UNSUPPORTED_PROTO") == 0) {
+            ESP_LOGW(TAG, "server error %s", s_msg.u.error.code);
             s_unsupported_proto = true;
         }
+        app_flow_on_message(&s_msg, now);
         break;
     case PROTO_MODE:
         s_info.mode = s_msg.u.mode;
         break;
-    case PROTO_UNKNOWN:
-    case PROTO_PONG:
-    case PROTO_PEERS:
     case PROTO_STATUS:
     case PROTO_NOTIFY:
     case PROTO_MOOD:
     case PROTO_PERMISSION:
     case PROTO_DISMISS:
     case PROTO_IDENTIFY:
+        app_flow_on_message(&s_msg, now);
+        break;
+    case PROTO_UNKNOWN:
+    case PROTO_PONG:
+    case PROTO_PEERS:
         break;
     }
 }
@@ -1011,12 +1036,19 @@ static void handle_request(app_request_t *req, uint32_t now)
             s_preview = PREVIEW_PAIRING;
         } else if (strcmp(req->text, "provisioning") == 0) {
             s_preview = PREVIEW_PROVISIONING;
+        } else if (strcmp(req->text, "approval-low") == 0) {
+            s_preview = PREVIEW_APPROVAL_LOW;
+        } else if (strcmp(req->text, "approval-high") == 0) {
+            s_preview = PREVIEW_APPROVAL_HIGH;
+        } else if (strcmp(req->text, "identify") == 0) {
+            s_preview = PREVIEW_IDENTIFY;
         } else if (strcmp(req->text, "off") == 0) {
             s_preview = PREVIEW_OFF;
         } else {
-            app_request_complete(false, "preview pairing|provisioning|off");
+            app_request_complete(false, "unknown preview screen");
             return;
         }
+        s_info.preview = s_preview != PREVIEW_OFF;
         app_request_complete(true, "");
         return;
     }
@@ -1185,32 +1217,106 @@ static void render_pairing(uint32_t now)
     show(UI_SCREEN_PAIRING);
 }
 
-static void render_server(uint32_t now)
+static void render_connecting(uint32_t now)
 {
     char retry[LINE_SIZE] = "";
     if (s_info.retry_at_ms != 0) {
         snprintf(retry, sizeof(retry), "Retry in %lu s", (unsigned long)seconds_until(s_info.retry_at_ms, now));
     }
-    if (s_state == APP_STATE_SERVER_CONNECTING) {
-        const char *state = "Waiting";
-        if (s_info.ws == APP_WS_CONNECTING) {
-            state = "Connecting...";
-        } else if (s_info.ws == APP_WS_CONNECTED) {
-            state = "Registering...";
-        }
-        ui_connecting_set(s_url_text, state, s_info.last_error, retry);
-        show(UI_SCREEN_CONNECTING);
-        return;
+    const char *state = "Waiting";
+    if (s_info.ws == APP_WS_CONNECTING) {
+        state = "Connecting...";
+    } else if (s_info.ws == APP_WS_CONNECTED) {
+        state = "Registering...";
     }
-    char line[APP_LINK_ERROR_SIZE + LINE_SIZE + 16];
+    ui_connecting_set(s_url_text, state, s_info.last_error, retry);
+    show(UI_SCREEN_CONNECTING);
+}
+
+static const char *offline_banner(uint32_t now, char buf[LINE_SIZE])
+{
     if (s_state == APP_STATE_ONLINE) {
-        snprintf(line, sizeof(line), "online  %s  mode %s", s_info.name, proto_mode_name(s_info.mode));
-    } else {
-        snprintf(line, sizeof(line), "offline  %s  %s", s_info.last_error, retry);
+        return NULL;
     }
-    ui_diag_set_line(APP_DIAG_LINE_LINK, line);
-    ui_diag_set_line(APP_DIAG_LINE_SERVER, s_url_text);
-    show(UI_SCREEN_DIAG);
+    if (!s_wifi_up) {
+        return "No WiFi";
+    }
+    if (strcmp(s_info.last_error, "Server rejected token, retrying") == 0) {
+        return s_info.last_error;
+    }
+    if (strcmp(s_info.last_error, "Incompatible server") == 0 || strcmp(s_info.last_error, "Update required") == 0 ||
+        strcmp(s_info.last_error, "Server version mismatch") == 0) {
+        return "Incompatible server";
+    }
+    if (s_info.retry_at_ms != 0) {
+        snprintf(buf, LINE_SIZE, "Server offline, retry in %lus", (unsigned long)seconds_until(s_info.retry_at_ms, now));
+        return buf;
+    }
+    return "Server offline";
+}
+
+static uint8_t rssi_bars(void)
+{
+    if (!s_wifi_up) {
+        return 0;
+    }
+    wifi_status_t w;
+    wifi_get_status(&w);
+    if (!w.connected) {
+        return 0;
+    }
+    if (w.rssi >= -60) {
+        return 4;
+    }
+    if (w.rssi >= -70) {
+        return 3;
+    }
+    return w.rssi >= -80 ? 2 : 1;
+}
+
+static void render_status_bar(void)
+{
+    power_battery_t b;
+    power_get_battery(&b);
+    ui_status_t st = {
+        .pct = b.pct > 0 ? (uint8_t)(b.pct > 100 ? 100 : b.pct) : 0,
+        .low = b.low,
+        .desk = s_info.mode == PROTO_MODE_DESK,
+        .rssi_bars = rssi_bars(),
+        .link = UI_LINK_OFFLINE,
+    };
+    switch (b.state) {
+    case BATTERY_STATE_ABSENT:
+        st.battery = UI_BATT_ABSENT;
+        break;
+    case BATTERY_STATE_FULL:
+        st.battery = UI_BATT_FULL;
+        break;
+    case BATTERY_STATE_CHARGING:
+        st.battery = UI_BATT_CHARGING;
+        break;
+    case BATTERY_STATE_DISCHARGING:
+        st.battery = UI_BATT_DISCHARGING;
+        break;
+    }
+    if (!b.valid) {
+        st.battery = UI_BATT_ABSENT;
+    }
+    if (s_info.ws == APP_WS_REGISTERED) {
+        st.link = UI_LINK_REGISTERED;
+    } else if (s_info.ws_phase == APP_WS_PHASE_RUNNING) {
+        st.link = UI_LINK_CONNECTING;
+    }
+    ui_status_set(&st);
+}
+
+static void render_flow(uint32_t now, app_flow_preview_t preview)
+{
+    char buf[LINE_SIZE];
+    const ui_screen_id_t id = app_flow_render(now, preview == APP_FLOW_PREVIEW_OFF ? offline_banner(now, buf) : NULL,
+                                              preview);
+    s_flow_shown = preview == APP_FLOW_PREVIEW_OFF;
+    show(id);
 }
 
 static void render(uint32_t now)
@@ -1218,6 +1324,8 @@ static void render(uint32_t now)
     if (!s_splash_done) {
         return;
     }
+    render_status_bar();
+    s_flow_shown = false;
     switch (s_preview) {
     case PREVIEW_PAIRING:
         ui_pairing_set("K7M2QX", "ws://devotchi.example:8080", "", 212, CODE_DEFAULT_LIFE_S);
@@ -1226,6 +1334,15 @@ static void render(uint32_t now)
     case PREVIEW_PROVISIONING:
         ui_provisioning_set("DEVOTCHI-0000", "SAMPLE23", "");
         show(UI_SCREEN_PROVISIONING);
+        return;
+    case PREVIEW_APPROVAL_LOW:
+        render_flow(now, APP_FLOW_PREVIEW_APPROVAL_LOW);
+        return;
+    case PREVIEW_APPROVAL_HIGH:
+        render_flow(now, APP_FLOW_PREVIEW_APPROVAL_HIGH);
+        return;
+    case PREVIEW_IDENTIFY:
+        render_flow(now, APP_FLOW_PREVIEW_IDENTIFY);
         return;
     case PREVIEW_OFF:
         break;
@@ -1239,7 +1356,12 @@ static void render(uint32_t now)
         break;
     case APP_STATE_WIFI_CONNECTING:
     case APP_STATE_WIFI_FAILED:
-        render_wifi(now);
+        /* After the first registration of a boot the pet stays up with an offline banner. */
+        if (s_registered_this_boot) {
+            render_flow(now, APP_FLOW_PREVIEW_OFF);
+        } else {
+            render_wifi(now);
+        }
         break;
     case APP_STATE_PAIRING:
         render_pairing(now);
@@ -1247,7 +1369,11 @@ static void render(uint32_t now)
     case APP_STATE_SERVER_CONNECTING:
     case APP_STATE_ONLINE:
     case APP_STATE_OFFLINE:
-        render_server(now);
+        if (s_registered_this_boot) {
+            render_flow(now, APP_FLOW_PREVIEW_OFF);
+        } else {
+            render_connecting(now);
+        }
         break;
     }
 }
@@ -1256,11 +1382,15 @@ static void render(uint32_t now)
 
 void app_link_on_button(const btn_fsm_out_t *out)
 {
-    if (out->kind != BTN_CLICK || s_preview != PREVIEW_OFF) {
+    if (s_preview != PREVIEW_OFF) {
         return;
     }
     const uint32_t now = app_now_ms();
-    if (s_state == APP_STATE_PAIRING && out->id == BTN_ACTION && s_pair.phase != PAIR_STARTING && s_wifi_up) {
+    if (s_flow_shown) {
+        app_flow_on_button(out, now);
+    } else if (out->kind != BTN_CLICK) {
+        return;
+    } else if (s_state == APP_STATE_PAIRING && out->id == BTN_ACTION && s_pair.phase != PAIR_STARTING && s_wifi_up) {
         backoff_reset(&s_pair.backoff);
         pair_request_code();
     } else if ((s_state == APP_STATE_WIFI_FAILED || s_state == APP_STATE_WIFI_CONNECTING) &&
@@ -1273,9 +1403,11 @@ void app_link_on_button(const btn_fsm_out_t *out)
         return;
     }
     run_deadlines(now);
+    app_flow_run_deadlines(now);
     app_publish_link(&s_info);
     render(now);
     arm_timer(now);
+    app_flow_arm_timer(now);
 }
 
 bool app_link_handle_event(const app_event_t *ev)
@@ -1286,6 +1418,7 @@ bool app_link_handle_event(const app_event_t *ev)
         s_splash_done = true;
         break;
     case APP_EV_LINK_TIMER:
+    case APP_EV_FLOW_TIMER:
         break;
     case APP_EV_WIFI_UP:
         on_wifi_up(now);
@@ -1333,9 +1466,11 @@ bool app_link_handle_event(const app_event_t *ev)
         return false;
     }
     run_deadlines(now);
+    app_flow_run_deadlines(now);
     app_publish_link(&s_info);
     render(now);
     arm_timer(now);
+    app_flow_arm_timer(now);
     return true;
 }
 

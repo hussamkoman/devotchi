@@ -23,7 +23,6 @@ static const char *TAG = "ui";
 
 static const char *const SCREEN_NAMES[UI_SCREEN_COUNT] = {
     [UI_SCREEN_SPLASH] = "splash",
-    [UI_SCREEN_DIAG] = "diag",
     [UI_SCREEN_PROVISIONING] = "provisioning",
     [UI_SCREEN_WIFI] = "wifi",
     [UI_SCREEN_CONNECTING] = "connecting",
@@ -85,7 +84,8 @@ lv_obj_t *ui_label_create(lv_obj_t *parent, const lv_font_t *font, lv_color_t co
 
 void ui_label_set(lv_obj_t *label, const char *text)
 {
-    char clean[UI_TEXT_SIZE];
+    /* Static: callers hold the ui lock, and a details page does not belong on a task stack. */
+    static char clean[UI_LABEL_TEXT_SIZE];
     text_sanitize_ascii(clean, sizeof(clean), text != NULL ? text : "");
     if (strcmp(lv_label_get_text(label), clean) != 0) {
         lv_label_set_text(label, clean);
@@ -133,11 +133,16 @@ esp_err_t ui_init(void)
 
     ESP_RETURN_ON_FALSE(ui_lock(), ESP_ERR_TIMEOUT, TAG, "lock");
     s_screens[UI_SCREEN_SPLASH] = screen_splash_create();
-    s_screens[UI_SCREEN_DIAG] = screen_diag_create();
     s_screens[UI_SCREEN_PROVISIONING] = screen_provisioning_create();
     s_screens[UI_SCREEN_WIFI] = screen_wifi_create();
     s_screens[UI_SCREEN_CONNECTING] = screen_connecting_create();
     s_screens[UI_SCREEN_PAIRING] = screen_pairing_create();
+    s_screens[UI_SCREEN_PET] = screen_pet_create();
+    s_screens[UI_SCREEN_APPROVAL] = screen_approval_create();
+    s_screens[UI_SCREEN_IDENTIFY] = screen_identify_create();
+    ui_status_bar_create();
+    ui_overlay_create();
+    ui_status_bar_set_visible(false);
     s_current = UI_SCREEN_SPLASH;
     lv_screen_load(s_screens[UI_SCREEN_SPLASH]);
     display_unlock();
@@ -167,6 +172,7 @@ esp_err_t ui_show_screen(ui_screen_id_t id)
     if (id != s_current) {
         s_current = id;
         lv_screen_load(s_screens[id]);
+        ui_status_bar_set_visible(id != UI_SCREEN_SPLASH && id != UI_SCREEN_LOWBATT && id != UI_SCREEN_IDENTIFY);
     }
     ui_unlock();
     return ESP_OK;
@@ -196,7 +202,7 @@ typedef struct {
 static lv_obj_tree_walk_res_t collect_text(lv_obj_t *obj, void *user_data)
 {
     text_walk_t *walk = user_data;
-    if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) {
+    if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN) || lv_obj_has_flag(obj, UI_FLAG_NO_TEXT)) {
         return LV_OBJ_TREE_WALK_SKIP_CHILDREN;
     }
     if (lv_obj_check_type(obj, &lv_label_class)) {

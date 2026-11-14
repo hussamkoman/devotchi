@@ -212,18 +212,6 @@ void app_show_screen(ui_screen_id_t id)
     console_evt(evt);
 }
 
-static void fill_diag_screen(void)
-{
-    char line[64];
-    char id[APP_DEVICE_ID_SIZE];
-
-    app_get_device_id(id);
-    snprintf(line, sizeof(line), "fw %s  reset %s", esp_app_get_description()->version, app_reset_reason());
-    ui_diag_set_line(0, line);
-    snprintf(line, sizeof(line), "id %s  nvs %s", id, storage_is_degraded() ? "error" : "ok");
-    ui_diag_set_line(1, line);
-}
-
 static bool snapshot_lock(void)
 {
     return xSemaphoreTake(s_snapshot_lock, pdMS_TO_TICKS(SNAPSHOT_TIMEOUT_MS)) == pdTRUE;
@@ -338,10 +326,18 @@ void app_request_complete(bool ok, const char *message)
     xSemaphoreGive(s_snapshot_lock);
 }
 
-static void user_activity(uint32_t now_ms)
+void app_user_activity(uint32_t now)
 {
     if (snapshot_lock()) {
-        s_snapshot.last_user_ms = now_ms;
+        s_snapshot.last_user_ms = now;
+        xSemaphoreGive(s_snapshot_lock);
+    }
+}
+
+void app_agent_activity(uint32_t now)
+{
+    if (snapshot_lock()) {
+        s_snapshot.last_agent_ms = now;
         xSemaphoreGive(s_snapshot_lock);
     }
 }
@@ -360,11 +356,6 @@ static void on_button(const btn_fsm_out_t *out, uint32_t now_ms)
              btn_id_name(out->id), btn_kind_name(out->kind), out->swallowed ? "true" : "false");
     console_evt(evt);
 
-    char line[48];
-    snprintf(line, sizeof(line), "btn %s %s%s", btn_id_name(out->id), btn_kind_name(out->kind),
-             out->swallowed ? " (swallowed)" : "");
-    ui_diag_set_line(APP_DIAG_LINE_BTN, line);
-
     if (!out->swallowed) {
         app_link_on_button(out);
     }
@@ -375,7 +366,7 @@ static void handle_btn_raw(const app_event_t *ev)
     const btn_id_t id = (btn_id_t)ev->arg.u8[0];
     const btn_raw_t raw = (btn_raw_t)ev->arg.u8[1];
     if (raw == BTN_RAW_DOWN) {
-        user_activity(ev->t_ms);
+        app_user_activity(ev->t_ms);
     }
     ESP_LOGD(TAG, "raw %s %d", btn_id_name(id), raw);
     btn_fsm_out_t out;
@@ -390,7 +381,7 @@ static void handle_btn_inject(const app_event_t *ev)
     if (id >= BTN_COUNT) {
         return;
     }
-    user_activity(ev->t_ms);
+    app_user_activity(ev->t_ms);
     btn_fsm_out_t out;
     btn_fsm_inject(&s_btn, id, (btn_kind_t)ev->arg.u8[1], ev->t_ms, &out);
     on_button(&out, ev->t_ms);
@@ -408,6 +399,9 @@ static void handle_fb_step(const app_event_t *ev)
         s_fb_start_ms = ev->t_ms;
     }
     s_fb_playing = step != FEEDBACK_STEP_END;
+    if (step == FEEDBACK_STEP_END) {
+        app_flow_on_feedback_end();
+    }
     const uint32_t t = ev->t_ms - s_fb_start_ms;
     char evt[128];
     if (step == FEEDBACK_STEP_END) {
@@ -426,7 +420,7 @@ static void handle_fb_step(const app_event_t *ev)
 static void handle_power(const app_event_t *ev)
 {
     if (ev->arg.u32 != 0) {
-        user_activity(ev->t_ms);
+        app_user_activity(ev->t_ms);
     }
     power_battery_t b;
     power_get_battery(&b);
@@ -438,16 +432,6 @@ static void handle_power(const app_event_t *ev)
              battery_state_name(b.state), b.pct, (long)b.mv, b.ext_power ? "true" : "false",
              ev->arg.u32 != 0 ? "true" : "false", b.low ? "true" : "false", b.critical ? "true" : "false");
     console_evt(evt);
-
-    char line[64];
-    if (b.pct >= 0) {
-        snprintf(line, sizeof(line), "batt %s %d%%  %ld mV%s%s%s", battery_state_name(b.state), b.pct, (long)b.mv,
-                 b.ext_power ? "  ext" : "", b.low ? "  LOW" : "", b.critical ? "  CRITICAL" : "");
-    } else {
-        snprintf(line, sizeof(line), "batt %s  %ld mV%s", battery_state_name(b.state), (long)b.mv,
-                 b.ext_power ? "  ext" : "");
-    }
-    ui_diag_set_line(APP_DIAG_LINE_BATT, line);
 }
 
 static void handle_setting(storage_setting_t id)
@@ -484,6 +468,7 @@ static void handle_event(const app_event_t *ev)
     case APP_EV_NET_JOB:
     case APP_EV_LINK_TIMER:
     case APP_EV_REQUEST:
+    case APP_EV_FLOW_TIMER:
         app_link_handle_event(ev);
         break;
     case APP_EV_BTN_RAW:
@@ -493,7 +478,7 @@ static void handle_event(const app_event_t *ev)
         handle_btn_inject(ev);
         break;
     case APP_EV_USER_ACTIVITY:
-        user_activity(ev->t_ms);
+        app_user_activity(ev->t_ms);
         break;
     case APP_EV_FB_STEP:
         handle_fb_step(ev);
@@ -511,9 +496,6 @@ static void handle_event(const app_event_t *ev)
 static void app_task(void *arg)
 {
     (void)arg;
-    fill_diag_screen();
-    ui_diag_set_line(APP_DIAG_LINE_BATT, "batt --");
-    ui_diag_set_line(APP_DIAG_LINE_BTN, "btn --");
     app_link_start();
     for (;;) {
         app_event_t ev;
@@ -580,6 +562,7 @@ esp_err_t app_init(void)
     ESP_RETURN_ON_ERROR(buttons_init(on_button_raw), TAG, "buttons");
     ESP_RETURN_ON_ERROR(feedback_init(on_feedback_step), TAG, "feedback");
     ESP_RETURN_ON_ERROR(power_init(on_power), TAG, "power");
+    ESP_RETURN_ON_ERROR(app_flow_init(), TAG, "flow");
     ESP_RETURN_ON_ERROR(app_link_init(), TAG, "link");
     /* Host tools poll `version` to detect readiness, so it is registered after every other command. */
     ESP_RETURN_ON_ERROR(app_cmds_io_register(), TAG, "io commands");
