@@ -48,6 +48,12 @@ export interface ServerTiming {
   replayMaxAgeMs: number;
   /** A token's `last_used` column is written at most this often. */
   lastUsedWriteMs: number;
+  /** Minimum spacing of the `status` frames emitted for PostToolUse hooks (2/s per room). */
+  hookStatusIntervalMs: number;
+  /** A device's `last_hold_at` column is written at most this often per socket. */
+  holdWriteMs: number;
+  /** Hook session state is forgotten after this much silence. */
+  sessionTtlMs: number;
 }
 
 export const DEFAULT_SERVER_TIMING: Readonly<ServerTiming> = {
@@ -63,6 +69,9 @@ export const DEFAULT_SERVER_TIMING: Readonly<ServerTiming> = {
   systemMessageIntervalMs: 1000,
   replayMaxAgeMs: REPLAY_MAX_AGE_MS,
   lastUsedWriteMs: 60_000,
+  hookStatusIntervalMs: 500,
+  holdWriteMs: 30_000,
+  sessionTtlMs: 30 * 60_000,
 };
 
 /** Architecture section 2.6. */

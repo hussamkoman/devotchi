@@ -1,147 +1,87 @@
-// Claude Code HTTP hooks (protocol section 8): the v1 routes
-// /hook/permission, /hook/status and /hook/stop.
+// Claude Code HTTP hooks (protocol section 8): POST /hook/event and the v1
+// aliases /hook/permission, /hook/status and /hook/stop.
 
-import { randomBytes } from "node:crypto";
 import Router from "@koa/router";
-import {
-  buildDismiss,
-  buildError,
-  buildNotify,
-  buildPermission,
-  buildStatus,
-  formatToolCall,
-  type HookReply,
-} from "@devotchi/shared";
-import type { ResolvedConfig } from "../config.js";
+import type { Middleware } from "koa";
+import type { HookReply } from "@devotchi/shared";
+import type { HookBody, HookDispatcher } from "../hooks/dispatcher.js";
 import { authOf, requireAuth, requireCli, type Authenticator } from "../http/auth.js";
 import { byToken, type RateLimits } from "../http/rate-limit.js";
-import type { Logger } from "../log.js";
-import type { RoomRegistry } from "../rooms/registry.js";
-import type { WsServer } from "../ws/server.js";
+import { errorFields, type Logger } from "../log.js";
+import type { PermissionManager, PermissionOutcome } from "../permissions/manager.js";
 
 export interface HookRouteDeps {
-  config: ResolvedConfig;
   auth: Authenticator;
   limits: RateLimits;
-  rooms: RoomRegistry;
-  ws: WsServer;
+  dispatcher: HookDispatcher;
+  permissions: PermissionManager;
   log: Logger;
 }
 
-interface PendingHook {
-  roomId: string;
-  timer: NodeJS.Timeout;
-  resolve: (reply: HookReply | null) => void;
-}
+const NEUTRAL: HookReply = {};
 
-type HookBody = Record<string, unknown>;
+/**
+ * The hook reply for an outcome (protocol 8.3). A decision exists only for
+ * the two outcomes a consumer's permission_response produces.
+ */
+export function hookReply(outcome: PermissionOutcome): HookReply {
+  if (outcome.kind === "allow") {
+    return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } };
+  }
+  if (outcome.kind === "deny") {
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: { behavior: "deny", message: "Denied on Devotchi" },
+      },
+    };
+  }
+  return NEUTRAL;
+}
 
 function hookBody(body: unknown): HookBody {
   return typeof body === "object" && body !== null && !Array.isArray(body) ? (body as HookBody) : {};
 }
 
-export interface HookRoutes {
-  router: Router;
-  /** Answers every held request with the neutral reply. */
-  shutdown(): void;
-}
-
-export function hookRoutes(deps: HookRouteDeps): HookRoutes {
-  const { config, auth, limits, rooms, ws, log } = deps;
+export function hookRoutes(deps: HookRouteDeps): Router {
+  const { auth, limits, dispatcher, permissions, log } = deps;
   const router = new Router({ prefix: "/hook" });
   const guard = [requireAuth(auth, { allowQuery: true }), requireCli(), limits.middleware(600, byToken)];
-  const pending = new Map<string, PendingHook>();
 
-  ws.handle("permission_response", (conn, msg, room) => {
-    const request = pending.get(msg.id);
-    if (!request || request.roomId !== room.id) {
-      conn.send(buildError("UNKNOWN_REQUEST", "not pending", msg.id));
-      return;
-    }
-    clearTimeout(request.timer);
-    pending.delete(msg.id);
-    const outcome = msg.granted ? "allow" : "deny";
-    rooms.broadcastToConsumers(
-      room,
-      buildDismiss({ id: msg.id, reason: "answered", outcome, by: conn.registration?.identity ?? "unknown" }),
-    );
-    request.resolve({
-      hookSpecificOutput: {
-        hookEventName: "PermissionRequest",
-        decision: msg.granted ? { behavior: "allow" } : { behavior: "deny", message: "Denied on Devotchi" },
-      },
-    });
-  });
-
-  router.post("/permission", ...guard, async (ctx) => {
+  /** `alias` names the event of a v1 route, used when the body has no hook_event_name. */
+  const handler = (alias?: string): Middleware => async (ctx) => {
+    const body = hookBody(ctx.request.body);
+    const event = typeof body.hook_event_name === "string" ? body.hook_event_name : alias;
     const roomId = authOf(ctx).roomId;
-    const room = rooms.get(roomId);
-    if (!room || room.consumers.size === 0) {
-      ctx.body = {};
-      return;
-    }
-    const body = hookBody(ctx.request.body);
-    const id = randomBytes(16).toString("hex");
-    const formatted = formatToolCall(body.tool_name, body.tool_input, typeof body.cwd === "string" ? body.cwd : undefined);
-    const holdMs = config.timing.holdMs;
-    rooms.broadcastToConsumers(
-      room,
-      buildPermission({ id, ...formatted, timeout: holdMs, timestamp: new Date().toISOString() }),
-    );
-
-    const res = ctx.res;
-    const reply = await new Promise<HookReply | null>((resolve) => {
-      const timer = setTimeout(() => {
-        pending.delete(id);
-        rooms.broadcastToConsumers(room, buildDismiss({ id, reason: "timeout" }));
-        resolve({});
-      }, holdMs);
-      pending.set(id, { roomId, timer, resolve });
-      // The response stream closing before a reply was written is a client
-      // abort; the request stream closes as soon as the body has been read.
-      res.on("close", () => {
-        if (res.writableEnded || !pending.has(id)) return;
-        clearTimeout(timer);
-        pending.delete(id);
-        rooms.broadcastToConsumers(room, buildDismiss({ id, reason: "cancelled" }));
-        resolve(null);
-      });
-    });
-    log.info("permission request resolved", { decided: reply !== null && "hookSpecificOutput" in reply });
-    ctx.body = reply ?? {};
-  });
-
-  router.post("/status", ...guard, (ctx) => {
-    const body = hookBody(ctx.request.body);
-    const room = rooms.get(authOf(ctx).roomId);
-    if (room) {
-      const { summary } = formatToolCall(body.tool_name, body.tool_input);
-      rooms.broadcastToConsumers(room, buildStatus({ msg: summary, timestamp: new Date().toISOString() }));
-    }
-    ctx.body = {};
-  });
-
-  router.post("/stop", ...guard, (ctx) => {
-    const room = rooms.get(authOf(ctx).roomId);
-    if (room) {
-      rooms.broadcastToConsumers(
-        room,
-        buildNotify({ event: "task_complete", mood: "sleeping", urgency: 2, detail: "Done", timestamp: new Date().toISOString() }),
-      );
-    }
-    ctx.body = {};
-  });
-
-  return {
-    router,
-    shutdown() {
-      for (const [id, request] of pending) {
-        clearTimeout(request.timer);
-        pending.delete(id);
-        const room = rooms.get(request.roomId);
-        if (room) rooms.broadcastToConsumers(room, buildDismiss({ id, reason: "released" }));
-        request.resolve({});
+    ctx.body = NEUTRAL;
+    try {
+      if (event !== "PermissionRequest") {
+        dispatcher.handle(roomId, event, body);
+        return;
       }
-    },
+      const ticket = dispatcher.permissionRequest(roomId, body);
+      const { id } = ticket;
+      if (id !== undefined) {
+        const res = ctx.res;
+        // The response stream closing before a reply was written is the
+        // client abort. The request stream is no signal: it closes as soon
+        // as the body has been read.
+        res.on("close", () => {
+          if (!res.writableEnded) permissions.cancelByHttpAbort(id);
+        });
+        if (res.destroyed) permissions.cancelByHttpAbort(id);
+      }
+      ctx.body = hookReply(await ticket.outcome);
+    } catch (err) {
+      // A hook must never fail Claude Code's tool call; the neutral reply leaves the terminal in charge.
+      log.error("hook handler failed", { event: event?.slice(0, 40), ...errorFields(err) });
+      ctx.body = NEUTRAL;
+    }
   };
+
+  router.post("/event", ...guard, handler());
+  router.post("/permission", ...guard, handler("PermissionRequest"));
+  router.post("/status", ...guard, handler("PostToolUse"));
+  router.post("/stop", ...guard, handler("Stop"));
+  return router;
 }

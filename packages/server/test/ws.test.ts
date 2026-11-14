@@ -340,7 +340,17 @@ describe("content routing", () => {
     const t = await start();
     const { token } = await t.mintToken();
     const c = await track(consumer(t, token));
-    c.send({ type: "set_mode", mode: "desk" });
+    c.send({
+      type: "telemetry",
+      battery: { state: "absent", pct: null, mv: 4100 },
+      power: "usb",
+      rssi: -50,
+      uptimeS: 1,
+      heapFree: 1,
+      heapMin: 1,
+      resetReason: "poweron",
+      fw: "0.0.0",
+    });
     expect(await c.awaitMessage("error")).toMatchObject({ code: "NOT_ALLOWED" });
   });
 

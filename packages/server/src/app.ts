@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import Koa from "koa";
 import { resolveConfig, type ResolvedConfig, type ServerConfigInput } from "./config.js";
 import { openDatabase, type Db } from "./db/index.js";
+import { HookDispatcher } from "./hooks/dispatcher.js";
 import { Authenticator } from "./http/auth.js";
 import { bodyParser, rejectDuplicateQuery } from "./http/body.js";
 import { errorMiddleware } from "./http/errors.js";
@@ -13,10 +14,12 @@ import { RateLimits } from "./http/rate-limit.js";
 import { requestLog } from "./http/request-log.js";
 import { cors, securityHeaders } from "./http/security.js";
 import { Logger, errorFields } from "./log.js";
+import { PermissionManager } from "./permissions/manager.js";
 import { RoomRegistry } from "./rooms/registry.js";
 import { deviceRoutes } from "./routes/devices.js";
 import { healthRoutes } from "./routes/health.js";
 import { hookRoutes } from "./routes/hooks.js";
+import { roomRoutes } from "./routes/room.js";
 import { tokenRoutes } from "./routes/tokens.js";
 import { StartupError } from "./startup-error.js";
 import { WsServer } from "./ws/server.js";
@@ -36,6 +39,7 @@ export interface ServerInternals {
   log: Logger;
   rooms: RoomRegistry;
   ws: WsServer;
+  permissions: PermissionManager;
   auth: Authenticator;
   limits: RateLimits;
   http: Server;
@@ -95,7 +99,22 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   const auth = new Authenticator(db, config.mode, config.timing.lastUsedWriteMs);
   const limits = new RateLimits(config.timing.rateWindowMs);
   const ws = new WsServer({ config, db, rooms, auth, log });
-  const shutdownHooks: ShutdownHook[] = [];
+  const permissions = new PermissionManager(rooms, db, log, config.timing);
+  const dispatcher = new HookDispatcher({ config, db, rooms, permissions });
+  ws.handle("holding", (conn, msg) => permissions.onHolding(conn, msg.ids));
+  ws.handle("permission_response", (conn, msg) => permissions.onResponse(conn, msg.id, msg.granted));
+  ws.handle("permission_defer", (conn, msg) => permissions.onDefer(conn, msg.id));
+  ws.onConsumerRegistered((conn, room) => permissions.onConsumerRegistered(conn, room));
+  ws.onConnectionClosed((conn, room) => {
+    if (conn.role === "consumer") permissions.onConsumerGone(conn, room);
+  });
+  // Held hooks are answered with the neutral reply before the sockets close.
+  const shutdownHooks: ShutdownHook[] = [
+    () => {
+      dispatcher.shutdown();
+      permissions.shutdown();
+    },
+  ];
 
   const app = new Koa({ proxy: config.trustProxy, maxIpsCount: 1 });
   // Errors are logged by errorMiddleware; Koa's own handler would print stacks to stderr.
@@ -107,13 +126,12 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   app.use(rejectDuplicateQuery());
   app.use(bodyParser());
 
-  const hooks = hookRoutes({ config, auth, limits, rooms, ws, log });
-  shutdownHooks.push(() => hooks.shutdown());
   for (const router of [
     healthRoutes(config.mode, startedAt),
     tokenRoutes({ db, config, auth, limits, ws }),
     deviceRoutes({ db, config, auth, limits, rooms }),
-    hooks.router,
+    roomRoutes({ db, config, auth, limits, rooms, ws, permissions, listDevices: () => [] }),
+    hookRoutes({ auth, limits, dispatcher, permissions, log }),
   ]) {
     app.use(router.routes());
   }
@@ -136,7 +154,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   const maintenance = setInterval(() => {
     const now = Date.now();
     limits.sweep(now);
-    rooms.prune(now, config.timing.replayMaxAgeMs);
+    rooms.prune(now, config.timing.replayMaxAgeMs, config.timing.sessionTtlMs);
   }, MAINTENANCE_MS);
   maintenance.unref();
 
@@ -179,6 +197,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
       log,
       rooms,
       ws,
+      permissions,
       auth,
       limits,
       http,
