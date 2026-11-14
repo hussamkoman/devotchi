@@ -1,6 +1,8 @@
 #pragma once
 
 #include "btn_fsm.h"
+#include "proto.h"
+
 #include "esp_err.h"
 
 #include <stdbool.h>
@@ -25,6 +27,23 @@ typedef enum {
     APP_EV_POWER,
     /** arg.u32: storage_setting_t that was written. */
     APP_EV_SETTING_CHANGED,
+    APP_EV_WIFI_UP,
+    /** arg.u8[0]: net_wifi_fail_t. */
+    APP_EV_WIFI_DOWN,
+    /** arg.u8: net_event_id_t of the provisioning event, net_wifi_fail_t. */
+    APP_EV_PROV,
+    APP_EV_WS_UP,
+    /** arg.ptr: net_ws_msg_t the handler releases. */
+    APP_EV_WS_MSG,
+    /** arg.u32: close code in the high half, HTTP status of a refused upgrade in the low half. */
+    APP_EV_WS_DOWN,
+    APP_EV_WS_STOPPED,
+    /** arg.ptr: const net_job_result_t. */
+    APP_EV_NET_JOB,
+    /** The link state machine's next deadline passed. */
+    APP_EV_LINK_TIMER,
+    /** A console command waits in the request slot (app_request()). */
+    APP_EV_REQUEST,
 } app_event_id_t;
 
 /** Passed by value through the app queue; payloads larger than this travel as a pool pointer. */
@@ -51,8 +70,58 @@ typedef enum {
     APP_STATE_OFFLINE,
 } app_state_t;
 
+typedef enum {
+    APP_WIFI_OFF,
+    APP_WIFI_INIT_FAILED,
+    /** Storage is degraded and holds no credentials; the console can supply them. */
+    APP_WIFI_NO_CREDENTIALS,
+    APP_WIFI_PROVISIONING,
+    APP_WIFI_CONNECTING,
+    /** The last attempt failed; the next one is scheduled. */
+    APP_WIFI_FAILED,
+    APP_WIFI_CONNECTED,
+} app_wifi_state_t;
+
+typedef enum {
+    APP_WS_DOWN,
+    APP_WS_CONNECTING,
+    APP_WS_CONNECTED,
+    APP_WS_REGISTERED,
+} app_ws_state_t;
+
+/** Lifecycle of the one WebSocket client; a client is created only in APP_WS_PHASE_IDLE. */
+typedef enum {
+    APP_WS_PHASE_IDLE,
+    APP_WS_PHASE_RUNNING,
+    APP_WS_PHASE_STOPPING,
+} app_ws_phase_t;
+
+#define APP_LINK_ERROR_SIZE  48
+#define APP_SSID_SIZE        33
+#define APP_SERVER_SIZE      128
+
+typedef struct {
+    app_wifi_state_t wifi;
+    app_ws_state_t ws;
+    app_ws_phase_t ws_phase;
+    /** The SSID the device is configured for, connected or not. */
+    char ssid[APP_SSID_SIZE];
+    /** The server base URL in use; it differs from storage only when storage is degraded. */
+    char server[APP_SERVER_SIZE];
+    bool paired;
+    char last_error[APP_LINK_ERROR_SIZE];
+    /** app_now_ms() of the next reconnect attempt, 0 when none is scheduled. */
+    uint32_t retry_at_ms;
+    /** Consecutive upgrades refused with HTTP 401 by a protocol 2 server. */
+    uint8_t rejected_401;
+    uint32_t rx_invalid;
+    proto_mode_t mode;
+    char name[PROTO_NAME_SIZE];
+} app_link_info_t;
+
 typedef struct {
     app_state_t state;
+    app_link_info_t link;
     uint32_t events_dropped;
     uint32_t last_user_ms;
     bool has_last_btn;
@@ -62,7 +131,7 @@ typedef struct {
 
 /**
  * Creates the event queue, initialises the drivers that report to the app
- * (buttons, feedback, power) and registers the application's console commands.
+ * (buttons, feedback, power, net) and registers the application's console commands.
  */
 esp_err_t app_init(void);
 
@@ -81,6 +150,9 @@ bool app_post_from_isr(const app_event_t *ev);
 void app_get_snapshot(app_snapshot_t *out);
 
 const char *app_state_name(app_state_t state);
+const char *app_wifi_state_name(app_wifi_state_t state);
+const char *app_ws_state_name(app_ws_state_t state);
+const char *app_ws_phase_name(app_ws_phase_t phase);
 
 /** Reset reason of this boot as a protocol string (`poweron`, `sw`, `panic`, ...). */
 const char *app_reset_reason(void);

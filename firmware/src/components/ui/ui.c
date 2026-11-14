@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include "display.h"
+#include "text.h"
 #include "ui_priv.h"
 #include "ui_theme.h"
 
@@ -65,6 +66,32 @@ lv_obj_t *ui_screen_base_create(void)
     return scr;
 }
 
+lv_obj_t *ui_label_create(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, int32_t y, bool one_line)
+{
+    lv_obj_t *label = lv_label_create(parent);
+    lv_obj_set_style_text_font(label, font, 0);
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_width(label, LV_HOR_RES - 2 * UI_PAD);
+    if (one_line) {
+        lv_obj_set_height(label, lv_font_get_line_height(font));
+        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+    } else {
+        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
+    }
+    lv_label_set_text_static(label, "");
+    lv_obj_align(label, LV_ALIGN_TOP_LEFT, UI_PAD, y);
+    return label;
+}
+
+void ui_label_set(lv_obj_t *label, const char *text)
+{
+    char clean[UI_TEXT_SIZE];
+    text_sanitize_ascii(clean, sizeof(clean), text != NULL ? text : "");
+    if (strcmp(lv_label_get_text(label), clean) != 0) {
+        lv_label_set_text(label, clean);
+    }
+}
+
 static uint32_t tick_ms(void)
 {
     return (uint32_t)(esp_timer_get_time() / 1000);
@@ -107,6 +134,10 @@ esp_err_t ui_init(void)
     ESP_RETURN_ON_FALSE(ui_lock(), ESP_ERR_TIMEOUT, TAG, "lock");
     s_screens[UI_SCREEN_SPLASH] = screen_splash_create();
     s_screens[UI_SCREEN_DIAG] = screen_diag_create();
+    s_screens[UI_SCREEN_PROVISIONING] = screen_provisioning_create();
+    s_screens[UI_SCREEN_WIFI] = screen_wifi_create();
+    s_screens[UI_SCREEN_CONNECTING] = screen_connecting_create();
+    s_screens[UI_SCREEN_PAIRING] = screen_pairing_create();
     s_current = UI_SCREEN_SPLASH;
     lv_screen_load(s_screens[UI_SCREEN_SPLASH]);
     display_unlock();
@@ -174,7 +205,8 @@ static lv_obj_tree_walk_res_t collect_text(lv_obj_t *obj, void *user_data)
             if (walk->count >= walk->max) {
                 return LV_OBJ_TREE_WALK_END;
             }
-            strlcpy(walk->texts[walk->count++], text, UI_TEXT_SIZE);
+            strlcpy(walk->texts[walk->count++], lv_obj_has_flag(obj, UI_FLAG_SECRET) ? UI_TEXT_HIDDEN : text,
+                    UI_TEXT_SIZE);
         }
     }
     return LV_OBJ_TREE_WALK_NEXT;

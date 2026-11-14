@@ -364,12 +364,17 @@ static console_rc_t cmd_log(int argc, char **argv, const char *raw_args)
     return console_fail(CONSOLE_ERR_BAD_ARGS, "unknown level");
 }
 
+void console_reboot_after_command(void)
+{
+    s_reboot_requested = true;
+}
+
 static console_rc_t cmd_reboot(int argc, char **argv, const char *raw_args)
 {
     (void)argc;
     (void)argv;
     (void)raw_args;
-    s_reboot_requested = true;
+    console_reboot_after_command();
     return CONSOLE_OK;
 }
 

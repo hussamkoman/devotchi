@@ -8,6 +8,8 @@
 #include "power.h"
 #include "storage.h"
 #include "ui.h"
+#include "wifi.h"
+#include "ws.h"
 
 #include "esp_app_desc.h"
 #include "esp_check.h"
@@ -91,12 +93,33 @@ static console_rc_t cmd_state(int argc, char **argv, const char *raw_args)
     cJSON_AddNumberToObject(ui, "frameMsMax", stats.max_ms_x10 / 10.0);
     cJSON_AddNumberToObject(ui, "flushErrors", display_flush_errors());
 
+    const char *source_name = source == STORAGE_URL_SOURCE_NVS ? "nvs" : "default";
     cJSON_AddStringToObject(root, "nvs", storage_is_degraded() ? "error" : "ok");
-    cJSON_AddBoolToObject(root, "paired", storage_is_paired());
+    cJSON_AddBoolToObject(root, "paired", snap.link.paired);
     cJSON_AddBoolToObject(root, "wifiConfigured", storage_has_wifi());
     cJSON_AddStringToObject(root, "server", url);
-    cJSON_AddStringToObject(root, "serverSource", source == STORAGE_URL_SOURCE_NVS ? "nvs" : "default");
+    cJSON_AddStringToObject(root, "serverSource", source_name);
     cJSON_AddBoolToObject(root, "hasBackup", storage_has_backup());
+    cJSON_AddStringToObject(root, "mode", proto_mode_name(snap.link.mode));
+    cJSON_AddStringToObject(root, "name", snap.link.name);
+
+    wifi_status_t wifi;
+    wifi_get_status(&wifi);
+    cJSON *link = cJSON_AddObjectToObject(root, "link");
+    cJSON_AddStringToObject(link, "wifi", app_wifi_state_name(snap.link.wifi));
+    cJSON_AddStringToObject(link, "ssid", snap.link.ssid);
+    cJSON_AddStringToObject(link, "ip", wifi.ip);
+    cJSON_AddNumberToObject(link, "rssi", wifi.rssi);
+    cJSON_AddStringToObject(link, "ws", app_ws_state_name(snap.link.ws));
+    cJSON_AddStringToObject(link, "wsPhase", app_ws_phase_name(snap.link.ws_phase));
+    cJSON_AddStringToObject(link, "server", snap.link.server);
+    cJSON_AddStringToObject(link, "serverSource", source_name);
+    cJSON_AddStringToObject(link, "lastError", snap.link.last_error);
+    const int32_t retry_ms = snap.link.retry_at_ms != 0 ? (int32_t)(snap.link.retry_at_ms - app_now_ms()) : 0;
+    cJSON_AddNumberToObject(link, "retryInS", retry_ms > 0 ? (retry_ms + 999) / 1000 : 0);
+    cJSON_AddNumberToObject(link, "rxDropped", ws_rx_dropped());
+    cJSON_AddNumberToObject(link, "rxInvalid", snap.link.rx_invalid);
+    cJSON_AddNumberToObject(link, "rejected401", snap.link.rejected_401);
     cJSON_AddNumberToObject(root, "eventsDropped", snap.events_dropped);
 
     cJSON *settings = cJSON_AddObjectToObject(root, "settings");
