@@ -52,3 +52,8 @@ export function insertDevice(
     new Date().toISOString(),
   );
 }
+
+/** Records the time of a device's last `holding` frame (protocol 7.5 `lastHoldAt`). */
+export function touchDeviceHold(db: Db, tokenId: string, at: number): void {
+  db.run("UPDATE devices SET last_hold_at = ? WHERE token_id = ?", new Date(at).toISOString(), tokenId);
+}

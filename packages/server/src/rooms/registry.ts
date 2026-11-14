@@ -4,12 +4,17 @@
 import {
   buildPeers,
   serialize,
+  type LastRequest,
   type Mood,
   type Peers,
   type ServerToConsumerMessage,
   type StatusMessage,
 } from "@devotchi/shared";
+import type { PendingRequest } from "../permissions/manager.js";
 import type { Conn } from "./conn.js";
+
+/** An idle room keeps its last request and diagnostics this long, for `devotchi status` and `doctor`. */
+const HISTORY_MAX_AGE_MS = 24 * 60 * 60_000;
 
 export interface RoomMood {
   value: Mood;
@@ -18,11 +23,21 @@ export interface RoomMood {
   at: number;
 }
 
-/** Per Claude Code session state, keyed by sid. */
+/** Per Claude Code session state (protocol 8.2), keyed by sid ("" when the hook sent no session_id). */
 export interface RoomSession {
   sid: string;
   project?: string;
   lastSeen: number;
+  /** Time of the last UserPromptSubmit, for the Stop duration. */
+  lastPromptAt: number | null;
+  /** Consecutive PostToolUseFailure events. */
+  failures: number;
+  /** A terminal permission dialog of this session may be on screen (protocol 8.4). */
+  dialogMaybeOpen: boolean;
+}
+
+export interface RoomDiagnosticsState {
+  dialogWhilePending: { count: number; lastSeenAt: number | null };
 }
 
 export class Room {
@@ -32,6 +47,11 @@ export class Room {
   /** The mood of the last message sent to consumers that carried one. */
   mood: RoomMood | null = null;
   readonly sessions = new Map<string, RoomSession>();
+  /** Pending permission requests, oldest first; owned by the PermissionManager. */
+  readonly pending: PendingRequest[] = [];
+  lastRequest: LastRequest | null = null;
+  /** In memory only: starts at zero after a restart. */
+  readonly diagnostics: RoomDiagnosticsState = { dialogWhilePending: { count: 0, lastSeenAt: null } };
 
   constructor(readonly id: string) {}
 
@@ -120,12 +140,22 @@ export class RoomRegistry {
     return delivered;
   }
 
-  /** Drops rooms nobody is connected to whose replayable state has aged out. */
-  prune(now: number, maxAgeMs: number): void {
+  /**
+   * Forgets silent sessions, then drops rooms nobody is connected to that
+   * have no pending request and whose state has aged out.
+   */
+  prune(now: number, maxAgeMs: number, sessionTtlMs: number): void {
     for (const [id, room] of this.rooms) {
-      if (!room.isEmpty || room.sessions.size > 0) continue;
-      const newest = Math.max(room.lastStatus?.at ?? -Infinity, room.mood?.at ?? -Infinity);
-      if (now - newest >= maxAgeMs) this.rooms.delete(id);
+      for (const [sid, session] of room.sessions) {
+        if (now - session.lastSeen >= sessionTtlMs) room.sessions.delete(sid);
+      }
+      if (!room.isEmpty || room.sessions.size > 0 || room.pending.length > 0) continue;
+      const replayable = Math.max(room.lastStatus?.at ?? -Infinity, room.mood?.at ?? -Infinity);
+      const history = Math.max(
+        room.lastRequest ? Date.parse(room.lastRequest.at) : -Infinity,
+        room.diagnostics.dialogWhilePending.lastSeenAt ?? -Infinity,
+      );
+      if (now - replayable >= maxAgeMs && now - history >= HISTORY_MAX_AGE_MS) this.rooms.delete(id);
     }
   }
 }

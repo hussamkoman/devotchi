@@ -91,6 +91,9 @@ const TIMING_RANGES: Record<keyof ServerTiming, [number, number]> = {
   systemMessageIntervalMs: [0, 600_000],
   replayMaxAgeMs: [0, 86_400_000],
   lastUsedWriteMs: [0, 86_400_000],
+  hookStatusIntervalMs: [0, 600_000],
+  holdWriteMs: [0, 86_400_000],
+  sessionTtlMs: [1, 86_400_000],
 };
 
 /** Fills defaults and validates. Throws ConfigError. */

@@ -33,6 +33,10 @@ export interface Registration {
 
 export class Conn {
   lastFrameAt: number;
+  /** Time of the last `holding` frame (protocol 7.5 `lastHoldAt`). */
+  lastHoldAt: number | null = null;
+  /** The `lastHoldAt` value last written to the device registry. */
+  lastHoldWrittenAt: number | null = null;
   registration: Registration | null = null;
   readonly content: RateLog;
   readonly holding: TokenBucket;
