@@ -26,6 +26,13 @@ public:
 
     std::optional<std::string> pairing_code() const;
     void set_pairing_code(std::string_view code);
+
+    std::optional<std::string> room_id() const;
+    void set_room_id(std::string_view room);
+
+    void set_token_and_room(std::string_view token, std::string_view room);
+
+    void clear();
 };
 
 }  // namespace devotchi::storage
