@@ -1,0 +1,89 @@
+menu "Devotchi"
+
+    config DEVOTCHI_DEFAULT_SERVER_URL
+        string "Default server base URL"
+        default "ws://10.0.0.120:8080"
+        help
+            Used while the NVS key server_url is absent or empty. ws:// or wss://.
+
+    config DEVOTCHI_LONG_PRESS_MS
+        int "Long press threshold (ms)"
+        default 1000
+
+    config DEVOTCHI_DISPLAY_SPI_HZ
+        int "Display SPI clock (Hz)"
+        default 40000000
+
+    config DEVOTCHI_DIM_BRIGHTNESS_PCT
+        int "Backlight percent in the dim stage"
+        range 1 100
+        default 10
+
+    config DEVOTCHI_PWR_USB_DEEP_MIN
+        int "Deep sleep after N minutes on external power (0 = never)"
+        default 0
+
+    config DEVOTCHI_PWR_BOOT_GRACE_S
+        int "Seconds after boot during which the device never sleeps"
+        range 10 600
+        default 60
+        help
+            The board has no BOOT button; this window keeps USB reflashing possible.
+
+    config DEVOTCHI_PWR_LIGHT_SLEEP
+        bool "Allow automatic light sleep on battery while the screen is off"
+        default y
+
+    config DEVOTCHI_PWR_TEST_SECONDS
+        bool "Debug: count the deep-sleep setting in seconds instead of minutes"
+        default n
+
+    config DEVOTCHI_BTN_POWER_SAVE
+        bool "Use the button library's power-save mode (GPIO wake-up)"
+        default y
+
+    config DEVOTCHI_BATT_LOW_MV
+        int "Low battery warning threshold (mV)"
+        default 3500
+
+    config DEVOTCHI_BATT_CRIT_MV
+        int "Critical battery threshold (mV)"
+        default 3300
+
+    config DEVOTCHI_BATT_CAL_PERMILLE
+        int "Battery voltage calibration factor (permille)"
+        default 1000
+
+    config DEVOTCHI_MOTOR_MAX_DUTY_PCT
+        int "Vibration motor maximum duty (percent)"
+        range 0 100
+        default 70
+
+    config DEVOTCHI_WS_RX_BUFFER
+        int "WebSocket receive buffer (bytes)"
+        default 4096
+
+    config DEVOTCHI_SHADOW_FB
+        bool "Keep shadow and snapshot framebuffers in PSRAM for the screenshot command"
+        default y
+
+    config DEVOTCHI_TLS_EXTRA_CA
+        bool "Trust one extra CA certificate embedded at build time"
+        default n
+
+    config DEVOTCHI_TLS_EXTRA_CA_PATH
+        string "Absolute path to a file named extra_ca.pem"
+        depends on DEVOTCHI_TLS_EXTRA_CA
+        default ""
+
+    config DEVOTCHI_PROV_NAME_PREFIX
+        string "BLE provisioning service name prefix"
+        default "DEVOTCHI"
+
+    config DEVOTCHI_DEBUG_NVS_FAIL
+        bool "Debug: storage_init behaves as if nvs_flash_init failed"
+        default n
+        help
+            NVS is not touched. Exercises the degraded path.
+
+endmenu

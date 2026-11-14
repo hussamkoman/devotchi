@@ -1,7 +1,5 @@
 idf_component_register(
-    SRCS "Storage.cpp"
+    SRCS "storage.c"
     INCLUDE_DIRS "include"
-    REQUIRES nvs_flash
+    PRIV_REQUIRES nvs_flash
 )
-
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

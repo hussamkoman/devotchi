@@ -1,7 +1,7 @@
 dependencies:
-  idf: ">=5.1"
-  espressif/esp_websocket_client: "*"
-  espressif/button: "^4.0"
-  lvgl/lvgl: "^9.0"
-  bblanchon/ArduinoJson: "^7.0"
+  idf: ">=6.0"
+  lvgl/lvgl: "^9.5"
+  espressif/esp_websocket_client: "^1.6"
+  espressif/button: "^4.1"
   espressif/network_provisioning: "^1.2"
+  espressif/cjson: "^1.7.19"

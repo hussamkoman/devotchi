@@ -1,18 +1,6 @@
 idf_component_register(
-    SRCS
-        "Ui.cpp"
-        "UiTask.cpp"
-        "screens/PetScreen.cpp"
-        "screens/SplashScreen.cpp"
-        "screens/ProvisioningScreen.cpp"
-        "screens/ConnectingScreen.cpp"
-        "screens/PairingScreen.cpp"
-        "screens/ApprovalScreen.cpp"
-        "screens/SettingsScreen.cpp"
-        "widgets/StatusBar.cpp"
+    SRCS "ui.c" "screen_splash.c" "screen_diag.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "."
-    REQUIRES display buttons protocol runtime config esp_timer lvgl__lvgl
+    PRIV_REQUIRES core display lvgl esp_timer esp_app_format
 )
-
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

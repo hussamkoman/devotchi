@@ -1,9 +1,5 @@
 idf_component_register(
-    SRCS "main.cpp" "App.cpp"
+    SRCS "app_main.c"
     INCLUDE_DIRS "."
-    REQUIRES
-        runtime config storage protocol wifi ws_client pairing
-        display ui buttons feedback power
+    PRIV_REQUIRES app debug_console display storage ui espressif__cjson heap
 )
-
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

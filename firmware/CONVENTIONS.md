@@ -271,7 +271,10 @@ delete `sdkconfig` and rebuild.
 
 - `ESP_LOGx(TAG, ...)` only; one `TAG` per `.c` file. No `printf` outside the
   `console` component, which owns the lines starting with `@@`.
-- The `console` component is the only writer to the USB port. Log output is
+- The debug console lives in the component directory `debug_console` (files
+  `console.c`, `console.h`, prefix `console_`): a project component named
+  `console` would replace ESP-IDF's own `console` component, which
+  `protocomm` needs. It is the only writer to the USB port. Log output is
   routed through it (`esp_log_set_vprintf`) and every line, log or console,
   is written whole under one mutex.
 - Levels: `E` operation failed; `W` unexpected but handled; `I` lifecycle
@@ -333,6 +336,8 @@ ctest --test-dir /tmp/devotchi-host-test --output-on-failure
 
 - The host project compiles `src/components/core/*.c` with the host gcc
   (`-std=gnu17 -Wall -Wextra -Werror`, AddressSanitizer and UBSan on).
+  Where the sanitizer runtimes (`libasan`, `libubsan`) are not installed,
+  CMake prints a warning and builds with UBSan in trap mode only.
 - cJSON comes from `managed_components/espressif__cjson/cJSON` and Unity from
   `$IDF_PATH/components/unity/unity/src` when those directories exist.
   Otherwise `host_test/CMakeLists.txt` fetches pinned releases with
