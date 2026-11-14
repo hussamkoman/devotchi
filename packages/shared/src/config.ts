@@ -8,8 +8,10 @@ import {
   DEFAULT_HOLD_MS,
   HEARTBEAT_DEAD_MS,
   HEARTBEAT_INTERVAL_MS,
+  HOLDING_REFILL_PER_S,
   PAIRING_CODE_TTL_MS,
   REGISTER_DEADLINE_MS,
+  REPLAY_MAX_AGE_MS,
 } from "./protocol.js";
 
 export const DEFAULT_SERVER_HOST = "0.0.0.0";
@@ -36,6 +38,16 @@ export interface ServerTiming {
   /** Default room `holdMs` (DEVOTCHI_PERMISSION_HOLD_MS). */
   holdMs: number;
   pairCodeTtlMs: number;
+  /** Length of the "per minute" windows of protocol 3.5 and 7.8. */
+  rateWindowMs: number;
+  /** One `holding` token is added to a socket's bucket per interval (2/s). */
+  holdingRefillMs: number;
+  /** Minimum spacing of `telemetry` and of `set_mode` on one socket (1/s). */
+  systemMessageIntervalMs: number;
+  /** Maximum age of the last status and room mood replayed on register. */
+  replayMaxAgeMs: number;
+  /** A token's `last_used` column is written at most this often. */
+  lastUsedWriteMs: number;
 }
 
 export const DEFAULT_SERVER_TIMING: Readonly<ServerTiming> = {
@@ -46,6 +58,11 @@ export const DEFAULT_SERVER_TIMING: Readonly<ServerTiming> = {
   aliveMs: DEFAULT_ALIVE_MS,
   holdMs: DEFAULT_HOLD_MS,
   pairCodeTtlMs: PAIRING_CODE_TTL_MS,
+  rateWindowMs: 60_000,
+  holdingRefillMs: 1000 / HOLDING_REFILL_PER_S,
+  systemMessageIntervalMs: 1000,
+  replayMaxAgeMs: REPLAY_MAX_AGE_MS,
+  lastUsedWriteMs: 60_000,
 };
 
 /** Architecture section 2.6. */

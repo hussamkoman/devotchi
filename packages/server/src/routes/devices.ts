@@ -1,97 +1,105 @@
-import { randomUUID } from "node:crypto";
+// Device registry listing and pairing flow B (protocol 7.4, 7.5).
+
 import Router from "@koa/router";
-import type { Database } from "../db/index.js";
-import { runQuery, getAll, getOne } from "../db/index.js";
-import { generatePairingCode } from "@devotchi/shared";
-import { tokenAuth, hashToken } from "../middleware/auth.js";
+import { generatePairingCode, normalizePairingCode, type Device, type ListDevicesResponse } from "@devotchi/shared";
+import type { ResolvedConfig } from "../config.js";
+import type { Db } from "../db/index.js";
+import { allocateDeviceId, insertDevice, listDeviceRows, type DeviceRow } from "../db/devices.js";
+import { insertToken } from "../db/tokens.js";
+import { authOf, requireAuth, requireCli, type Authenticator } from "../http/auth.js";
+import { HttpError, badRequest, notFound, rateLimited } from "../http/errors.js";
+import { byIp, type RateLimits } from "../http/rate-limit.js";
+import type { RoomRegistry } from "../rooms/registry.js";
 
-const PAIRING_EXPIRY_MINUTES = 5;
+export interface DeviceRouteDeps {
+  db: Db;
+  config: ResolvedConfig;
+  auth: Authenticator;
+  limits: RateLimits;
+  rooms: RoomRegistry;
+}
 
-export function deviceRoutes(db: Database): Router {
-  const router = new Router({ prefix: "/api" });
-  const auth = tokenAuth(db);
+const DEVICE_NAME = "device";
 
-  router.get("/devices", auth, async (ctx) => {
-    const rows = getAll(
-      db,
-      "SELECT id, room_id, label, last_used FROM tokens WHERE room_id = ?",
-      [ctx.state.roomId]
-    );
+function toDevice(row: DeviceRow, online: boolean): Device {
+  return {
+    id: row.id,
+    name: row.name,
+    model: row.model,
+    fw: row.fw,
+    createdAt: row.created_at,
+    online,
+    lastSeen: row.last_seen,
+    lastHoldAt: row.last_hold_at,
+    holding: 0,
+    telemetry: row.telemetry === null ? null : (JSON.parse(row.telemetry) as Device["telemetry"]),
+    telemetryAt: row.telemetry_at,
+  };
+}
 
-    ctx.body = {
-      devices: rows.map((r) => ({
-        id: r.id,
-        roomId: r.room_id,
-        lastSeen: r.last_used,
-        label: r.label,
-      })),
+export function deviceRoutes(deps: DeviceRouteDeps): Router {
+  const { db, config, auth, limits, rooms } = deps;
+  const router = new Router();
+  const cli = [requireAuth(auth), requireCli()];
+  const claimFailures = limits.create(20, 60);
+
+  router.get("/api/devices", ...cli, (ctx) => {
+    const roomId = authOf(ctx).roomId;
+    const room = rooms.get(roomId);
+    const onlineTokens = new Set([...(room?.consumers ?? [])].map((conn) => conn.tokenId));
+    const body: ListDevicesResponse = {
+      devices: listDeviceRows(db, roomId).map((row) => toDevice(row, onlineTokens.has(row.token_id))),
     };
+    ctx.body = body;
   });
 
-  router.post("/pair", auth, async (ctx) => {
-    const id = randomUUID().replace(/-/g, "").slice(0, 8);
-    const pairingCode = generatePairingCode();
-    const expiresAt = new Date(Date.now() + PAIRING_EXPIRY_MINUTES * 60_000).toISOString();
-
-    runQuery(
-      db,
-      "INSERT INTO pairings (id, room_id, pairing_code, expires_at) VALUES (?, ?, ?, ?)",
-      [id, ctx.state.roomId, pairingCode, expiresAt]
+  router.post("/api/pair", ...cli, (ctx) => {
+    const ttl = config.timing.pairCodeTtlMs;
+    const expiresAt = new Date(Date.now() + ttl).toISOString();
+    let code = generatePairingCode();
+    while (db.get("SELECT 1 FROM pairings WHERE code = ?", code)) code = generatePairingCode();
+    db.run(
+      "INSERT INTO pairings (code, room_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+      code,
+      authOf(ctx).roomId,
+      expiresAt,
+      new Date().toISOString(),
     );
-
     ctx.status = 201;
-    ctx.body = { pairingCode, expiresAt };
+    ctx.body = { pairingCode: code, expiresAt, expiresInS: Math.round(ttl / 1000) };
   });
 
-  router.post("/pair/claim", async (ctx) => {
-    const body = ctx.request.body as { code?: string } | undefined;
-    if (!body?.code) {
-      ctx.status = 400;
-      ctx.body = { error: "code is required" };
-      return;
-    }
+  router.post("/api/pair/claim", limits.middleware(10, byIp), (ctx) => {
+    const ipKey = byIp(ctx);
+    const now = Date.now();
+    const wait = claimFailures.retryAfter(ipKey, now);
+    if (wait > 0) throw rateLimited(wait);
+    const body: unknown = ctx.request.body;
+    if (body === null || typeof body !== "object" || Array.isArray(body)) throw badRequest("Body must be a JSON object");
+    const raw = (body as { code?: unknown }).code;
+    const code = typeof raw === "string" ? normalizePairingCode(raw) : null;
+    if (code === null) throw badRequest("code must be a pairing code");
 
-    const code = body.code.toUpperCase();
-    const row = getOne(
-      db,
-      "SELECT id, room_id, expires_at, claimed FROM pairings WHERE pairing_code = ?",
-      [code]
+    const row = db.get<{ room_id: string; expires_at: string; claimed: number }>(
+      "SELECT room_id, expires_at, claimed FROM pairings WHERE code = ?",
+      code,
     );
-
     if (!row) {
-      ctx.status = 404;
-      ctx.body = { error: "Invalid pairing code" };
-      return;
+      claimFailures.record(ipKey, now);
+      throw notFound("Unknown pairing code");
     }
+    if (row.claimed) throw new HttpError(410, "already_used", "Pairing code already used");
+    if (Date.parse(row.expires_at) <= now) throw new HttpError(410, "expired", "Pairing code expired");
 
-    if (row.claimed) {
-      ctx.status = 410;
-      ctx.body = { error: "Pairing code already used" };
-      return;
-    }
-
-    if (new Date(row.expires_at as string) < new Date()) {
-      ctx.status = 410;
-      ctx.body = { error: "Pairing code expired" };
-      return;
-    }
-
-    // Mark as claimed
-    runQuery(db, "UPDATE pairings SET claimed = 1 WHERE id = ?", [row.id]);
-
-    // Create a device token in the same room
-    const deviceToken = randomUUID();
-    const deviceTokenId = randomUUID().replace(/-/g, "").slice(0, 8);
-    const hash = hashToken(deviceToken);
-
-    runQuery(
-      db,
-      "INSERT INTO tokens (id, token_hash, room_id, label) VALUES (?, ?, ?, ?)",
-      [deviceTokenId, hash, row.room_id, "device"]
-    );
-
+    const credentials = db.transaction(() => {
+      db.run("UPDATE pairings SET claimed = 1 WHERE code = ?", code);
+      const minted = insertToken(db, { roomId: row.room_id, kind: "device", label: DEVICE_NAME });
+      const deviceId = allocateDeviceId(db, row.room_id);
+      insertDevice(db, { roomId: row.room_id, id: deviceId, tokenId: minted.id, name: DEVICE_NAME });
+      return { token: minted.token, roomId: row.room_id, deviceId, name: DEVICE_NAME };
+    });
     ctx.status = 201;
-    ctx.body = { token: deviceToken, roomId: row.room_id };
+    ctx.body = credentials;
   });
 
   return router;
