@@ -44,6 +44,8 @@ typedef enum {
     APP_EV_LINK_TIMER,
     /** A console command waits in the request slot (app_request()). */
     APP_EV_REQUEST,
+    /** A deadline of the request flow passed (holding ack, heartbeat, expiry, nag, countdown refresh). */
+    APP_EV_FLOW_TIMER,
 } app_event_id_t;
 
 /** Passed by value through the app queue; payloads larger than this travel as a pool pointer. */
@@ -117,6 +119,8 @@ typedef struct {
     uint32_t rx_invalid;
     proto_mode_t mode;
     char name[PROTO_NAME_SIZE];
+    /** A `preview` screen with sample data is up. */
+    bool preview;
 } app_link_info_t;
 
 typedef struct {
@@ -124,6 +128,8 @@ typedef struct {
     app_link_info_t link;
     uint32_t events_dropped;
     uint32_t last_user_ms;
+    /** Last status, mood or notify from an agent; postpones deep sleep only. */
+    uint32_t last_agent_ms;
     bool has_last_btn;
     btn_fsm_out_t last_btn;
     uint32_t last_btn_ms;

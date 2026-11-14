@@ -13,6 +13,8 @@ typedef enum {
     FB_SEQ_POSITIVE,
     FB_SEQ_TICK,
     FB_SEQ_CLICK,
+    /** The breathing LED of request without its buzz, resumed after another pattern while requests wait. */
+    FB_SEQ_PENDING,
     FB_SEQ_COUNT,
 } fb_seq_id_t;
 

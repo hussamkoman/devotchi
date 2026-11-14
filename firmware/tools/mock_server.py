@@ -533,6 +533,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.flush()
         self.close_connection = True
+        # Like the ws library behind the real server: without this, Nagle holds back the second of several
+        # frames sent together until the device's delayed ACK, which spreads a burst over 100+ ms.
+        self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         with self.state.lock:
             conn = Connection(self.state, self.connection, self.state.next_conn, bearer)

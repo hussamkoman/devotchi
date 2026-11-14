@@ -13,13 +13,13 @@ lv_obj_t *screen_wifi_create(void)
 {
     lv_obj_t *scr = ui_screen_base_create();
 
-    lv_obj_t *title = ui_label_create(scr, UI_FONT_TITLE, UI_COLOR_ACCENT, UI_PAD, true);
+    lv_obj_t *title = ui_label_create(scr, UI_FONT_TITLE, UI_COLOR_ACCENT, UI_TOP, true);
     lv_label_set_text_static(title, "WiFi");
-    s_ssid = ui_label_create(scr, UI_FONT_BODY, UI_COLOR_TEXT, 52, true);
-    s_state = ui_label_create(scr, UI_FONT_BODY, UI_COLOR_TEXT_DIM, 84, true);
+    s_ssid = ui_label_create(scr, UI_FONT_BODY, UI_COLOR_TEXT, 62, true);
+    s_state = ui_label_create(scr, UI_FONT_BODY, UI_COLOR_TEXT_DIM, 90, true);
     s_reason = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_WARN, 120, false);
-    s_retry = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_TEXT_DIM, 164, true);
-    s_hint = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_ACCENT, 208, true);
+    s_retry = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_TEXT_DIM, 172, true);
+    s_hint = ui_label_create(scr, UI_FONT_SMALL, UI_COLOR_ACCENT, 216, true);
     return scr;
 }
 

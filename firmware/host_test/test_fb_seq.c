@@ -105,6 +105,7 @@ static void test_priorities(void)
         {FB_SEQ_IDENTIFY, 3, true}, {FB_SEQ_REQUEST, 2, true}, {FB_SEQ_ATTENTION, 2, true},
         {FB_SEQ_NAG, 2, false},     {FB_SEQ_NEGATIVE, 1, false}, {FB_SEQ_COMPLETE, 1, false},
         {FB_SEQ_POSITIVE, 1, false}, {FB_SEQ_TICK, 0, false},   {FB_SEQ_CLICK, 0, false},
+        {FB_SEQ_PENDING, 0, true},
     };
     for (size_t i = 0; i < sizeof(exp) / sizeof(exp[0]); i++) {
         TEST_ASSERT_EQUAL_UINT8(exp[i].prio, fb_seq_pattern(exp[i].id)->priority);

@@ -124,6 +124,80 @@ static void test_truncate_bounds(void)
     TEST_ASSERT_EQUAL_CHAR('\0', guard[0]);
 }
 
+typedef struct {
+    const char *name;
+    const char *in;
+    size_t cols;
+    size_t lines;
+} wrap_case_t;
+
+static void test_wrap_lines_table(void)
+{
+    static const wrap_case_t cases[] = {
+        {"empty", "", 10, 0},
+        {"short", "abc", 10, 1},
+        {"exact", "abcdefghij", 10, 1},
+        {"newline", "ab\ncd", 10, 2},
+        {"trailing newline", "ab\n", 10, 1},
+        {"blank line", "ab\n\ncd", 10, 3},
+        {"word wrap", "aaaa bbbb cccc", 10, 2},
+        {"hard break", "abcdefghijklmnopqrstuvwxy", 10, 3},
+        {"space at limit", "abcdefghij klm", 10, 2},
+        {"exact then newline", "abcdefghij\nk", 10, 2},
+        {"leading spaces then long word", " abcdefghijklm", 10, 2},
+        {"zero cols", "abc", 0, 0},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        TEST_ASSERT_EQUAL_MESSAGE(cases[i].lines, text_wrap_lines(cases[i].in, cases[i].cols), cases[i].name);
+    }
+}
+
+static void test_wrap_page_content(void)
+{
+    char out[64];
+    const char *src = "aaaa bbbb cccc\n$ rm -rf dist\nxyz";
+    /* Lines at 10 columns: "aaaa bbbb", "cccc", "$ rm -rf", "dist", "xyz". */
+    TEST_ASSERT_EQUAL(5, text_wrap_lines(src, 10));
+    TEST_ASSERT_EQUAL(3, text_wrap_pages(src, 10, 2));
+    TEST_ASSERT_TRUE(text_wrap_page(out, sizeof(out), src, 10, 2, 0));
+    TEST_ASSERT_EQUAL_STRING("aaaa bbbb\ncccc", out);
+    TEST_ASSERT_TRUE(text_wrap_page(out, sizeof(out), src, 10, 2, 1));
+    TEST_ASSERT_EQUAL_STRING("$ rm -rf\ndist", out);
+    TEST_ASSERT_TRUE(text_wrap_page(out, sizeof(out), src, 10, 2, 2));
+    TEST_ASSERT_EQUAL_STRING("xyz", out);
+    TEST_ASSERT_FALSE(text_wrap_page(out, sizeof(out), src, 10, 2, 3));
+    TEST_ASSERT_EQUAL_STRING("", out);
+
+    TEST_ASSERT_TRUE(text_wrap_page(out, sizeof(out), "abcdefghijklmnopqrstuvwxy", 10, 6, 0));
+    TEST_ASSERT_EQUAL_STRING("abcdefghij\nklmnopqrst\nuvwxy", out);
+    TEST_ASSERT_TRUE(text_wrap_page(out, sizeof(out), "ab\n\ncd", 10, 6, 0));
+    TEST_ASSERT_EQUAL_STRING("ab\n\ncd", out);
+}
+
+static void test_wrap_bounds(void)
+{
+    char out[8];
+    TEST_ASSERT_EQUAL(0, text_wrap_pages("", 38, 6));
+    TEST_ASSERT_EQUAL(0, text_wrap_pages("abc", 38, 0));
+    TEST_ASSERT_FALSE(text_wrap_page(out, sizeof(out), "", 38, 6, 0));
+    /* "abcde\nfghij" needs 12 bytes; a page that does not fit is refused, not cut. */
+    TEST_ASSERT_FALSE(text_wrap_page(out, sizeof(out), "abcde\nfghij", 38, 6, 0));
+    TEST_ASSERT_EQUAL_STRING("", out);
+    TEST_ASSERT_FALSE(text_wrap_page(NULL, 0, "abc", 38, 6, 0));
+
+    /* A full details field: 600 characters without spaces at 38 x 6 is 16 lines, 3 pages. */
+    char big[601];
+    memset(big, 'x', 600);
+    big[600] = '\0';
+    char page[256];
+    TEST_ASSERT_EQUAL(16, text_wrap_lines(big, 38));
+    TEST_ASSERT_EQUAL(3, text_wrap_pages(big, 38, 6));
+    TEST_ASSERT_TRUE(text_wrap_page(page, sizeof(page), big, 38, 6, 0));
+    TEST_ASSERT_EQUAL(6 * 38 + 5, strlen(page));
+    TEST_ASSERT_TRUE(text_wrap_page(page, sizeof(page), big, 38, 6, 2));
+    TEST_ASSERT_EQUAL(38 * 3 + 30 + 3, strlen(page));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -132,5 +206,8 @@ int main(void)
     RUN_TEST(test_sanitize_in_place_is_safe);
     RUN_TEST(test_truncate_table);
     RUN_TEST(test_truncate_bounds);
+    RUN_TEST(test_wrap_lines_table);
+    RUN_TEST(test_wrap_page_content);
+    RUN_TEST(test_wrap_bounds);
     return UNITY_END();
 }

@@ -28,6 +28,10 @@ static const char *TAG = "app_cmds";
 
 /* Console task only. */
 static char s_texts[UI_MAX_TEXTS][UI_TEXT_SIZE];
+static char s_toast[UI_TEXT_SIZE];
+static char s_banner[UI_TEXT_SIZE];
+static app_flow_view_t s_view;
+static app_snapshot_t s_snap;
 
 static console_rc_t send(cJSON *root)
 {
@@ -159,13 +163,65 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
     (void)argc;
     (void)argv;
     (void)raw_args;
+    const ui_screen_id_t screen = ui_current_screen();
     const size_t count = ui_get_texts(s_texts, UI_MAX_TEXTS);
+    ui_status_t bar;
+    ui_status_get(&bar);
+    ui_overlay_get(s_toast, s_banner);
+    app_flow_get_view(&s_view);
+    app_get_snapshot(&s_snap);
 
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "id", ui_current_screen_name());
+    cJSON_AddStringToObject(root, "id", ui_screen_name(screen));
+    cJSON_AddStringToObject(root, "page", screen == UI_SCREEN_PET ? "pet" : "main");
+    cJSON_AddBoolToObject(root, "preview", s_snap.link.preview);
     cJSON *texts = cJSON_AddArrayToObject(root, "texts");
     for (size_t i = 0; i < count; i++) {
         cJSON_AddItemToArray(texts, cJSON_CreateString(s_texts[i]));
+    }
+    cJSON_AddStringToObject(root, "mood", proto_mood_name(s_view.mood));
+
+    const bool bar_shown = screen != UI_SCREEN_SPLASH && screen != UI_SCREEN_LOWBATT && screen != UI_SCREEN_IDENTIFY;
+    cJSON *sb = cJSON_AddObjectToObject(root, "statusBar");
+    cJSON_AddBoolToObject(sb, "visible", bar_shown);
+    cJSON *battery = cJSON_AddObjectToObject(sb, "battery");
+    cJSON_AddStringToObject(battery, "state", ui_batt_name(bar.battery));
+    if (bar.battery == UI_BATT_ABSENT) {
+        cJSON_AddNullToObject(battery, "pct");
+    } else {
+        cJSON_AddNumberToObject(battery, "pct", bar.pct);
+    }
+    cJSON_AddBoolToObject(battery, "low", bar.low);
+    cJSON_AddStringToObject(sb, "link", ui_link_name(bar.link));
+    cJSON_AddStringToObject(sb, "mode", bar.desk ? "desk" : "ask");
+    cJSON_AddNumberToObject(sb, "rssiBars", bar.rssi_bars);
+
+    if (screen == UI_SCREEN_APPROVAL && s_view.has_request) {
+        static const char *const RISK[] = {[PROTO_RISK_LOW] = "low", [PROTO_RISK_MED] = "med", [PROTO_RISK_HIGH] = "high"};
+        cJSON *req = cJSON_AddObjectToObject(root, "request");
+        cJSON_AddStringToObject(req, "id", s_view.request.id);
+        cJSON_AddStringToObject(req, "tool", s_view.request.tool);
+        cJSON_AddStringToObject(req, "summary", s_view.request.summary);
+        cJSON_AddStringToObject(req, "risk", RISK[s_view.request.risk]);
+        cJSON_AddNumberToObject(req, "position", s_view.request.position);
+        cJSON_AddNumberToObject(req, "count", s_view.request.count);
+        cJSON_AddNumberToObject(req, "page", s_view.request.page);
+        cJSON_AddNumberToObject(req, "pages", s_view.request.pages);
+        const int32_t left = (int32_t)(s_view.request.deadline_ms - app_now_ms());
+        cJSON_AddNumberToObject(req, "remainingMs", left > 0 ? left : 0);
+        cJSON_AddBoolToObject(req, "sent", s_view.request.answered);
+    } else {
+        cJSON_AddNullToObject(root, "request");
+    }
+    if (s_toast[0] != '\0') {
+        cJSON_AddStringToObject(root, "toast", s_toast);
+    } else {
+        cJSON_AddNullToObject(root, "toast");
+    }
+    if (s_banner[0] != '\0') {
+        cJSON_AddStringToObject(root, "banner", s_banner);
+    } else {
+        cJSON_AddNullToObject(root, "banner");
     }
     return send(root);
 }
