@@ -25,6 +25,10 @@ CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
 # DFS is configured by the power component (esp_pm_configure), not at startup.
 CONFIG_PM_ENABLE=y
 
+# The CHRG edge ISR runs from the IRAM GPIO ISR service (installed by the
+# button library) and calls gpio_intr_disable() as its storm guard.
+CONFIG_GPIO_CTRL_FUNC_IN_IRAM=y
+
 # LVGL: RGB565 in native byte order (the panel is set to little-endian data).
 CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_MEM_SIZE_KILOBYTES=64

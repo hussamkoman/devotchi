@@ -1,4 +1,4 @@
 idf_component_register(
-    SRCS "text.c" "cmdline.c"
+    SRCS "text.c" "cmdline.c" "btn_fsm.c" "fb_seq.c" "battery.c" "backoff.c"
     INCLUDE_DIRS "include"
 )
