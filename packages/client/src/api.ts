@@ -29,6 +29,8 @@ export class ApiError extends CliError {
     readonly status: number,
     readonly code: string,
     readonly retryAfterS?: number,
+    /** The server's own `error` text, without the request context. */
+    readonly reason: string = message,
   ) {
     super(message, 1, status === 429 || status >= 500);
   }
@@ -104,6 +106,7 @@ export class ApiClient {
         res.status,
         code,
         Number.isFinite(retry) && retry > 0 ? retry : undefined,
+        reason,
       );
     }
     if (data === undefined && res.status !== 204) {

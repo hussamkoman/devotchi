@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typescript:
+    name: TypeScript (build, typecheck, lint, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm test
+
+  firmware-host-tests:
+    name: Firmware host tests (gcc + cmake, no ESP-IDF)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # firmware/managed_components is not in git and CI has no ESP-IDF, so the
+    # host-test project fetches its pinned cJSON and Unity itself. hashFiles()
+    # only works in step conditions, after the checkout.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        if: ${{ hashFiles('firmware/host_test/CMakeLists.txt') != '' }}
+        run: cmake -S firmware/host_test -B build-host -DDEVOTCHI_HOST_TEST_FETCH=ON
+      - name: Build
+        if: ${{ hashFiles('firmware/host_test/CMakeLists.txt') != '' }}
+        run: cmake --build build-host
+      - name: Test
+        if: ${{ hashFiles('firmware/host_test/CMakeLists.txt') != '' }}
+        run: ctest --test-dir build-host --output-on-failure

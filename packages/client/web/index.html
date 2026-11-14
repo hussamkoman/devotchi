@@ -3,60 +3,69 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
   <title>Devotchi</title>
-  <link rel="stylesheet" href="/src/style.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 </head>
 <body>
-  <div id="app">
-    <header>
-      <h1>Devotchi</h1>
-      <div id="connection-bar">
-        <span id="status-dot" class="dot disconnected"></span>
-        <input id="pairing-input" type="text" placeholder="PAIRING CODE" maxlength="6" />
-        <button id="connect-btn">Connect</button>
+  <header class="top">
+    <h1>Devotchi</h1>
+    <div id="connection" class="badge" data-phase="connecting">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="connection-text" role="status">Connecting…</span>
+    </div>
+    <span id="peers" class="peers"></span>
+  </header>
+  <main class="grid">
+    <section id="pet" class="panel pet" aria-labelledby="pet-heading">
+      <h2 id="pet-heading" class="sr-only">Pet</h2>
+      <div id="pet-face" class="face" role="img" aria-label="pet looks sleeping"></div>
+      <div id="pet-mood" class="mood"></div>
+      <p id="pet-status" class="status" aria-live="polite"></p>
+      <p id="pet-project" class="project"></p>
+    </section>
+    <section class="panel requests" aria-labelledby="requests-heading">
+      <h2 id="requests-heading">Requests</h2>
+      <p class="hint">Keys: <kbd>A</kbd> approve, <kbd>R</kbd> reject, <kbd>T</kbd> send to terminal (first request). High-risk hints need a 1 s hold.</p>
+      <div id="request-list" class="request-list"></div>
+      <p id="requests-empty" class="empty">No pending requests.</p>
+    </section>
+    <section class="panel devices" aria-labelledby="devices-heading">
+      <h2 id="devices-heading">Devices</h2>
+      <ul id="device-list" class="device-list"></ul>
+      <p id="devices-empty" class="empty">No paired devices.</p>
+      <form id="pair-form" class="pair-form">
+        <label for="pair-code">Add a device: code shown on its screen</label>
+        <div class="row">
+          <input id="pair-code" type="text" maxlength="6" autocomplete="off" spellcheck="false" placeholder="K7M2QX">
+          <button type="submit">Pair</button>
+        </div>
+        <p id="pair-result" role="status"></p>
+      </form>
+    </section>
+    <section class="panel settings" aria-labelledby="settings-heading">
+      <h2 id="settings-heading">Settings</h2>
+      <div class="row" role="group" aria-label="Where permission requests go">
+        <button id="mode-ask" type="button" aria-pressed="false">Ask on devices</button>
+        <button id="mode-desk" type="button" aria-pressed="false">At desk (terminal)</button>
       </div>
-    </header>
-    <main>
-      <section id="pet-area">
-        <div id="pet-character">😴</div>
-        <div id="pet-mood">sleeping</div>
-      </section>
-      <section id="status-bar">
-        <div id="status-text">Waiting for connection...</div>
-      </section>
-      <div id="modal" class="modal hidden">
-        <div class="modal-content">
-          <div id="modal-type" class="modal-type"></div>
-          <div id="modal-desc" class="modal-desc"></div>
-          <div id="modal-details" class="modal-details"></div>
-          <div id="modal-timer" class="modal-timer"></div>
-          <div class="modal-buttons">
-            <button id="modal-approve" class="btn-approve">Approve</button>
-            <button id="modal-reject" class="btn-reject">Reject</button>
-          </div>
-        </div>
+      <label for="hold-time">Hold time</label>
+      <select id="hold-time" disabled></select>
+      <p id="hold-hint" class="hint"></p>
+      <div class="row">
+        <span>Browser notifications: <span id="notify-state"></span></span>
+        <button id="notify-optin" type="button" hidden>Enable</button>
       </div>
-      <section id="event-log">
-        <h2>Event Log</h2>
-        <ul id="log-list"></ul>
-      </section>
-      <section id="settings-panel">
-        <h2>Settings</h2>
-        <div class="settings-row">
-          <span class="settings-label">Server</span>
-          <span id="settings-server" class="settings-value">—</span>
-        </div>
-        <div class="settings-row">
-          <span class="settings-label">Pairing Code</span>
-          <span id="settings-code" class="settings-value">—</span>
-        </div>
-        <div class="settings-row">
-          <span class="settings-label">Status</span>
-          <span id="settings-status" class="settings-value">Disconnected</span>
-        </div>
-      </section>
-    </main>
-  </div>
+      <p id="settings-error" class="error" role="alert"></p>
+      <p id="server-info" class="hint"></p>
+    </section>
+    <section class="panel log" aria-labelledby="log-heading">
+      <h2 id="log-heading">Event log</h2>
+      <ul id="log-list" class="log-list"></ul>
+    </section>
+  </main>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="announcer" class="sr-only" aria-live="assertive"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

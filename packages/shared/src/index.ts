@@ -5,3 +5,4 @@ export * from "./tool-format.js";
 export * from "./pairing.js";
 export * from "./api.js";
 export * from "./config.js";
+export * from "./server-messages.js";

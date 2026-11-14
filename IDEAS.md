@@ -1,8 +1,10 @@
 # Ideas & Notes
 
+Longer-form ideas. The approved/deferred backlog with one line per item is in [TODO.md](TODO.md).
+
 ## Desktop Devotchi
 
-A larger touchscreen version that sits on your desk. Unlike the portable pocket device (2.0" TFT LCD, 4 buttons), this would have a 3.5"–5" touchscreen with a UI similar to the browser simulator.
+A larger touchscreen version that sits on your desk. Unlike the portable pocket device (2.0" TFT LCD, 3 buttons), this would have a 3.5"–5" touchscreen with a UI similar to the web dashboard.
 
 **Multi-session management:** The killer feature. Power users run multiple Claude Code sessions across different projects. The desktop device shows all active sessions at once — each project gets its own pet with mood and status. Tap a project to see details, approve/reject pending requests.
 
@@ -14,19 +16,19 @@ The web dashboard is essentially a prototype of this UI — start from that code
 - ESP32-S3 with a 3.5" or 5" capacitive touchscreen (ILI9488 or similar)
 - Powered via USB-C (desk device, no battery needed)
 - Optional: small speaker for notification sounds
-- Could run a lightweight web view (LVGL or direct framebuffer) or even a local web server serving the simulator UI on a built-in display
+- Could run LVGL like the pocket device, or a web view of the dashboard on a built-in display
 
 ---
 
 ## Session Awareness
 
-Right now the device doesn't know which Claude Code session it's connected to. Could add session metadata (project name, directory, git branch) to the register message so the device can show "devotchi — main branch" or "api-refactor" as context.
+Requests and status lines carry a short session id and the project name. Git branch detection (SessionStart hook) and a session registry are in the backlog in `TODO.md`.
 
 ---
 
 ## Approval Queue
 
-When multiple approval requests come in quickly, the current simulator shows one modal at a time. A queue view would let you see all pending requests and batch-approve or prioritize them. Especially useful for the desktop version.
+The device and the dashboard already keep a queue of pending requests (up to 4 on the device, 8 per room). Batch approval or prioritising stays an idea; Devotchi will never approve anything without a press.
 
 ---
 
@@ -44,4 +46,4 @@ Let users customize the Tamagotchi character. The current emoji-based display is
 
 ## Webhook Integration
 
-Besides Claude Code hooks, support generic webhooks from CI/CD (GitHub Actions, etc.) so the device shows build/deploy status even when no agent is running. The server already has HTTP endpoints — just add a `/webhook` route.
+Besides Claude Code hooks, support generic webhooks from CI/CD (GitHub Actions, etc.) so the device shows build/deploy status even when no agent is running. Scripts can already use `POST /api/notify` or `devotchi notify`; a GitHub webhook adapter is in the backlog in `TODO.md`.
