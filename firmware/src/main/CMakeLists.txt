@@ -2,7 +2,7 @@ idf_component_register(
     SRCS "main.cpp" "App.cpp"
     INCLUDE_DIRS "."
     REQUIRES
-        runtime config storage protocol wifi ws_client
+        runtime config storage protocol wifi ws_client pairing
         display ui buttons feedback power
 )
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Task.hpp"
 #include "driver/gpio.h"
 #include <cstddef>
 #include <cstdint>
@@ -23,7 +24,7 @@ namespace pins {
 
     constexpr gpio_num_t PWR_CHRG     = GPIO_NUM_18;
     constexpr gpio_num_t PWR_STDBY    = GPIO_NUM_17;
-    constexpr gpio_num_t BAT_ADC      = GPIO_NUM_1;
+    constexpr gpio_num_t BAT_ADC      = GPIO_NUM_2;
 }
 
 namespace display {
@@ -50,9 +51,41 @@ namespace buttons {
 }
 
 namespace network {
-    constexpr const char* DEFAULT_SERVER_URL = "wss://devotchi.example/ws";
-    constexpr uint32_t WS_PING_INTERVAL_MS   = 30'000;
-    constexpr uint32_t WS_RECONNECT_DELAY_MS = 5'000;
+    constexpr const char* SERVER_HOST        = "10.0.0.120";
+    constexpr uint16_t    SERVER_PORT        = 8080;
+    constexpr uint32_t    HTTP_TIMEOUT_MS    = 10'000;
+    constexpr uint32_t    PAIR_CODE_LEN      = 6;
+    constexpr uint32_t    WS_PING_INTERVAL_MS   = 30'000;
+    constexpr uint32_t    WS_RECONNECT_DELAY_MS = 5'000;
+    constexpr const char* PROV_DEVICE_NAME  = "DEVOTCHI";
+    constexpr const char* PROV_POP          = "abcd1234";
+}
+
+namespace power {
+    constexpr int      BATT_ADC_CHANNEL = 1;          // GPIO 2 = ADC1_CH1 on ESP32-S3
+    constexpr uint32_t BATT_VMIN_MV     = 3300;       // 0% at 3.3V
+    constexpr uint32_t BATT_VMAX_MV     = 4100;       // 100% at 4.1V
+    constexpr uint32_t BATT_DIVIDER_NUM = 2;          // resistor divider 2:1 (verify against schematic)
+    constexpr uint32_t BATT_DIVIDER_DEN = 1;
+    constexpr uint32_t BATT_SAMPLE_INTERVAL_MS = 5'000;
+}
+
+namespace pairing {
+    // Alphabet excludes 0/O/I/L/1 to avoid ambiguity (matches server spec).
+    constexpr const char* ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+}
+
+namespace tasks {
+    inline constexpr runtime::Task::Spec UI_RENDER = {
+        "ui_render",
+        8192,
+        4,
+    };
+    inline constexpr runtime::Task::Spec POWER_SAMPLER = {
+        "pwr_sample",
+        2048,
+        2,
+    };
 }
 
 }  // namespace devotchi::config
