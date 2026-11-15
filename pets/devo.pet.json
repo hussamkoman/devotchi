@@ -1,0 +1,75 @@
+{
+  "id": "devo",
+  "name": "Devo",
+  "rev": 1,
+  "palette": {
+    "mode": "table",
+    "base": "#F0C594",
+    "accent": "#FFC53D",
+    "cream": "#F6E7C1",
+    "sclera": "#FFFFFF",
+    "moods": {
+      "happy": "#FFB84D", "sad": "#7E9BC8", "excited": "#FF8DB4", "anxious": "#C4A0D8", "sleeping": "#7377CF",
+      "angry": "#D4366B", "proud": "#3CBFB4", "idle": "#F0C594", "focused": "#5B82F0", "working": "#B4D455",
+      "thinking": "#9A8AE0"
+    }
+  },
+  "face": {
+    "eyes": "round", "mouth": "plain", "brows": true, "eye_dx": 27, "eye_y": -8, "mouth_y": 30, "mouth_hw": 18,
+    "sleep_drop": 10, "replaces": [], "eye_sq": 10, "mouth_sq": 5, "sweat_y": -46
+  },
+  "aux_names": ["tip x", "tip y", "stem style (0 curve, 1 kinked, 2 hook, 3 straight)", "cheeks (1) / amber tip (2)"],
+  "aux": {
+    "happy": [12, 0, 0, 1], "sad": [30, 26, 0, 0], "excited": [0, -6, 0, 1], "anxious": [6, 4, 1, 0],
+    "sleeping": [26, 20, 0, 1], "angry": [-10, 2, 1, 0], "proud": [4, -6, 0, 1], "idle": [10, 3, 0, 1],
+    "focused": [0, -4, 3, 0], "working": [-14, 2, 0, 0], "thinking": [14, 0, 2, 0],
+    "pat": [14, 2, 0, 1], "poke": [-18, 6, 1, 0], "dizzy": [20, 8, 1, 0], "wake": [6, -4, 0, 0],
+    "attention": [0, -2, 3, 2]
+  },
+  "overrides": {},
+  "oscillators": [
+    {"mood": "idle", "aux": 0, "wave": "sine", "amp": 3, "period_ms": 3500},
+    {"mood": "happy", "aux": 1, "wave": "bob", "amp": 3},
+    {"mood": "excited", "aux": 0, "wave": "sine", "amp": 6, "period_ms": 400},
+    {"mood": "working", "aux": 0, "wave": "scan", "amp": 14},
+    {"mood": "anxious", "aux": 0, "wave": "jitter", "amp": 2, "period_ms": 100},
+    {"mood": "pat", "aux": 0, "wave": "sine", "amp": 8, "period_ms": 500},
+    {"mood": "dizzy", "aux": 0, "wave": "sine", "amp": 6, "period_ms": 500},
+    {"mood": "dizzy", "aux": 1, "wave": "sine", "amp": 4, "period_ms": 1000}
+  ],
+  "parts": [
+    {"name": "shadow", "shape": "rrect", "layer": "behind", "role": "surface", "x": 0, "y": 68, "w": 124, "h": 12, "r": 6,
+     "outline": false},
+    {"name": "feet", "shape": "rrect", "layer": "behind", "role": "dark", "mirror": true, "x": 32, "y": 57, "w": 30, "h": 16,
+     "r": 8},
+    {"name": "stem_curve", "shape": "line", "layer": "body", "role": "dark", "width": 4,
+     "points": [[0, -55], [0, -67], [0, -77], [0, -84]],
+     "drivers": [{"op": "show_eq", "aux": 2, "k": 0}, {"op": "move_x", "aux": 0, "point": 2, "scale": 7},
+                 {"op": "move_x", "aux": 0, "point": 3}, {"op": "move_y", "aux": 1, "point": 3}]},
+    {"name": "stem_kinked", "shape": "line", "layer": "body", "role": "dark", "width": 4,
+     "points": [[0, -55], [7, -64], [-5, -72], [0, -84]],
+     "drivers": [{"op": "show_eq", "aux": 2, "k": 1}, {"op": "move_x", "aux": 0, "point": 2, "scale": 4},
+                 {"op": "move_x", "aux": 0, "point": 3}, {"op": "move_y", "aux": 1, "point": 3}]},
+    {"name": "stem_hook", "shape": "line", "layer": "body", "role": "dark", "width": 4,
+     "points": [[0, -55], [6, -70], [8, -94], [0, -84]],
+     "drivers": [{"op": "show_eq", "aux": 2, "k": 2}, {"op": "move_x", "aux": 0, "point": 1},
+                 {"op": "move_x", "aux": 0, "point": 2}, {"op": "move_x", "aux": 0, "point": 3}]},
+    {"name": "stem_straight", "shape": "line", "layer": "body", "role": "dark", "width": 4,
+     "points": [[0, -55], [0, -84]],
+     "drivers": [{"op": "show_eq", "aux": 2, "k": 3}, {"op": "move_x", "aux": 0, "point": 1},
+                 {"op": "move_y", "aux": 1, "point": 1}]},
+    {"name": "tip", "shape": "rrect", "layer": "body", "role": "light", "x": 0, "y": -84, "w": 14, "h": 14, "r": 7,
+     "drivers": [{"op": "move_x", "aux": 0}, {"op": "move_y", "aux": 1}]},
+    {"name": "tip_amber", "shape": "rrect", "layer": "body", "role": "yellow", "x": 0, "y": -84, "w": 14, "h": 14, "r": 7,
+     "drivers": [{"op": "show_eq", "aux": 3, "k": 2}, {"op": "move_x", "aux": 0}, {"op": "move_y", "aux": 1}]},
+    {"name": "tip_ring", "shape": "rrect", "layer": "body", "role": "yellow", "ring": true, "outline": false,
+     "x": 0, "y": -84, "w": 23, "h": 23, "r": 11,
+     "drivers": [{"op": "show_eq", "aux": 3, "k": 2}, {"op": "move_x", "aux": 0}, {"op": "move_y", "aux": 1}]},
+    {"name": "body", "shape": "rrect", "layer": "body", "role": "body", "squash": true, "x": 0, "y": 0, "w": 140, "h": 116,
+     "r": 46},
+    {"name": "sheen", "shape": "rrect", "layer": "front", "role": "light", "outline": false, "x": -33, "y": -42, "w": 30,
+     "h": 8, "r": 4},
+    {"name": "cheeks", "shape": "rrect", "layer": "front", "role": "cheek", "mirror": true, "outline": false, "x": 48,
+     "y": 16, "w": 18, "h": 10, "r": 5, "drivers": [{"op": "show_eq", "aux": 3, "k": 1}]}
+  ]
+}
