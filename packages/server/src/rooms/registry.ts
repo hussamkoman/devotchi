@@ -84,6 +84,11 @@ export class RoomRegistry {
     return this.rooms.get(roomId);
   }
 
+  /** Every room the instance currently keeps. */
+  all(): IterableIterator<Room> {
+    return this.rooms.values();
+  }
+
   getOrCreate(roomId: string): Room {
     let room = this.rooms.get(roomId);
     if (!room) this.rooms.set(roomId, (room = new Room(roomId)));

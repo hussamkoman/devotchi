@@ -8,8 +8,10 @@ import {
   LIMITS,
   MAX_URGENCY,
   NOTIFY_EVENT_RE,
+  REQUEST_ID_RE,
   ROOM_MODES,
   buildMode,
+  canonicalTimeZone,
   buildNotify,
   defaultMoodForEvent,
   isMood,
@@ -24,7 +26,7 @@ import type { ResolvedConfig } from "../config.js";
 import type { Db } from "../db/index.js";
 import { getRoomSettings, updateRoomSettings } from "../db/room-settings.js";
 import { authOf, requireAuth, requireCli, type Authenticator } from "../http/auth.js";
-import { badRequest } from "../http/errors.js";
+import { badRequest, notFound } from "../http/errors.js";
 import { objectBody, optionalString } from "../http/fields.js";
 import { byToken, type RateLimits } from "../http/rate-limit.js";
 import type { PermissionManager } from "../permissions/manager.js";
@@ -41,6 +43,8 @@ export interface RoomRouteDeps {
   permissions: PermissionManager;
   /** The `devices` array of GET /api/room. */
   listDevices: (roomId: string) => Device[];
+  /** Protocol 14.9: the room's time zone setting changed. */
+  onTimeZoneChanged: (roomId: string) => void;
 }
 
 function parseSettings(body: unknown): Partial<RoomSettings> {
@@ -63,11 +67,19 @@ function parseSettings(body: unknown): Partial<RoomSettings> {
     if (typeof fields.shareText !== "boolean") throw badRequest("shareText must be a boolean");
     changes.shareText = fields.shareText;
   }
+  if (fields.timeZone !== undefined) {
+    const zone = fields.timeZone;
+    const canonical = typeof zone === "string" && zone !== "" ? canonicalTimeZone(zone) : null;
+    if (zone !== "" && canonical === null) {
+      throw badRequest('timeZone must be an IANA time zone name such as "Europe/Berlin", or ""');
+    }
+    changes.timeZone = canonical ?? "";
+  }
   return changes;
 }
 
 export function roomRoutes(deps: RoomRouteDeps): Router {
-  const { db, config, auth, limits, rooms, ws, permissions, listDevices } = deps;
+  const { db, config, auth, limits, rooms, ws, permissions, listDevices, onTimeZoneChanged } = deps;
   const router = new Router();
   const guard = [requireAuth(auth), requireCli()];
   const defaultHoldMs = config.timing.holdMs;
@@ -77,6 +89,7 @@ export function roomRoutes(deps: RoomRouteDeps): Router {
     const after = updateRoomSettings(db, roomId, changes, defaultHoldMs);
     const room = rooms.get(roomId);
     if (room && after.mode !== before.mode) rooms.broadcastToConsumers(room, buildMode(after.mode));
+    if (after.timeZone !== before.timeZone) onTimeZoneChanged(roomId);
     return after;
   };
 
@@ -105,6 +118,13 @@ export function roomRoutes(deps: RoomRouteDeps): Router {
       devices: listDevices(roomId),
     };
     ctx.body = body;
+  });
+
+  router.get("/api/room/requests/:id", ...guard, (ctx) => {
+    const id = ctx.params.id ?? "";
+    const detail = REQUEST_ID_RE.test(id) ? permissions.detail(authOf(ctx).roomId, id) : null;
+    if (!detail) throw notFound("No such pending request");
+    ctx.body = detail;
   });
 
   router.put("/api/room/settings", ...guard, (ctx) => {

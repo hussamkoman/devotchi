@@ -34,6 +34,11 @@ DEVOTCHI_HOST=0.0.0.0 DEVOTCHI_PORT=8080 node packages/server/dist/index.js
 - The server writes one JSON log line per event to stdout. It stops cleanly
   on SIGINT/SIGTERM: held permission requests get the neutral reply (the
   terminal prompt takes over), sockets close with 1001.
+- `DEVOTCHI_QUESTIONS`, `DEVOTCHI_PLANS` and `DEVOTCHI_SESSION_GRANTS`
+  (`1` by default, `0` turns one off) switch the answering of
+  `AskUserQuestion` and `ExitPlanMode` on a device and the "Allow for this
+  session" grant (protocol 14.11). A feature that is off goes back to the
+  terminal prompt as before.
 - Exit codes: 0 clean stop, 1 startup or runtime failure (for example the
   port is in use), 2 invalid configuration. Errors are one line on stderr.
 

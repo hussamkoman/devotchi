@@ -7,17 +7,23 @@ import {
   BATTERY_STATES,
   CLOSE_CODES,
   CONSUMER_KINDS,
+  DECIDE_CHOICES,
   DEFAULT_IDENTIFY_MS,
+  GRANT_MATCHES,
   HOLDING_MAX_IDS,
   IDENTIFY_MAX_MS,
   IDENTIFY_MIN_MS,
   INBOUND_TYPES,
   LIMITS,
+  MAX_CAPS,
   MAX_FRAME_BYTES,
+  MAX_OPTIONS,
+  MAX_QUESTIONS,
   MAX_URGENCY,
   MIN_REPLAY_REMAINING_MS,
   MOODS,
   NOTIFY_EVENT_RE,
+  PET_ID_RE,
   POWER_SOURCES,
   POWER_STAGES,
   PRODUCER_KINDS,
@@ -27,13 +33,22 @@ import {
   ROLES,
   ROOM_MODES,
   SID_RE,
+  UTC_OFFSET_MAX,
+  UTC_OFFSET_MIN,
+  isCap,
   isValidDeviceId,
   type AnswerOutcome,
+  type Cap,
   type ClientKind,
   type CloseCode,
+  type DeadlineMessage,
+  type DecideChoice,
+  type DecideMessage,
+  type DismissChoice,
   type DismissMessage,
   type ErrorCode,
   type ErrorMessage,
+  type ExtendMessage,
   type HoldingMessage,
   type IdentifyMessage,
   type InboundMessage,
@@ -44,11 +59,14 @@ import {
   type PeersMessage,
   type Peers,
   type PermissionDeferMessage,
+  type PermissionGrant,
   type PermissionMessage,
   type PermissionResponseMessage,
   type PingMessage,
   type PongMessage,
   type ProtocolMessage,
+  type QuestionAnswer,
+  type QuestionResponseMessage,
   type RegisterAckMessage,
   type RegisterClient,
   type RegisterMessage,
@@ -59,6 +77,7 @@ import {
   type StatusMessage,
   type TelemetryBattery,
   type TelemetryMessage,
+  type TimeMessage,
   type TokenKind,
 } from "./protocol.js";
 import { sanitizeAscii, utf8ByteLength, utf8Truncate } from "./text.js";
@@ -190,8 +209,21 @@ function parseRegister(obj: Fields, tokenKind: TokenKind | undefined): RegisterM
     model: optString(client, "model", "register.client", LIMITS.name),
     version: optString(client, "version", "register.client", LIMITS.name),
     project: role === "producer" ? optString(client, "project", "register.client", LIMITS.project) : undefined,
+    caps: role === "consumer" ? parseCaps(client.caps) : undefined,
   });
   return { type: "register", role, proto: PROTO_VERSION, client: out };
+}
+
+/** Section 14.1: at most 8 strings of at most 16 bytes; unknown names are dropped. */
+function parseCaps(value: unknown): Cap[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MAX_CAPS) {
+    reject("INVALID_MESSAGE", `register.client.caps must be an array of at most ${MAX_CAPS} strings`);
+  }
+  if (!value.every((cap) => typeof cap === "string" && utf8ByteLength(cap) <= LIMITS.cap)) {
+    reject("INVALID_MESSAGE", `register.client.caps entries must be strings of at most ${LIMITS.cap} bytes`);
+  }
+  return [...new Set((value as string[]).filter(isCap))];
 }
 
 function parseStatus(obj: Fields): StatusMessage {
@@ -250,6 +282,39 @@ function parsePermissionDefer(obj: Fields): PermissionDeferMessage {
   return { type: "permission_defer", id: reqRequestId(obj, "permission_defer") };
 }
 
+function parseDecide(obj: Fields): DecideMessage {
+  const id = reqRequestId(obj, "decide");
+  const choice = obj.choice;
+  if (typeof choice !== "string" || !(DECIDE_CHOICES as readonly string[]).includes(choice)) {
+    reject("INVALID_MESSAGE", `decide.choice must be one of ${DECIDE_CHOICES.join(", ")}`, id);
+  }
+  return { type: "decide", id, choice: choice as DecideChoice };
+}
+
+/**
+ * Shape only; whether the answers fit the request's questions is checked by
+ * the server against the stored request.
+ */
+function parseQuestionResponse(obj: Fields): QuestionResponseMessage {
+  const id = reqRequestId(obj, "question_response");
+  const answers = obj.answers;
+  const isIndex = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < MAX_OPTIONS;
+  const isAnswer = (v: unknown) => v === null || (Array.isArray(v) && v.length <= MAX_OPTIONS && v.every(isIndex));
+  if (!Array.isArray(answers) || answers.length < 1 || answers.length > MAX_QUESTIONS || !answers.every(isAnswer)) {
+    reject(
+      "INVALID_MESSAGE",
+      `question_response.answers must be 1..${MAX_QUESTIONS} entries, each null or an array of option indexes`,
+      id,
+    );
+  }
+  const copy: QuestionAnswer[] = (answers as (number[] | null)[]).map((a) => (a === null ? null : [...a]));
+  return { type: "question_response", id, answers: copy };
+}
+
+function parseExtend(obj: Fields): ExtendMessage {
+  return { type: "extend", id: reqRequestId(obj, "extend") };
+}
+
 function parseTelemetry(obj: Fields): TelemetryMessage {
   if (!isObject(obj.battery)) reject("INVALID_MESSAGE", "telemetry.battery must be an object");
   const battery = obj.battery;
@@ -272,6 +337,8 @@ function parseTelemetry(obj: Fields): TelemetryMessage {
     screen: optString(obj, "screen", "telemetry", LIMITS.name),
     stage: optEnum(obj, "stage", "telemetry", POWER_STAGES),
     alert: optEnum(obj, "alert", "telemetry", BATTERY_ALERTS),
+    // A malformed pet id is dropped, not rejected: the rest of the sample is still good.
+    pet: typeof obj.pet === "string" && PET_ID_RE.test(obj.pet) ? obj.pet : undefined,
   });
 }
 
@@ -295,6 +362,12 @@ function parseFields(obj: Fields, type: InboundMessage["type"], tokenKind: Token
       return parsePermissionResponse(obj);
     case "permission_defer":
       return parsePermissionDefer(obj);
+    case "decide":
+      return parseDecide(obj);
+    case "question_response":
+      return parseQuestionResponse(obj);
+    case "extend":
+      return parseExtend(obj);
     case "set_mode":
       return { type: "set_mode", mode: reqEnum(obj, "mode", "set_mode", ROOM_MODES) };
     case "telemetry":
@@ -412,6 +485,7 @@ export function buildRegister(input: { role: Role; client: RegisterClient }): Re
       model: cut(client.model, LIMITS.name),
       version: cut(client.version, LIMITS.name),
       project: cut(client.project, LIMITS.project),
+      caps: client.caps && [...new Set(client.caps.filter(isCap))].slice(0, MAX_CAPS),
     }),
   };
 }
@@ -427,7 +501,18 @@ export function buildRegisterAck(input: Omit<RegisterAckMessage, "type" | "proto
     mode: input.mode,
     peers: buildPeersObject(input.peers),
     device: input.device && { id: input.device.id, name: utf8Truncate(input.device.name, LIMITS.name) },
+    caps: input.caps && [...new Set(input.caps.filter(isCap))],
+    utcOffsetMin: input.utcOffsetMin === undefined ? undefined : clampOffset(input.utcOffsetMin),
   });
+}
+
+function clampOffset(minutes: number): number {
+  const value = Number.isFinite(minutes) ? Math.round(minutes) : 0;
+  return Math.min(UTC_OFFSET_MAX, Math.max(UTC_OFFSET_MIN, value));
+}
+
+export function buildTime(serverTime: number, utcOffsetMin: number): TimeMessage {
+  return { type: "time", serverTime: Math.round(serverTime), utcOffsetMin: clampOffset(utcOffsetMin) };
 }
 
 function buildPeersObject(peers: Peers): Peers {
@@ -535,6 +620,12 @@ export interface PermissionInput {
   summary: string;
   details?: string;
   risk: Risk;
+  /** Section 14.2 card fields; consumers with `decide` get these and no `details`. */
+  cmd?: string;
+  cut?: boolean;
+  desc?: string;
+  reason?: string;
+  grant?: PermissionGrant;
   sid?: string;
   project?: string;
   /** Remaining hold time in ms; raised to 1000 if lower. */
@@ -543,9 +634,11 @@ export interface PermissionInput {
 }
 
 /**
- * Device-facing text (tool, summary, details, project) is restricted to
- * printable ASCII plus newline and cut to its limit; `details` and then
- * `summary` are shortened further if JSON escaping would exceed 2048 bytes.
+ * Device-facing text (tool, summary, details, cmd, desc, reason, project) is
+ * restricted to printable ASCII plus newline and cut to its limit. When JSON
+ * escaping would exceed 2048 bytes, `details`, `desc`, `cmd` and then
+ * `summary` are shortened; a shortened `cmd` sets `cut` and drops `grant`,
+ * because a rule is never offered for a command the consumer cannot show whole.
  */
 export function buildPermission(input: PermissionInput): PermissionMessage {
   assertRequestId(input.id);
@@ -553,38 +646,62 @@ export function buildPermission(input: PermissionInput): PermissionMessage {
   if (!Number.isFinite(input.timeout)) throw new TypeError("permission timeout must be a finite number");
   const ascii = (value: string | undefined, limit: number) =>
     value === undefined ? undefined : utf8Truncate(sanitizeAscii(value), limit);
-  const details = ascii(input.details, LIMITS.details);
-  const project = ascii(input.project, LIMITS.project);
-  return fitFrame(
+  const nonEmpty = (value: string | undefined) => (value === "" ? undefined : value);
+  const oneLine = (value: string | undefined) => value?.replace(/\n/g, " ");
+  const cmd = ascii(input.cmd, LIMITS.cmd);
+  let cutFlag = input.cut === true || (input.cmd !== undefined && cmd !== input.cmd);
+  let grant: PermissionGrant | undefined;
+  if (input.grant !== undefined && !cutFlag) {
+    assertMember(input.grant.match, GRANT_MATCHES, "grant match");
+    grant = { rule: utf8Truncate(sanitizeAscii(input.grant.rule), LIMITS.grantRule), match: input.grant.match };
+    if (grant.rule !== input.grant.rule) throw new TypeError("grant rule must be printable ASCII of at most 120 bytes");
+  }
+  const msg = fitFrame(
     compact({
       type: "permission" as const,
       id: input.id,
       tool: ascii(input.tool, LIMITS.tool) as string,
       summary: ascii(input.summary, LIMITS.summary) as string,
-      details: details === "" ? undefined : details,
+      details: nonEmpty(ascii(input.details, LIMITS.details)),
       risk: input.risk,
+      cmd,
+      cut: cutFlag ? (true as const) : undefined,
+      desc: nonEmpty(ascii(oneLine(input.desc), LIMITS.desc)),
+      reason: nonEmpty(ascii(oneLine(input.reason), LIMITS.riskReason)),
+      grant,
       sid: sid(input.sid),
-      project: project === "" ? undefined : project,
+      project: nonEmpty(ascii(input.project, LIMITS.project)),
       timeout: Math.max(MIN_REPLAY_REMAINING_MS, Math.round(input.timeout)),
       timestamp: input.timestamp,
     }),
     [
       { key: "details", optional: true },
+      { key: "desc", optional: true },
+      { key: "cmd", optional: false },
       { key: "summary", optional: false },
       { key: "project", optional: true },
     ],
   );
+  if (msg.cmd !== cmd) cutFlag = true;
+  if (cutFlag && (msg.cut !== true || msg.grant !== undefined)) {
+    // Rebuilt rather than patched so that the key order stays the same.
+    return buildPermission({ ...input, cmd: msg.cmd, cut: true, grant: undefined });
+  }
+  return msg;
 }
 
 export type DismissInput =
-  | { id: string; reason: "answered"; outcome: AnswerOutcome; by: string }
+  | { id: string; reason: "answered"; outcome: AnswerOutcome; by: string; choice?: DismissChoice }
   | { id: string; reason: "cancelled" | "timeout" | "released" };
 
 export function buildDismiss(input: DismissInput): DismissMessage {
   assertRequestId(input.id);
   if (input.reason === "answered") {
     assertMember(input.outcome, ["allow", "deny"] as const, "outcome");
-    return { type: "dismiss", id: input.id, reason: "answered", outcome: input.outcome, by: utf8Truncate(input.by, LIMITS.name) };
+    const by = utf8Truncate(input.by, LIMITS.name);
+    if (input.choice === undefined) return { type: "dismiss", id: input.id, reason: "answered", outcome: input.outcome, by };
+    assertMember(input.choice, [...DECIDE_CHOICES, "answered"] as const, "dismiss choice");
+    return { type: "dismiss", id: input.id, reason: "answered", outcome: input.outcome, by, choice: input.choice };
   }
   assertMember(input.reason, ["cancelled", "timeout", "released"] as const, "dismiss reason");
   return { type: "dismiss", id: input.id, reason: input.reason };
@@ -622,6 +739,27 @@ export function buildPermissionDefer(id: string): PermissionDeferMessage {
   return { type: "permission_defer", id };
 }
 
+export function buildDecide(id: string, choice: DecideChoice): DecideMessage {
+  assertRequestId(id);
+  assertMember(choice, DECIDE_CHOICES, "decide choice");
+  return { type: "decide", id, choice };
+}
+
+export function buildQuestionResponse(id: string, answers: readonly QuestionAnswer[]): QuestionResponseMessage {
+  assertRequestId(id);
+  return { type: "question_response", id, answers: answers.map((a) => (a === null ? null : [...a])) };
+}
+
+export function buildExtend(id: string): ExtendMessage {
+  assertRequestId(id);
+  return { type: "extend", id };
+}
+
+export function buildDeadline(id: string, timeout: number): DeadlineMessage {
+  assertRequestId(id);
+  return { type: "deadline", id, timeout: Math.max(MIN_REPLAY_REMAINING_MS, Math.round(timeout)) };
+}
+
 export function buildTelemetry(input: Omit<TelemetryMessage, "type">): TelemetryMessage {
   return compact({
     type: "telemetry" as const,
@@ -636,5 +774,6 @@ export function buildTelemetry(input: Omit<TelemetryMessage, "type">): Telemetry
     screen: cut(input.screen, LIMITS.name),
     stage: input.stage,
     alert: input.alert,
+    pet: input.pet !== undefined && PET_ID_RE.test(input.pet) ? input.pet : undefined,
   });
 }

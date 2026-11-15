@@ -3,13 +3,23 @@
 // PostToolUse status) and anything else that describes tool calls.
 
 import { LIMITS, type Risk } from "./protocol.js";
+import { summarisePlan } from "./requests.js";
 import { sanitizeAscii, utf8ByteLength, utf8Truncate } from "./text.js";
 
 export interface FormattedToolCall {
   tool: string;
   summary: string;
+  /** Card text for phase-1 consumers. */
   details?: string;
   risk: Risk;
+  /** Protocol 14.2: the exact command, path and change, or the input as JSON; ASCII, at most 600 bytes. */
+  cmd: string;
+  /** `cmd` is not the complete input: it was shortened, or a character had to be replaced. */
+  cut?: true;
+  /** Claude's own description of the call (Bash `description`). */
+  desc?: string;
+  /** Why the risk is med or high, at most 40 bytes. */
+  reason?: string;
 }
 
 const PATH_MAX_BYTES = 60;
@@ -28,6 +38,8 @@ export interface RiskRule {
   target: "bash" | "path";
   pattern: RegExp;
   description: string;
+  /** Shown on a card with `decide` (protocol 14.2), at most 40 bytes. */
+  reason: string;
 }
 
 // "[^;&|\n]*" keeps a flag match inside one simple command, so the flag of a
@@ -39,6 +51,7 @@ export const RISK_RULES: readonly RiskRule[] = [
     target: "bash",
     pattern: /\brm\b(?=[^;&|\n]*\s(?:-[a-zA-Z]*[rRf][a-zA-Z]*|--recursive|--force)(?=\s|$))/,
     description: "rm with -r or -f",
+    reason: "rm -r/-f: deletes files for good",
   },
   {
     id: "git-push-force",
@@ -46,6 +59,7 @@ export const RISK_RULES: readonly RiskRule[] = [
     target: "bash",
     pattern: /\bgit\s+push\b[^;&|\n]*\s(?:--force(?:-with-lease)?(?:=\S*)?|-f)(?=\s|$)/,
     description: "git push --force / -f / --force-with-lease",
+    reason: "Force push: rewrites the remote branch",
   },
   {
     id: "git-reset-hard",
@@ -53,6 +67,7 @@ export const RISK_RULES: readonly RiskRule[] = [
     target: "bash",
     pattern: /\bgit\s+reset\b[^;&|\n]*\s--hard\b/,
     description: "git reset --hard",
+    reason: "Hard reset: discards local changes",
   },
   {
     id: "git-clean-force",
@@ -60,23 +75,47 @@ export const RISK_RULES: readonly RiskRule[] = [
     target: "bash",
     pattern: /\bgit\s+clean\b[^;&|\n]*\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force)(?=\s|$)/,
     description: "git clean -f",
+    reason: "git clean: deletes untracked files",
   },
-  { id: "sudo", risk: "high", target: "bash", pattern: /\bsudo\b/, description: "sudo" },
+  {
+    id: "sudo",
+    risk: "high",
+    target: "bash",
+    pattern: /\bsudo\b/,
+    description: "sudo",
+    reason: "sudo: runs as root",
+  },
   {
     id: "pipe-to-shell",
     risk: "high",
     target: "bash",
     pattern: /\b(?:curl|wget)\b[^;&\n]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh)\b/,
     description: "curl or wget piped into a shell",
+    reason: "Runs a downloaded script",
   },
-  { id: "dd", risk: "high", target: "bash", pattern: /\bdd\b[^;&|\n]*\bif=/, description: "dd if=" },
-  { id: "mkfs", risk: "high", target: "bash", pattern: /\bmkfs(?:\.[a-z0-9]+)?\b/, description: "mkfs" },
+  {
+    id: "dd",
+    risk: "high",
+    target: "bash",
+    pattern: /\bdd\b[^;&|\n]*\bif=/,
+    description: "dd if=",
+    reason: "dd: writes raw data to a disk or file",
+  },
+  {
+    id: "mkfs",
+    risk: "high",
+    target: "bash",
+    pattern: /\bmkfs(?:\.[a-z0-9]+)?\b/,
+    description: "mkfs",
+    reason: "mkfs: formats a disk",
+  },
   {
     id: "sql-drop",
     risk: "high",
     target: "bash",
     pattern: /\bdrop\s+(?:table|database)\b/i,
     description: "DROP TABLE / DROP DATABASE",
+    reason: "DROP: deletes a table or database",
   },
   {
     id: "package-publish",
@@ -84,6 +123,7 @@ export const RISK_RULES: readonly RiskRule[] = [
     target: "bash",
     pattern: /\b(?:npm|pnpm|yarn)\s+publish\b/,
     description: "npm / pnpm / yarn publish",
+    reason: "Publishes a package",
   },
   {
     id: "chmod-recursive-777",
@@ -91,6 +131,7 @@ export const RISK_RULES: readonly RiskRule[] = [
     target: "bash",
     pattern: /\bchmod\b(?=[^;&|\n]*\s-[a-zA-Z]*R)(?=[^;&|\n]*\s0?777(?=\s|$))/,
     description: "chmod -R 777",
+    reason: "chmod -R 777: opens files to everyone",
   },
   {
     id: "redirect-to-disk",
@@ -98,6 +139,7 @@ export const RISK_RULES: readonly RiskRule[] = [
     target: "bash",
     pattern: />\s*\/dev\/sd[a-z]/,
     description: "redirect to /dev/sd*",
+    reason: "Writes directly to a disk",
   },
   {
     id: "write-ssh",
@@ -105,40 +147,87 @@ export const RISK_RULES: readonly RiskRule[] = [
     target: "path",
     pattern: /(?:^|\/)\.ssh(?:\/|$)/,
     description: "target under ~/.ssh",
+    reason: "Changes SSH keys or config",
   },
-  { id: "write-etc", risk: "high", target: "path", pattern: /^\/etc\//, description: "target under /etc/" },
+  {
+    id: "write-etc",
+    risk: "high",
+    target: "path",
+    pattern: /^\/etc\//,
+    description: "target under /etc/",
+    reason: "Changes system config in /etc",
+  },
   {
     id: "write-git-hooks",
     risk: "high",
     target: "path",
     pattern: /(?:^|\/)\.git\/hooks(?:\/|$)/,
     description: "target under .git/hooks",
+    reason: "Changes git hooks, which run code",
   },
-  { id: "git-push", risk: "med", target: "bash", pattern: /\bgit\s+push\b/, description: "git push" },
-  { id: "rm", risk: "med", target: "bash", pattern: /\brm\b/, description: "rm" },
+  {
+    id: "git-push",
+    risk: "med",
+    target: "bash",
+    pattern: /\bgit\s+push\b/,
+    description: "git push",
+    reason: "Pushes to the remote",
+  },
+  {
+    id: "rm",
+    risk: "med",
+    target: "bash",
+    pattern: /\brm\b/,
+    description: "rm",
+    reason: "rm: deletes files",
+  },
   {
     id: "package-install",
     risk: "med",
     target: "bash",
     pattern: /\b(?:npm|pnpm|yarn|pip3?|cargo|apt(?:-get)?|brew)\s+(?:install|add|i)\b/,
     description: "package install",
+    reason: "Installs packages",
   },
-  { id: "docker", risk: "med", target: "bash", pattern: /\bdocker\b/, description: "docker" },
+  {
+    id: "docker",
+    risk: "med",
+    target: "bash",
+    pattern: /\bdocker\b/,
+    description: "docker",
+    reason: "docker: controls containers",
+  },
   {
     id: "network",
     risk: "med",
     target: "bash",
     pattern: /\b(?:curl|wget|ssh|scp|nc)\b/,
     description: "curl / wget / ssh / scp / nc",
+    reason: "Network access",
   },
-  { id: "kill", risk: "med", target: "bash", pattern: /\b(?:kill|pkill|killall)\b/, description: "kill" },
-  { id: "chmod-chown", risk: "med", target: "bash", pattern: /\b(?:chmod|chown)\b/, description: "chmod / chown" },
+  {
+    id: "kill",
+    risk: "med",
+    target: "bash",
+    pattern: /\b(?:kill|pkill|killall)\b/,
+    description: "kill",
+    reason: "Stops processes",
+  },
+  {
+    id: "chmod-chown",
+    risk: "med",
+    target: "bash",
+    pattern: /\b(?:chmod|chown)\b/,
+    description: "chmod / chown",
+    reason: "Changes file permissions",
+  },
   {
     id: "write-env",
     risk: "med",
     target: "path",
     pattern: /(?:^|\/)\.env[^/]*$/,
     description: "target is a .env* file",
+    reason: "Changes a .env file (secrets)",
   },
 ];
 
@@ -164,15 +253,21 @@ function firstMatch(target: RiskRule["target"], text: string): RiskRule | undefi
   return RISK_RULES.find((rule) => rule.target === target && rule.pattern.test(text));
 }
 
-function bashRisk(command: string): Risk {
-  return firstMatch("bash", command)?.risk ?? "low";
+interface Assessment {
+  risk: Risk;
+  reason?: string;
 }
 
-function pathRisk(target: ResolvedPath | undefined): Risk {
-  if (!target) return "med";
+function bashRisk(command: string): Assessment {
+  const rule = firstMatch("bash", command);
+  return rule ? { risk: rule.risk, reason: rule.reason } : { risk: "low" };
+}
+
+function pathRisk(target: ResolvedPath | undefined): Assessment {
+  if (!target) return { risk: "med", reason: "No file path given" };
   const rule = firstMatch("path", target.absolute ?? target.display);
-  if (rule) return rule.risk;
-  return target.insideCwd ? "low" : "med";
+  if (rule) return { risk: rule.risk, reason: rule.reason };
+  return target.insideCwd ? { risk: "low" } : { risk: "med", reason: "Path outside the project" };
 }
 
 // --- Paths (POSIX semantics; Windows separators are normalised to "/") ---
@@ -225,6 +320,12 @@ function resolvePath(raw: string, cwd: string | undefined): ResolvedPath {
   return { absolute, display: absolute, insideCwd: false };
 }
 
+/** True when the absolute `path` is `cwd` or lies below it; false without an absolute `cwd`. */
+export function isInsideCwd(path: string, cwd: string | undefined): boolean {
+  if (cwd === undefined || cwd === "" || rootOf(cwd.replace(/\\/g, "/")) === "") return false;
+  return resolvePath(path, cwd).insideCwd;
+}
+
 function shortenPath(display: string): string {
   const ascii = sanitizeAscii(display);
   if (utf8ByteLength(ascii) <= PATH_MAX_BYTES) return ascii;
@@ -267,16 +368,37 @@ function asInput(toolInput: unknown): Record<string, unknown> {
     : {};
 }
 
-function finish(tool: string, summary: string, details: string | undefined, risk: Risk): FormattedToolCall {
+/** A formatter's result before the protocol limits are applied. */
+interface RawCall extends Assessment {
+  tool: string;
+  summary: string;
+  details?: string;
+  cmd: string;
+  desc?: string;
+}
+
+const NON_ASCII = /[^\x20-\x7e\n]/;
+
+function finish(raw: RawCall): FormattedToolCall {
   const out: FormattedToolCall = {
-    tool: utf8Truncate(sanitizeAscii(clean(tool)), LIMITS.tool),
-    summary: utf8Truncate(sanitizeAscii(clean(summary).replace(/\n/g, " ")), LIMITS.summary),
-    risk,
+    tool: utf8Truncate(sanitizeAscii(clean(raw.tool)), LIMITS.tool),
+    summary: utf8Truncate(sanitizeAscii(clean(raw.summary).replace(/\n/g, " ")), LIMITS.summary),
+    risk: raw.risk,
+    cmd: "",
   };
-  if (details !== undefined) {
-    const text = utf8Truncate(sanitizeAscii(clean(details)), LIMITS.details);
+  if (raw.details !== undefined) {
+    const text = utf8Truncate(sanitizeAscii(clean(raw.details)), LIMITS.details);
     if (text !== "") out.details = text;
   }
+  const cmd = clean(raw.cmd);
+  const ascii = sanitizeAscii(cmd);
+  out.cmd = utf8Truncate(ascii, LIMITS.cmd);
+  if (NON_ASCII.test(cmd) || out.cmd.length < ascii.length) out.cut = true;
+  if (raw.desc !== undefined) {
+    const desc = utf8Truncate(sanitizeAscii(clean(raw.desc).replace(/\n/g, " ")).trim(), LIMITS.desc);
+    if (desc !== "") out.desc = desc;
+  }
+  if (raw.reason !== undefined && raw.risk !== "low") out.reason = utf8Truncate(raw.reason, LIMITS.riskReason);
   return out;
 }
 
@@ -292,7 +414,18 @@ function diffDetails(oldText: string, newText: string, oldCount: number, newCoun
   return [`-${oldCount} +${newCount} lines`, ...removed, ...added].join("\n");
 }
 
-function formatMcp(name: string, input: unknown): FormattedToolCall {
+/** Protocol 14.2 `cmd` of a file change: the path, `+A -B lines`, then every removed and added line. */
+function changeCmd(path: ResolvedPath | undefined, changes: { oldText: string; newText: string }[]): string {
+  const removed = changes.flatMap((change) => lines(change.oldText));
+  const added = changes.flatMap((change) => lines(change.newText));
+  const body = changes.flatMap((change) => [
+    ...lines(change.oldText).map((line) => `- ${line}`),
+    ...lines(change.newText).map((line) => `+ ${line}`),
+  ]);
+  return [path ? path.display : "(no path)", `+${added.length} -${removed.length} lines`, ...body].join("\n");
+}
+
+function formatMcp(name: string, input: unknown): RawCall {
   const rest = name.slice("mcp__".length);
   const split = rest.indexOf("__");
   const server = split >= 0 ? rest.slice(0, split) : rest;
@@ -304,7 +437,7 @@ function formatMcp(name: string, input: unknown): FormattedToolCall {
     .map(([key, value]) => `${key}=${utf8Truncate(compactJson(value), MCP_VALUE_BYTES)}`);
   const summary = pairs.length > 0 ? pairs.join(" ") : display;
   const details = Object.keys(args).length > 0 ? compactJson(args) : undefined;
-  return finish(display, summary, details, "med");
+  return { tool: display, summary, details, risk: "med", reason: "Tool of an MCP server", cmd: compactJson(args) };
 }
 
 /**
@@ -313,15 +446,17 @@ function formatMcp(name: string, input: unknown): FormattedToolCall {
  */
 export function formatToolCall(toolName: unknown, toolInput: unknown, cwd?: string): FormattedToolCall {
   try {
-    return formatUnsafe(toolName, toolInput, typeof cwd === "string" && cwd !== "" ? cwd : undefined);
+    return finish(formatUnsafe(toolName, toolInput, typeof cwd === "string" && cwd !== "" ? cwd : undefined));
   } catch {
-    return finish(typeof toolName === "string" && toolName !== "" ? toolName : "Unknown tool", "(unreadable input)", undefined, "med");
+    const tool = typeof toolName === "string" && toolName !== "" ? toolName : "Unknown tool";
+    return finish({ tool, summary: "(unreadable input)", risk: "med", reason: "Unreadable input", cmd: "(unreadable input)" });
   }
 }
 
-function formatUnsafe(toolName: unknown, toolInput: unknown, cwd: string | undefined): FormattedToolCall {
+function formatUnsafe(toolName: unknown, toolInput: unknown, cwd: string | undefined): RawCall {
+  const json = compactJson(toolInput ?? {});
   if (typeof toolName !== "string" || toolName === "") {
-    return finish("Unknown tool", compactJson(toolInput ?? null), undefined, "med");
+    return { tool: "Unknown tool", summary: compactJson(toolInput ?? null), risk: "med", reason: "Unknown tool", cmd: json };
   }
   const input = asInput(toolInput);
   const pathOf = (key: string) => {
@@ -335,24 +470,50 @@ function formatUnsafe(toolName: unknown, toolInput: unknown, cwd: string | undef
       const command = clean(str(input.command) ?? "");
       const description = str(input.description);
       const details = `${description ? `${description}\n` : ""}$ ${command}`;
-      return finish("Bash", firstLine(command) || "(empty command)", details, bashRisk(command));
+      return {
+        tool: "Bash",
+        summary: firstLine(command) || "(empty command)",
+        details,
+        ...bashRisk(command),
+        cmd: command,
+        desc: description,
+      };
     }
     case "Edit": {
       const path = pathOf("file_path");
       const oldText = clean(str(input.old_string) ?? "");
       const newText = clean(str(input.new_string) ?? "");
       const details = diffDetails(oldText, newText, lines(oldText).length, lines(newText).length);
-      return finish("Edit", `Edit ${shown(path)}`, details, pathRisk(path));
+      return {
+        tool: "Edit",
+        summary: `Edit ${shown(path)}`,
+        details,
+        ...pathRisk(path),
+        cmd: changeCmd(path, [{ oldText, newText }]),
+      };
     }
     case "MultiEdit": {
       const path = pathOf("file_path");
       const edits = Array.isArray(input.edits) ? input.edits.map(asInput) : [];
-      const oldTexts = edits.map((edit) => clean(str(edit.old_string) ?? ""));
-      const newTexts = edits.map((edit) => clean(str(edit.new_string) ?? ""));
+      const changes = edits.map((edit) => ({
+        oldText: clean(str(edit.old_string) ?? ""),
+        newText: clean(str(edit.new_string) ?? ""),
+      }));
       const count = (texts: string[]) => texts.reduce((sum, text) => sum + lines(text).length, 0);
-      const details = diffDetails(oldTexts[0] ?? "", newTexts[0] ?? "", count(oldTexts), count(newTexts));
+      const details = diffDetails(
+        changes[0]?.oldText ?? "",
+        changes[0]?.newText ?? "",
+        count(changes.map((c) => c.oldText)),
+        count(changes.map((c) => c.newText)),
+      );
       const noun = edits.length === 1 ? "edit" : "edits";
-      return finish("MultiEdit", `Edit ${shown(path)} (${edits.length} ${noun})`, details, pathRisk(path));
+      return {
+        tool: "MultiEdit",
+        summary: `Edit ${shown(path)} (${edits.length} ${noun})`,
+        details,
+        ...pathRisk(path),
+        cmd: changeCmd(path, changes),
+      };
     }
     case "Write": {
       const path = pathOf("file_path");
@@ -360,15 +521,27 @@ function formatUnsafe(toolName: unknown, toolInput: unknown, cwd: string | undef
       const contentLines = lines(content);
       const noun = contentLines.length === 1 ? "line" : "lines";
       const details = contentLines.slice(0, WRITE_PREVIEW_LINES).join("\n");
-      return finish("Write", `Write ${shown(path)} (${contentLines.length} ${noun})`, details, pathRisk(path));
+      return {
+        tool: "Write",
+        summary: `Write ${shown(path)} (${contentLines.length} ${noun})`,
+        details,
+        ...pathRisk(path),
+        cmd: changeCmd(path, [{ oldText: "", newText: content }]),
+      };
     }
     case "Read":
-      return finish("Read", `Read ${shown(pathOf("file_path"))}`, undefined, "low");
+      return { tool: "Read", summary: `Read ${shown(pathOf("file_path"))}`, risk: "low", cmd: json };
     case "NotebookEdit": {
       const path = pathOf("notebook_path");
       const source = str(input.new_source);
       const details = source === undefined ? undefined : lines(clean(source)).slice(0, WRITE_PREVIEW_LINES).join("\n");
-      return finish("NotebookEdit", `Edit notebook ${shown(path)}`, details, pathRisk(path));
+      return {
+        tool: "NotebookEdit",
+        summary: `Edit notebook ${shown(path)}`,
+        details,
+        ...pathRisk(path),
+        cmd: changeCmd(path, [{ oldText: "", newText: clean(source ?? "") }]),
+      };
     }
     case "WebFetch": {
       const url = str(input.url) ?? "";
@@ -379,20 +552,31 @@ function formatUnsafe(toolName: unknown, toolInput: unknown, cwd: string | undef
         // An unparsable URL is shown as given.
       }
       const prompt = firstLine(str(input.prompt) ?? "");
-      return finish("WebFetch", `Fetch ${host || "(no url)"}`, prompt ? `${url}\n${prompt}` : url, "low");
+      const details = prompt ? `${url}\n${prompt}` : url;
+      return { tool: "WebFetch", summary: `Fetch ${host || "(no url)"}`, details, risk: "low", cmd: json };
     }
     case "WebSearch":
-      return finish("WebSearch", `Search: ${str(input.query) ?? ""}`, undefined, "low");
+      return { tool: "WebSearch", summary: `Search: ${str(input.query) ?? ""}`, risk: "low", cmd: json };
     case "Task":
     case "Agent": {
       const type = str(input.subagent_type);
       const description = str(input.description) ?? "";
       const summary = type ? `Agent ${type}: ${description}` : `Agent: ${description}`;
-      const prompt = str(input.prompt);
-      return finish(toolName, summary, prompt, "low");
+      return { tool: toolName, summary, details: str(input.prompt), risk: "low", cmd: json };
+    }
+    case "AskUserQuestion": {
+      const questions = Array.isArray(input.questions) ? input.questions.map(asInput) : [];
+      const first = firstLine(clean(str(questions[0]?.question) ?? ""));
+      const more = questions.length > 1 ? ` (+${questions.length - 1} more)` : "";
+      return { tool: "AskUserQuestion", summary: `${first || "Question"}${more}`, risk: "low", cmd: json };
+    }
+    case "ExitPlanMode": {
+      const plan = str(input.plan);
+      const title = plan === undefined ? "" : summarisePlan(plan).title;
+      return { tool: "ExitPlanMode", summary: title || "Plan", risk: "low", cmd: json };
     }
   }
   if (toolName.startsWith("mcp__")) return formatMcp(toolName, toolInput);
-  const risk: Risk = KNOWN_LOW_TOOLS.has(toolName) ? "low" : "med";
-  return finish(toolName, compactJson(toolInput ?? {}), undefined, risk);
+  if (KNOWN_LOW_TOOLS.has(toolName)) return { tool: toolName, summary: json, risk: "low", cmd: json };
+  return { tool: toolName, summary: json, risk: "med", reason: "Not a built-in tool", cmd: json };
 }

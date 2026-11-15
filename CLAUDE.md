@@ -96,7 +96,7 @@ docs/                          — Architecture, protocol, deployment, hardware 
 
 ## Hooks (automatic — no AI action needed)
 
-`devotchi setup` installs nine HTTP hooks into `.claude/settings.local.json` (protocol 8.7). When Claude Code is about to ask for a permission, the `PermissionRequest` hook POSTs to the server, which shows the request on every device and dashboard. A button press there allows or denies. A request nobody answers falls back to Claude Code's own terminal prompt: after the hold time (default 30 s), at once when no device is live or the room is in desk mode, or when the user picks "send to terminal". Devotchi never auto-denies. The other hooks send status lines and cancel requests the terminal already handled.
+`devotchi setup` installs nine HTTP hooks into `.claude/settings.local.json` (protocol 8.7). When Claude Code is about to ask for a permission, the `PermissionRequest` hook POSTs to the server, which shows the request on every device and dashboard. A button press there allows or denies; the same path answers Claude's questions (`AskUserQuestion`, options only) and approves or revises plans (`ExitPlanMode`) on consumers that declare the `ask`/`plan` caps (protocol 14). A request nobody answers falls back to Claude Code's own terminal prompt: after the hold time (default 30 s), at once when no device is live or the room is in desk mode, or when the user picks "send to terminal". Devotchi never auto-denies. The other hooks send status lines and cancel requests the terminal already handled.
 
 ## Devotchi MCP tool usage (voluntary — for AI agents with Devotchi connected)
 

@@ -6,6 +6,7 @@ import { isIP } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
+  DEFAULT_SERVER_FEATURES,
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
   DEFAULT_SERVER_TIMING,
@@ -16,6 +17,7 @@ import {
   type LogLevel,
   type RegistrationMode,
   type ServerConfig,
+  type ServerFeatures,
   type ServerMode,
   type ServerTiming,
 } from "@devotchi/shared";
@@ -37,10 +39,11 @@ export const EMBEDDED_HOST = "127.0.0.1";
  * embedding caller cares about. `maxSockets`, `logSink` and `bcryptCost`
  * have no environment variable; they exist for embedding and tests.
  */
-export interface ServerConfigInput extends Partial<Omit<ServerConfig, "timing" | "dbPath">> {
+export interface ServerConfigInput extends Partial<Omit<ServerConfig, "timing" | "dbPath" | "features">> {
   /** SQLite file, or ":memory:". */
   dbPath: string;
   timing?: Partial<ServerTiming>;
+  features?: Partial<ServerFeatures>;
   /** Open WebSocket connections per process, registered or not. */
   maxSockets?: number;
   /** Receives every log line; defaults to stdout. */
@@ -102,6 +105,8 @@ const TIMING_RANGES: Record<keyof ServerTiming, [number, number]> = {
   pairDeliveryMs: [1, 3_600_000],
   deviceWriteMs: [0, 86_400_000],
   loginSessionTtlMs: [1, 366 * 86_400_000],
+  timeCheckMs: [1, 3_600_000],
+  timeIntervalMs: [1, 86_400_000],
 };
 
 /** Fills defaults and validates. Throws ConfigError. */
@@ -122,6 +127,7 @@ export function resolveConfig(input: ServerConfigInput): ResolvedConfig {
     inviteCode: input.inviteCode,
     logLevel: input.logLevel ?? "info",
     timing,
+    features: { ...DEFAULT_SERVER_FEATURES, ...input.features },
     maxSockets: input.maxSockets ?? DEFAULT_MAX_SOCKETS,
     logSink: input.logSink,
     bcryptCost: input.bcryptCost ?? DEFAULT_BCRYPT_COST,
@@ -142,6 +148,9 @@ export function resolveConfig(input: ServerConfigInput): ResolvedConfig {
     fail("DEVOTCHI_REGISTRATION=invite requires DEVOTCHI_INVITE_CODE");
   }
   if (!LOG_LEVELS.includes(config.logLevel)) fail(`logLevel must be one of ${LOG_LEVELS.join(", ")}`);
+  for (const [key, value] of Object.entries(config.features)) {
+    if (typeof value !== "boolean") fail(`features.${key} must be a boolean`);
+  }
   checkInt("maxSockets", config.maxSockets, 1, 1_000_000);
   checkInt("bcryptCost", config.bcryptCost, 4, 31);
   return config;
@@ -166,6 +175,13 @@ function envInt(env: Env, name: string, fallback: number, min: number, max: numb
   const value = Number(raw);
   checkInt(name, value, min, max);
   return value;
+}
+
+function envSwitch(env: Env, name: string, fallback: boolean): boolean {
+  const raw = envValue(env, name);
+  if (raw === undefined) return fallback;
+  if (raw !== "0" && raw !== "1") fail(`${name} must be 0 or 1 (got "${raw}")`);
+  return raw === "1";
 }
 
 function envEnum<T extends string>(env: Env, name: string, values: readonly T[], fallback: T): T {
@@ -220,6 +236,11 @@ export function loadConfig(env: Env = process.env): EnvConfig {
     inviteCode,
     logLevel: envEnum<LogLevel>(env, "DEVOTCHI_LOG_LEVEL", LOG_LEVELS, "info"),
     timing,
+    features: {
+      questions: envSwitch(env, "DEVOTCHI_QUESTIONS", DEFAULT_SERVER_FEATURES.questions),
+      plans: envSwitch(env, "DEVOTCHI_PLANS", DEFAULT_SERVER_FEATURES.plans),
+      sessionGrants: envSwitch(env, "DEVOTCHI_SESSION_GRANTS", DEFAULT_SERVER_FEATURES.sessionGrants),
+    },
   });
   return { config, warnings };
 }

@@ -106,3 +106,25 @@ describe("resolveConfig", () => {
     expect(() => resolveConfig({ dbPath: "x", mode: "solo" as never })).toThrow(ConfigError);
   });
 });
+
+describe("feature switches (protocol 14.11)", () => {
+  it("are on by default and switch off one by one", () => {
+    expect(loadConfig(base).config.features).toEqual({ questions: true, plans: true, sessionGrants: true });
+    expect(loadConfig({ ...base, DEVOTCHI_QUESTIONS: "0" }).config.features).toEqual({
+      questions: false,
+      plans: true,
+      sessionGrants: true,
+    });
+    expect(loadConfig({ ...base, DEVOTCHI_PLANS: "0", DEVOTCHI_SESSION_GRANTS: "0" }).config.features).toEqual({
+      questions: true,
+      plans: false,
+      sessionGrants: false,
+    });
+    expect(loadConfig({ ...base, DEVOTCHI_PLANS: "1" }).config.features.plans).toBe(true);
+  });
+
+  it("accept only 0 and 1", () => {
+    expect(error({ DEVOTCHI_QUESTIONS: "off" })).toMatch(/DEVOTCHI_QUESTIONS must be 0 or 1/);
+    expect(error({ DEVOTCHI_SESSION_GRANTS: "true" })).toMatch(/DEVOTCHI_SESSION_GRANTS/);
+  });
+});

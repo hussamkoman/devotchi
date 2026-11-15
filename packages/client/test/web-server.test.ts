@@ -310,7 +310,7 @@ describe("REST proxy", () => {
     expect(await room.json()).toMatchObject({ roomId, settings: { mode: "ask", holdMs: 30000 } });
 
     const settings = await apiFetch("/api/room/settings", { method: "PUT", json: { holdMs: 20000 } });
-    expect(await settings.json()).toEqual({ mode: "ask", holdMs: 20000, shareText: false });
+    expect(await settings.json()).toEqual({ mode: "ask", holdMs: 20000, shareText: false, timeZone: "" });
     const badHold = await apiFetch("/api/room/settings", { method: "PUT", json: { holdMs: 5 } });
     expect(badHold.status).toBe(400);
     expect(await badHold.json()).toMatchObject({ code: "invalid_request", error: expect.any(String) });

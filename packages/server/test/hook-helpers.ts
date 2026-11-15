@@ -7,7 +7,10 @@ import { delay, type Json, type TestServer, type TestSocket } from "./helpers.js
 
 export const ALLOW = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } };
 export const DENY = {
-  hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny", message: "Denied on Devotchi" } },
+  hookSpecificOutput: {
+    hookEventName: "PermissionRequest",
+    decision: { behavior: "deny", message: "Denied on Devotchi. Do not retry this call; try another way or ask the user." },
+  },
 };
 
 export function sidOf(sessionId: string): string {

@@ -348,8 +348,8 @@ describe("room isolation", () => {
     expect((await reply).status).toBe(200);
 
     const put = await t.fetch("/api/room/settings", { method: "PUT", json: { holdMs: 60_000, mode: "desk" }, token: a.session });
-    expect(await put.json()).toEqual({ mode: "desk", holdMs: 60_000, shareText: false });
-    expect((await roomState(t, b.session)).settings).toEqual({ mode: "ask", holdMs: 8000, shareText: false });
+    expect(await put.json()).toEqual({ mode: "desk", holdMs: 60_000, shareText: false, timeZone: "" });
+    expect((await roomState(t, b.session)).settings).toEqual({ mode: "ask", holdMs: 8000, shareText: false, timeZone: "" });
 
     const tokensB = await (await t.fetch("/api/tokens", { token: b.session })).json();
     expect(tokensB.tokens).toEqual([]);

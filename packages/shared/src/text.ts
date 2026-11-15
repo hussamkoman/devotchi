@@ -85,3 +85,61 @@ export function sanitizeAscii(str: string): string {
   }
   return out;
 }
+
+// --- Device charset (protocol 14.1) ---
+
+const DEVICE_EXTRA = new Set([..."–—‘’“”•…←↑→↓✓×−"].map((c) => c.codePointAt(0)!));
+const COMBINING_MARK = /\p{M}/gu;
+
+/** True for a code point the device fonts can draw. */
+export function isDeviceChar(codePoint: number): boolean {
+  return (
+    (codePoint >= 0x20 && codePoint <= 0x7e) || (codePoint >= 0xa0 && codePoint <= 0xff) || DEVICE_EXTRA.has(codePoint)
+  );
+}
+
+export interface DeviceText {
+  text: string;
+  /** Characters that became `?`. */
+  replaced: number;
+  /** Code points of the input, line breaks and tabs included. */
+  chars: number;
+}
+
+/**
+ * Maps `str` to the device charset of protocol 14.1: line feed, carriage
+ * return and tab become one space each (`keepNewlines` keeps `\n` for
+ * `permission.cmd`), a character outside the charset is decomposed (NFKD)
+ * without its combining marks, and whatever is still outside becomes `?`.
+ * Only the `?` replacements are counted in `replaced`.
+ */
+export function toDeviceText(str: string, options: { keepNewlines?: boolean } = {}): DeviceText {
+  let text = "";
+  let replaced = 0;
+  let chars = 0;
+  // NFC first so that a base letter followed by a combining accent stays one drawable letter.
+  for (const ch of str.normalize("NFC")) {
+    chars++;
+    const cp = ch.codePointAt(0)!;
+    if (cp === 0x0a && options.keepNewlines) text += "\n";
+    else if (cp === 0x0a || cp === 0x0d || cp === 0x09) text += " ";
+    else if (isDeviceChar(cp)) text += ch;
+    else {
+      for (const part of ch.normalize("NFKD").replace(COMBINING_MARK, "")) {
+        if (isDeviceChar(part.codePointAt(0)!)) text += part;
+        else {
+          text += "?";
+          replaced++;
+        }
+      }
+    }
+  }
+  return { text, replaced, chars };
+}
+
+/** Cuts `str` to at most `maxBytes` UTF-8 bytes; a shortened result ends in "…" (3 bytes). */
+export function shortenWithEllipsis(str: string, maxBytes: number): string {
+  if (utf8ByteLength(str) <= maxBytes) return str;
+  if (maxBytes < 3) return "";
+  return utf8Truncate(str, maxBytes - 3).trimEnd() + "…";
+}

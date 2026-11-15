@@ -282,7 +282,16 @@ program
   .description("Headless virtual device speaking the device protocol; prints one JSON line per event")
   .option(...SERVER_OPTION)
   .option("--name <name>", "Device id becomes sim-<name> (a-z, 0-9, -; max 12)", "local")
-  .option("--approve <policy>", "all | none (reject) | defer | after=<ms> | manual (stdin: approve|reject|defer [id])", "all")
+  .option(
+    "--approve <policy>",
+    "all | none (reject) | defer | after=<ms> | manual (stdin: approve|reject|defer|extend [id], decide <choice> [id], answer <0;1,2;null;-> [id], plan <answer> [id])",
+    "all",
+  )
+  .option("--answer <policy>", "Questions: first | last | none | null | terminal | decline (default follows --approve)")
+  .option("--decide <choice>", "Permissions: send decide allow_session | deny_ask_why | deny_stop instead of the --approve answer")
+  .option("--plan <policy>", "Plans: approve | accept-edits | revise | stop | terminal (default follows --approve)")
+  .option("--extend", "Send one extend for every question and plan when it is shown")
+  .option("--caps <list>", "Caps declared in register: none, or a list of decide,ask,plan,pets (default decide,ask,plan)")
   .option("--code <CODE>", "Pair with a code from `devotchi pair --new` (flow B) instead of showing one")
   .option("--token <token>", "Connect with this token, no pairing (a cli token makes a memory-only consumer)")
   .option("--state <file>", "Keep the paired credentials in this file (default: memory only)")
@@ -316,6 +325,11 @@ program
           telemetryInterval: opts.telemetryInterval as number | undefined,
           battery: (opts.battery as string[] | undefined)?.map(sim.parseBattery),
           repair: opts.repair as boolean | undefined,
+          caps: opts.caps === undefined ? undefined : sim.parseCaps(opts.caps as string),
+          answer: opts.answer === undefined ? undefined : sim.parseQuestionPolicy(opts.answer as string),
+          plan: opts.plan === undefined ? undefined : sim.parsePlanPolicy(opts.plan as string),
+          decide: opts.decide === undefined ? undefined : sim.parseDecideChoice(opts.decide as string),
+          extend: opts.extend as boolean | undefined,
           version: CLIENT_VERSION,
         },
         say,

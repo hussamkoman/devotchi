@@ -1,7 +1,7 @@
 // REST request and response types (protocol section 7) and hook replies
 // (section 8.3).
 
-import type { Mood, Peers, Risk, RoomMode, TelemetryMessage, TokenKind } from "./protocol.js";
+import type { DismissChoice, Mood, Peers, RequestKind, Risk, RoomMode, TelemetryMessage, TokenKind } from "./protocol.js";
 
 export type ServerMode = "single-user" | "multi-user";
 
@@ -209,12 +209,15 @@ export interface RoomSettings {
   mode: RoomMode;
   holdMs: number;
   shareText: boolean;
+  /** Protocol 14.9: an IANA zone name, or "" for the zone of the server process. */
+  timeZone: string;
 }
 
 export type UpdateRoomSettingsRequest = Partial<RoomSettings>;
 
 export interface PendingRequestInfo {
   id: string;
+  kind: RequestKind;
   tool: string;
   summary: string;
   risk: Risk;
@@ -250,6 +253,19 @@ export interface LastRequest {
   detail: RequestDetail;
   /** Identity of the answering consumer, for `answered`. */
   by?: string;
+  /** The `dismiss.choice` of an answer (protocol 14.3). */
+  choice?: DismissChoice;
+}
+
+/** `GET /api/room/requests/:id` (protocol 14.6a). */
+export interface RoomRequestDetail {
+  id: string;
+  kind: RequestKind;
+  /** The hook's `tool_name`. */
+  tool: string;
+  /** The hook's `tool_input`, unchanged. */
+  toolInput: unknown;
+  remainingMs: number;
 }
 
 export interface RoomDiagnostics {
@@ -284,10 +300,36 @@ export interface NotifyResponse {
 
 export type NeutralHookReply = Record<string, never>;
 
+/** Protocol 14.3: the only permission updates a reply may carry. */
+export type SessionPermissionUpdate =
+  | {
+      type: "addRules";
+      rules: [{ toolName: "Bash"; ruleContent: string }];
+      behavior: "allow";
+      destination: "session";
+    }
+  | { type: "setMode"; mode: "default" | "acceptEdits"; destination: "session" };
+
+/** The hook's own `tool_input` object, echoed unchanged in `updatedInput`. */
+export type HookToolInput = { [key: string]: unknown };
+
+/** Every `decision` of protocol 14.3 and 14.4, and nothing else. */
+export type PermissionDecision =
+  | { behavior: "allow" }
+  | { behavior: "allow"; updatedPermissions: [SessionPermissionUpdate & { type: "addRules" }] }
+  | {
+      behavior: "allow";
+      updatedInput: HookToolInput;
+      updatedPermissions: [SessionPermissionUpdate & { type: "setMode" }];
+    }
+  | { behavior: "allow"; updatedInput: HookToolInput & { answers: { [question: string]: string } } }
+  | { behavior: "deny"; message: string }
+  | { behavior: "deny"; message: string; interrupt: true };
+
 export interface PermissionDecisionReply {
   hookSpecificOutput: {
     hookEventName: "PermissionRequest";
-    decision: { behavior: "allow" } | { behavior: "deny"; message: string };
+    decision: PermissionDecision;
   };
 }
 

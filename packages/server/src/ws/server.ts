@@ -17,11 +17,14 @@ import {
   buildRegisterAck,
   buildStatus,
   parseInbound,
+  utcOffsetMinutes,
+  type Cap,
   type ErrorCode,
   type InboundMessage,
   type MoodMessage,
   type NotifyMessage,
   type RegisterMessage,
+  type ServerFeatures,
   type ServerToConsumerMessage,
   type StatusMessage,
   type TokenKind,
@@ -30,7 +33,7 @@ import {
 import type { ResolvedConfig } from "../config.js";
 import type { Db } from "../db/index.js";
 import { bindDeviceOnRegister } from "../db/devices.js";
-import { getRoomMode } from "../db/room-settings.js";
+import { getRoomMode, getRoomTimeZone } from "../db/room-settings.js";
 import { extractCredential, type AuthState, type Authenticator } from "../http/auth.js";
 import { errorFields, type Logger } from "../log.js";
 import { Conn, type Registration } from "../rooms/conn.js";
@@ -38,10 +41,26 @@ import type { Room, RoomRegistry } from "../rooms/registry.js";
 import { SERVER_VERSION } from "../version.js";
 
 /** Consumer-to-server messages that other modules handle (protocol 3.7). */
-export type SystemMessageType = "holding" | "permission_response" | "permission_defer" | "set_mode" | "telemetry";
+export type SystemMessageType =
+  | "holding"
+  | "permission_response"
+  | "permission_defer"
+  | "decide"
+  | "question_response"
+  | "extend"
+  | "set_mode"
+  | "telemetry";
 export type SystemMessage<T extends SystemMessageType> = Extract<InboundMessage, { type: T }>;
 export type SystemHandler<T extends SystemMessageType> = (conn: Conn, msg: SystemMessage<T>, room: Room) => void;
 export type ConnHook = (conn: Conn, room: Room) => void;
+
+/** Protocol 14.1: the features this server offers; a switched-off feature is missing. */
+export function serverCaps(features: ServerFeatures): Cap[] {
+  const caps: Cap[] = ["decide"];
+  if (features.questions) caps.push("ask");
+  if (features.plans) caps.push("plan");
+  return caps;
+}
 
 /** Connections stuck in the close handshake are terminated after this. */
 const CLOSE_GRACE_MS = 300;
@@ -290,6 +309,8 @@ export class WsServer {
       registration.identity = "dashboard";
     }
     conn.registration = registration;
+    const caps = serverCaps(this.deps.config.features);
+    if (msg.role === "consumer") conn.caps = new Set((client.caps ?? []).filter((cap) => caps.includes(cap)));
     rooms.join(conn);
 
     conn.send(
@@ -301,6 +322,8 @@ export class WsServer {
         mode: getRoomMode(db, conn.roomId),
         peers: room.peers(),
         device,
+        caps,
+        utcOffsetMin: utcOffsetMinutes(getRoomTimeZone(db, conn.roomId), now),
       }),
     );
     log.info("registered", { conn: conn.serial, role: msg.role, kind: client.kind });

@@ -40,7 +40,7 @@ describe("room mode", () => {
       expect(await a.awaitMessage("mode")).toEqual({ type: "mode", mode: "desk" });
       expect(await b.awaitMessage("mode")).toEqual({ type: "mode", mode: "desk" });
       await p.expectNoMessage("mode", 80);
-      expect((await roomState(t, token)).settings).toEqual({ mode: "desk", holdMs: 30000, shareText: false });
+      expect((await roomState(t, token)).settings).toEqual({ mode: "desk", holdMs: 30000, shareText: false, timeZone: "" });
       expect(await hook(t, token, permissionInput())).toEqual({});
       expect((await roomState(t, token)).lastRequest).toMatchObject({ detail: "desk" });
 
@@ -96,15 +96,15 @@ describe("PUT /api/room/settings", () => {
     const put = (json: unknown) => t.fetch("/api/room/settings", { method: "PUT", json, token });
 
     let res = await put({});
-    expect([res.status, await res.json()]).toEqual([200, { mode: "ask", holdMs: 20000, shareText: false }]);
-    res = await put({ shareText: true });
-    expect(await res.json()).toEqual({ mode: "ask", holdMs: 20000, shareText: true });
+    expect([res.status, await res.json()]).toEqual([200, { mode: "ask", holdMs: 20000, shareText: false, timeZone: "" }]);
+    res = await put({ shareText: true, timeZone: "" });
+    expect(await res.json()).toEqual({ mode: "ask", holdMs: 20000, shareText: true, timeZone: "" });
     await c.expectNoMessage("mode", 60);
     res = await put({ mode: "desk", holdMs: 10000 });
-    expect(await res.json()).toEqual({ mode: "desk", holdMs: 10000, shareText: true });
+    expect(await res.json()).toEqual({ mode: "desk", holdMs: 10000, shareText: true, timeZone: "" });
     expect(await c.awaitMessage("mode")).toEqual({ type: "mode", mode: "desk" });
     res = await put({ mode: "desk", holdMs: 300000, somethingElse: 1 });
-    expect(await res.json()).toEqual({ mode: "desk", holdMs: 300000, shareText: true });
+    expect(await res.json()).toEqual({ mode: "desk", holdMs: 300000, shareText: true, timeZone: "" });
     await c.expectNoMessage("mode", 60);
 
     for (const bad of [
@@ -123,7 +123,7 @@ describe("PUT /api/room/settings", () => {
       res = await put(bad);
       expect([res.status, ((await res.json()) as { code: string }).code]).toEqual([400, "invalid_request"]);
     }
-    expect((await roomState(t, token)).settings).toEqual({ mode: "desk", holdMs: 300000, shareText: true });
+    expect((await roomState(t, token)).settings).toEqual({ mode: "desk", holdMs: 300000, shareText: true, timeZone: "" });
   });
 
   it("requires a cli token", async () => {
@@ -144,7 +144,7 @@ describe("GET /api/room", () => {
     const { token, roomId } = await t.mintToken();
     expect(await roomState(t, token)).toEqual({
       roomId,
-      settings: { mode: "ask", holdMs: 30000, shareText: false },
+      settings: { mode: "ask", holdMs: 30000, shareText: false, timeZone: "" },
       peers: { producers: 0, consumers: 0, devices: 0 },
       pending: [],
       lastRequest: null,
@@ -168,11 +168,12 @@ describe("GET /api/room", () => {
     const room = await roomState(t, token);
     expect(room).toEqual({
       roomId,
-      settings: { mode: "ask", holdMs: 30000, shareText: false },
+      settings: { mode: "ask", holdMs: 30000, shareText: false, timeZone: "" },
       peers: { producers: 1, consumers: 2, devices: 1 },
       pending: [
         {
           id: held.id,
+          kind: "permission",
           tool: "Bash",
           summary: "rm -rf dist",
           risk: "high",

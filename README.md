@@ -25,6 +25,9 @@ Carry it in your pocket, clip it to your bag, or leave it on your desk — no ne
 1. **Claude Code hooks** (`devotchi setup`) send each permission request to the server over HTTP.
 2. The server shows it on your **Devotchi device** and on the local dashboard.
 3. You approve or reject with a button; Claude Code continues or stops.
+   Claude's questions (`AskUserQuestion`) and plans (`ExitPlanMode`) are
+   answered the same way on a device that can show them; free-text answers
+   stay in the terminal.
 4. The **MCP server** lets the agent send status lines, moods and notifications.
 
 ### What happens when nobody answers

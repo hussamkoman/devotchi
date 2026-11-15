@@ -17,7 +17,7 @@ import {
 import type { ResolvedConfig } from "../config.js";
 import type { Db } from "../db/index.js";
 import { getRoomSettings } from "../db/room-settings.js";
-import { hashToolInput, type PermissionManager, type PermissionTicket } from "../permissions/manager.js";
+import type { PermissionManager, PermissionTicket } from "../permissions/manager.js";
 import type { Room, RoomRegistry, RoomSession } from "../rooms/registry.js";
 
 export type HookBody = Record<string, unknown>;
@@ -104,6 +104,7 @@ export class HookDispatcher {
       toolName: body.tool_name,
       toolInput: body.tool_input,
       cwd: hook.cwd,
+      suggestions: body.permission_suggestions,
     });
   }
 
@@ -214,7 +215,7 @@ export class HookDispatcher {
     // Hashing a tool_input of up to 2 MB is only worth it when something could match.
     if (!this.deps.permissions.hasPending(room, hook.sid)) return;
     const toolName = typeof body.tool_name === "string" ? body.tool_name : "";
-    this.deps.permissions.cancelMatching(room, hook.sid, toolName, hashToolInput(body.tool_input));
+    this.deps.permissions.cancelMatching(room, hook.sid, toolName, body.tool_input);
   }
 
   private onNotification(room: Room, hook: HookSession, session: RoomSession, body: HookBody, now: number): void {
