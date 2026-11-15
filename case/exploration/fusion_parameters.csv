@@ -1,0 +1,30 @@
+Name,Unit,Expression,Value,Comment,Favorite
+WALL,mm,1.5 mm,,Wall thickness,No
+CORNER_R,mm,3 mm,,Outer corner radius,No
+CHAMFER,mm,2.5 mm,,Front face chamfer,No
+CASE_W,mm,60 mm,,Case outer width,Yes
+CASE_H,mm,60 mm,,Case outer height,Yes
+CASE_D,mm,16 mm,,Case total depth,Yes
+SHELL_D,mm,CASE_D - WALL,,Front shell depth,No
+DISP_MOD_W,mm,51.8 mm,,Display module width,No
+DISP_MOD_H,mm,36.2 mm,,Display module height,No
+DISP_MOD_D,mm,2.5 mm,,Display module thickness,No
+DISP_ACT_W,mm,40.8 mm,,Display window width,No
+DISP_ACT_H,mm,30.6 mm,,Display window height,No
+PCB_W,mm,45 mm,,PCB width,No
+PCB_H,mm,50 mm,,PCB height,No
+PCB_OFFSET_X,mm,(CASE_W - PCB_W) / 2,,PCB X (centered),No
+PCB_OFFSET_Y,mm,CASE_H - WALL - PCB_H,,PCB Y (bottom-aligned),No
+BATT_W,mm,34 mm,,Battery width,No
+BATT_H,mm,50 mm,,Battery height,No
+BATT_D,mm,5 mm,,Battery thickness,No
+Z_DISP,mm,1.5 mm,,Display front face Z,No
+Z_PCB,mm,6.5 mm,,PCB front face Z,No
+Z_BATT,mm,8.6 mm,,Battery front face Z,No
+BTN_HEX_W,mm,12 mm,,Button hex width,No
+BTN_HEX_H,mm,6 mm,,Button hex height,No
+BTN_HEX_CORNER_R,mm,1.2 mm,,Button corner radius,No
+BTN_SPACING,mm,14 mm,,Button spacing,No
+BTN_Y,mm,43.9 mm,,Button Y position,No
+USBC_W,mm,9.34 mm,,USB-C cutout width,No
+USBC_H,mm,3.66 mm,,USB-C cutout height,No
