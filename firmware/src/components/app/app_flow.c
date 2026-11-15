@@ -1043,8 +1043,12 @@ const char *app_flow_page_name(ui_pet_page_t page)
     switch (page) {
     case UI_PET_PAGE_ABOUT:
         return "about";
-    case UI_PET_PAGE_ABOUT2:
-        return "about2";
+    case UI_PET_PAGE_CREDITS:
+        return "credits";
+    case UI_PET_PAGE_SYSTEM:
+        return "system";
+    case UI_PET_PAGE_SYSTEM2:
+        return "system2";
     case UI_PET_PAGE_RECENT:
         return "recent";
     case UI_PET_PAGE_PET:
@@ -1089,7 +1093,8 @@ static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
     if (out->id == BTN_ACTION) {
         static const ui_pet_page_t NEXT[UI_PET_PAGE_COUNT] = {
             [UI_PET_PAGE_PET] = UI_PET_PAGE_RECENT, [UI_PET_PAGE_RECENT] = UI_PET_PAGE_PET,
-            [UI_PET_PAGE_ABOUT] = UI_PET_PAGE_ABOUT2, [UI_PET_PAGE_ABOUT2] = UI_PET_PAGE_ABOUT};
+            [UI_PET_PAGE_ABOUT] = UI_PET_PAGE_CREDITS, [UI_PET_PAGE_CREDITS] = UI_PET_PAGE_ABOUT,
+            [UI_PET_PAGE_SYSTEM] = UI_PET_PAGE_SYSTEM2, [UI_PET_PAGE_SYSTEM2] = UI_PET_PAGE_SYSTEM};
         set_page(NEXT[s_page], now);
     } else if (on_about()) {
         if (out->id == BTN_REJECT && out->kind == BTN_CLICK) {
@@ -1253,7 +1258,8 @@ static bool showcase_button_press(const btn_fsm_out_t *out, uint32_t now)
 
 bool app_flow_about_open(void)
 {
-    return s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_ABOUT2;
+    return s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_CREDITS || s_page == UI_PET_PAGE_SYSTEM ||
+           s_page == UI_PET_PAGE_SYSTEM2;
 }
 
 bool app_flow_showcase_active(void)
@@ -1385,6 +1391,11 @@ bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
 void app_flow_show_about(uint32_t now)
 {
     set_page(UI_PET_PAGE_ABOUT, now);
+}
+
+void app_flow_show_system(uint32_t now)
+{
+    set_page(UI_PET_PAGE_SYSTEM, now);
 }
 
 bool app_flow_takes_over(uint32_t now)
@@ -2086,7 +2097,7 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
     const bool clock = !identify && head == NULL && !showcase &&
                        (app_clock_show() != APP_CLOCK_SHOW_AUTO || app_power_clock_shown());
     /* Identify is full-screen: the name must not sit under a banner; the About page shows the link itself. */
-    const bool about = s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_ABOUT2;
+    const bool about = app_flow_about_open();
     set_banner(identify || clock ? NULL : s_attention ? s_attention_text : about ? NULL : offline_banner,
                !identify && !clock && s_attention);
     ui_mark_t mark = UI_MARK_NONE;

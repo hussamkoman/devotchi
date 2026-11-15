@@ -51,5 +51,6 @@ node "$HERE/patch_font.cjs" "$OUT/ui_font_mono14.c" 18
 
 "${PYTHON:-python3}" -I "$HERE/gen_icons.py"
 "${PYTHON:-python3}" -I "$HERE/gen_lockup.py"
+"${PYTHON:-python3}" -I "$HERE/gen_logo.py"
 
 cp "$SRC/OFL-Figtree.txt" "$SRC/OFL-JetBrainsMono.txt" "$OUT/"

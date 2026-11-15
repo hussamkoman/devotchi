@@ -5,7 +5,7 @@ idf_component_register(
          "widgets/w_status.c" "widgets/w_tabs.c" "widgets/w_toast.c" "widgets/w_list.c" "widgets/w_well.c"
          "widgets/w_countdown.c" "widgets/w_chip.c"
          "fonts/ui_font_display64.c" "fonts/ui_font_title24.c" "fonts/ui_font_body18.c"
-         "fonts/ui_font_small14.c" "fonts/ui_font_mono14.c" "fonts/ui_font_icons.c" "fonts/ui_img_lockup.c"
+         "fonts/ui_font_small14.c" "fonts/ui_font_mono14.c" "fonts/ui_font_icons.c" "fonts/ui_img_lockup.c" "fonts/ui_img_logo.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "."
     REQUIRES core

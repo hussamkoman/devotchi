@@ -12,7 +12,7 @@
 #define SETTINGS_CONFIRM_IDLE_MS  10000u
 
 #define SETTINGS_VALUE_TEXT_SIZE  16
-#define SETTINGS_LIST_MAX         8
+#define SETTINGS_LIST_MAX         9
 
 /** Every row of the tree (ux-flows 1); a row shows in one or more lists. */
 typedef enum {
@@ -23,6 +23,7 @@ typedef enum {
     SETTINGS_ITEM_DESK,
     SETTINGS_ITEM_NETWORK,
     SETTINGS_ITEM_SHOWCASE,
+    SETTINGS_ITEM_SYSTEM,
     SETTINGS_ITEM_ABOUT,
     /* Value rows, edited in the value editor (52); see SETTINGS_VALUE_FIRST. */
     SETTINGS_ITEM_BRIGHTNESS,

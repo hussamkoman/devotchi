@@ -41,11 +41,12 @@ static void test_top_list_order_and_wrap(void)
 {
     static const settings_item_t EXPECTED[] = {
         SETTINGS_ITEM_PET,  SETTINGS_ITEM_DISPLAY, SETTINGS_ITEM_CLOCK,    SETTINGS_ITEM_HAPTICS_LED,
-        SETTINGS_ITEM_DESK, SETTINGS_ITEM_NETWORK, SETTINGS_ITEM_SHOWCASE, SETTINGS_ITEM_ABOUT,
+        SETTINGS_ITEM_DESK, SETTINGS_ITEM_NETWORK, SETTINGS_ITEM_SHOWCASE, SETTINGS_ITEM_SYSTEM,
+        SETTINGS_ITEM_ABOUT,
     };
     size_t n;
     const settings_item_t *items = settings_list_items(SETTINGS_LIST_TOP, &n);
-    TEST_ASSERT_EQUAL(8, n);
+    TEST_ASSERT_EQUAL(9, n);
     TEST_ASSERT_EQUAL_MEMORY(EXPECTED, items, sizeof(EXPECTED));
     settings_menu_t m;
     settings_menu_open(&m, SETTINGS_LIST_TOP, DEFAULTS, false, 0);

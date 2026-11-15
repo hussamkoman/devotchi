@@ -49,6 +49,7 @@ static const char *const ICONS[SETTINGS_ITEM_COUNT] = {
     [SETTINGS_ITEM_CLOCK] = UI_ICON_CLOCK,       [SETTINGS_ITEM_HAPTICS_LED] = UI_ICON_BUZZ,
     [SETTINGS_ITEM_DESK] = UI_ICON_DESK,         [SETTINGS_ITEM_NETWORK] = UI_ICON_WIFI,
     [SETTINGS_ITEM_SHOWCASE] = UI_ICON_PLAY,     [SETTINGS_ITEM_ABOUT] = UI_ICON_INFO,
+    [SETTINGS_ITEM_SYSTEM] = UI_ICON_LIST,
     [SETTINGS_ITEM_BRIGHTNESS] = UI_ICON_SUN,    [SETTINGS_ITEM_SCREEN_TIMEOUT] = UI_ICON_CLOCK,
     [SETTINGS_ITEM_DEEP_SLEEP] = UI_ICON_MOON,   [SETTINGS_ITEM_SHOW_CLOCK] = UI_ICON_CLOCK,
     [SETTINGS_ITEM_CLOCK_BRIGHTNESS] = UI_ICON_SUN, [SETTINGS_ITEM_H24] = UI_ICON_CLOCK,
@@ -297,6 +298,10 @@ static void execute(settings_item_t item, uint32_t now)
     case SETTINGS_ITEM_ABOUT:
         app_settings_close();
         app_flow_show_about(now);
+        return;
+    case SETTINGS_ITEM_SYSTEM:
+        app_settings_close();
+        app_flow_show_system(now);
         return;
     case SETTINGS_ITEM_WIFI_SETUP:
         if (storage_set_prov_request(true) == ESP_OK) {
