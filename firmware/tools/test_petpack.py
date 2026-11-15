@@ -132,9 +132,31 @@ class Lint(unittest.TestCase):
         errors, _ = self.lint(mint, others=())
         self.assertTrue(any("from the UI's mint" in e for e in errors), errors)
         near = source("devo")
+        near["palette"]["mode"] = "table"
         near["palette"]["moods"]["happy"] = "#FFB84D"
         _, warnings = self.lint(near, others=())
         self.assertTrue(any("#FFB84D (happy" in w and "amber" in w for w in warnings), warnings)
+
+    def test_a_glow_palette_keeps_the_body_on_the_base(self):
+        glow = source("devo")
+        self.assertEqual(glow["palette"]["mode"], "glow")
+        glow["palette"]["moods"]["happy"] = "#FFB84D"
+        dec = petpack.lint_input(glow)
+        self.assertEqual(petpack.body_rgb(dec, "happy"), 0xF4F1EA)
+        self.assertEqual(petpack.role_rgb(dec, "mood", "happy"), 0xFFB84D)
+        self.assertEqual(petpack.role_rgb(dec, "dark", "happy"), petpack.mix(0xF4F1EA, petpack.INK, petpack.DARK_T))
+        # Thin traces in the mood colour stay under the share the hue rule looks at.
+        errors, warnings = self.lint(glow, others=())
+        self.assertEqual((errors, [w for w in warnings if "amber" in w]), ([], []))
+        # Parts with the night role are the outline's alone: not in the filled pet, all there is of it at night.
+        edges = [p["label"] for p in dec["parts"] if p["role"] == "night"]
+        self.assertEqual(len(edges), 4)
+        self.assertFalse([p for _, _, p in petpack.shapes(dec, "idle") if p["label"] in edges])
+        night = [p["label"] for _, _, p in petpack.shapes(dec, "idle", night=True)]
+        self.assertEqual(sorted(set(night)), sorted(edges + ["stem", "ball"]))
+        glow["palette"]["base"] = "#FFC53D"
+        errors, _ = self.lint(glow, others=())
+        self.assertTrue(any("from the UI's amber" in e for e in errors), errors)
 
     def test_the_pets_of_pets_dir_pass(self):
         for pid in ("devo", "mochi", "ember", "sprout"):
@@ -147,6 +169,43 @@ class Lint(unittest.TestCase):
         pose = petpack.mood_pose(petpack.lint_input(src), "idle")
         self.assertEqual(pose["mouth_curve"], -30)
         self.assertEqual(pose["lid"], petpack.LID_OFF)
+
+
+class Format(unittest.TestCase):
+    def reseal(self, pack):
+        body = bytes(pack[:-4])
+        return body + petpack.struct.pack("<I", petpack.zlib.crc32(body))
+
+    def test_glow_palette_ring_eyes_and_the_mood_role_round_trip(self):
+        src = source("devo")
+        pack = petpack.encode(src)
+        self.assertEqual(pack[28], petpack.FLAG_GLOW)
+        self.assertEqual(pack[88], petpack.EYES.index("ring"))
+        dec = petpack.decode(pack)
+        self.assertEqual(dec["palette"]["mode"], "glow")
+        self.assertEqual(dec["palette"]["moods"]["idle"], src["palette"]["moods"]["idle"])
+        self.assertEqual(dec["face"]["eyes"], "ring")
+        self.assertIn("mood", [p["role"] for p in dec["parts"]])
+        self.assertEqual((petpack.ROLES.index("mood"), petpack.ROLES.index("night")), (13, 14))
+        self.assertEqual(petpack.encode({**src, "parts": dec["parts"], "aux": dec["aux"]}), pack)
+
+    def test_refuses_shift_with_glow_and_numbers_past_the_tables(self):
+        pack = bytearray(petpack.encode(source("devo")))
+        for at, value, message in ((28, 0x03, "reserved flags"), (28, 0x04, "reserved flags"), (88, 4, "face range")):
+            bad = bytearray(pack)
+            bad[at] = value
+            with self.assertRaisesRegex(petpack.PackError, message):
+                petpack.decode(self.reseal(bad))
+        bad = bytearray(pack)
+        bad[164 + 4 * (pack[30] + pack[31]) + 1] = 15
+        with self.assertRaisesRegex(petpack.PackError, "role"):
+            petpack.decode(self.reseal(bad))
+
+    def test_older_packs_keep_their_bytes(self):
+        for pid, crc in (("mochi", "fafce045"), ("ember", "8f684d5d"), ("sprout", "0a07c880")):
+            pack = petpack.encode(source(pid))
+            self.assertEqual("%08x" % petpack.zlib.crc32(pack[:-4]), crc)
+            self.assertEqual(pack[28] & petpack.FLAG_GLOW, 0)
 
 
 if __name__ == "__main__":

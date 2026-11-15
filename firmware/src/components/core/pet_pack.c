@@ -307,7 +307,8 @@ static pet_pack_err_t parse(const uint8_t *bytes, size_t len, pet_def_t *out)
     const uint8_t n_parts = bytes[29];
     const uint8_t n_over = bytes[30];
     const uint8_t n_osc = bytes[31];
-    if ((flags & ~PET_PACK_FLAG_SHIFT) != 0) {
+    const uint8_t modes = PET_PACK_FLAG_SHIFT | PET_PACK_FLAG_GLOW;
+    if ((flags & ~modes) != 0 || (flags & modes) == modes) {
         return PET_PACK_ERR_RESERVED;
     }
     if (n_parts == 0 || n_parts > PET_PACK_MAX_PARTS || n_over > PET_PACK_MAX_OVER || n_osc > PET_PACK_MAX_OSC) {
@@ -335,7 +336,7 @@ static pet_pack_err_t parse(const uint8_t *bytes, size_t len, pet_def_t *out)
         .mouth_sq = f[10],
         .sweat_y = (int8_t)f[11],
     };
-    if (face.eye_style > PET_EYE_DOT || face.mouth_set > PET_MOUTH_SNOUT || f[2] > 1 || face.eye_dx < 4 ||
+    if (face.eye_style > PET_EYE_RING || face.mouth_set > PET_MOUTH_SNOUT || f[2] > 1 || face.eye_dx < 4 ||
         face.eye_dx > 60 || face.mouth_hw < 4 || face.mouth_hw > 60 || face.sleep_drop > 30 || face.eye_sq > 16 ||
         face.mouth_sq > 16) {
         return PET_PACK_ERR_RANGE;
@@ -409,6 +410,7 @@ static pet_pack_err_t parse(const uint8_t *bytes, size_t len, pet_def_t *out)
     memcpy(out->id, id, sizeof(id));
     memcpy(out->name, name, sizeof(name));
     out->shift_palette = shift;
+    out->glow_palette = (flags & PET_PACK_FLAG_GLOW) != 0;
     out->base = rgb(pal);
     out->accent = rgb(pal + 3);
     out->cream = rgb(pal + 6);
@@ -476,4 +478,9 @@ uint32_t pet_pack_mood_color(const pet_def_t *def, unsigned mood)
     }
     return def->shift_palette ? pet_pack_mix(def->base, def->mood_rgb[mood], def->mood_t[mood])
                               : def->mood_rgb[mood];
+}
+
+uint32_t pet_pack_body_color(const pet_def_t *def, uint32_t mood_color)
+{
+    return def->glow_palette ? def->base : mood_color;
 }

@@ -26,6 +26,7 @@ const FACE_AT = 88;
 const AUX_AT = 100;
 const VAR_AT = 164;
 const FLAG_SHIFT = 0x01;
+const FLAG_GLOW = 0x02;
 const ROLE_NO_OUTLINE = 0x10;
 const ROLE_ANCHOR = 0x20;
 const ROLE_RING = 0x40;
@@ -97,6 +98,8 @@ export const PET_ROLES = [
   "surface",
   "fog",
   "yellow",
+  "mood",
+  "night",
 ] as const;
 export type PetRole = (typeof PET_ROLES)[number];
 export const PET_SHAPES = ["rrect", "line", "tri"] as const;
@@ -107,7 +110,8 @@ export const PET_DRIVER_OPS = ["move_x", "move_y", "show_nonzero", "show_eq"] as
 export type PetDriverOp = (typeof PET_DRIVER_OPS)[number];
 export const PET_WAVES = ["sine", "bob", "scan", "jitter"] as const;
 export type PetWave = (typeof PET_WAVES)[number];
-export const PET_EYES = ["round", "slit", "dot"] as const;
+export const PET_EYES = ["round", "slit", "dot", "ring"] as const;
+export const PET_PALETTE_MODES = ["table", "shift", "glow"] as const;
 export const PET_MOUTHS = ["plain", "snout"] as const;
 
 // --- JSON source (pets/README.md) ---
@@ -115,12 +119,12 @@ export const PET_MOUTHS = ["plain", "snout"] as const;
 export type PetColor = string;
 
 export interface PetSourcePalette {
-  mode: "table" | "shift";
+  mode: (typeof PET_PALETTE_MODES)[number];
   base: PetColor;
   accent: PetColor;
   cream: PetColor;
   sclera: PetColor;
-  /** Table: a colour per mood. Shift: [target, t] with t in 0..1. */
+  /** Table and glow: a colour per mood. Shift: [target, t] with t in 0..1. */
   moods: Record<PetMood, PetColor | [PetColor, number]>;
 }
 
@@ -257,6 +261,8 @@ export interface PetDef {
   /** The trailer: CRC-32 of every byte before it. */
   crc32: number;
   shift: boolean;
+  /** Glow palette: the body keeps `base` and the mood colours go to the `mood` role. */
+  glow: boolean;
   base: number;
   accent: number;
   cream: number;
@@ -344,6 +350,11 @@ export function petMoodColor(def: PetDef, mood: number): number {
   return def.shift ? petMix(def.base, def.moodRgb[m], def.moodT[m]) : def.moodRgb[m];
 }
 
+/** The body colour in a mood: the base in a glow palette, else the mood colour. */
+export function petBodyColor(def: PetDef, mood: number): number {
+  return def.glow ? def.base : petMoodColor(def, mood);
+}
+
 // --- Decoding: the checks of pet_pack_validate, in its order ---
 
 const fail = (wire: PetWireError, message: string): never => {
@@ -390,7 +401,8 @@ export function parsePet(bytes: Uint8Array): PetDef {
   const nParts = bytes[29];
   const nOver = bytes[30];
   const nOsc = bytes[31];
-  if (flags & ~FLAG_SHIFT) fail("format", "reserved flag bits are set");
+  if (flags & ~(FLAG_SHIFT | FLAG_GLOW)) fail("format", "reserved flag bits are set");
+  if ((flags & FLAG_SHIFT) !== 0 && (flags & FLAG_GLOW) !== 0) fail("format", "a palette cannot be both shift and glow");
   if (nParts < 1 || nParts > PET_MAX_PARTS) fail("format", `${nParts} parts; a pet has 1..${PET_MAX_PARTS}`);
   if (nOver > PET_MAX_OVERRIDES) fail("format", `${nOver} overrides; at most ${PET_MAX_OVERRIDES}`);
   if (nOsc > PET_MAX_OSCILLATORS) fail("format", `${nOsc} oscillators; at most ${PET_MAX_OSCILLATORS}`);
@@ -406,7 +418,7 @@ export function parsePet(bytes: Uint8Array): PetDef {
   }
 
   const f = bytes.subarray(FACE_AT, FACE_AT + 12);
-  if (f[0] > 2 || f[1] > 1 || f[2] > 1 || f[3] < 4 || f[3] > 60 || f[6] < 4 || f[6] > 60 || f[7] > 30 || f[9] > 16 || f[10] > 16) {
+  if (f[0] >= PET_EYES.length || f[1] > 1 || f[2] > 1 || f[3] < 4 || f[3] > 60 || f[6] < 4 || f[6] > 60 || f[7] > 30 || f[9] > 16 || f[10] > 16) {
     fail("format", "a face value is out of range");
   }
   if (f[8] & ~0x7e) fail("format", "reserved acc_mask bits are set");
@@ -522,6 +534,7 @@ export function parsePet(bytes: Uint8Array): PetDef {
     size,
     crc32: stored,
     shift,
+    glow: (flags & FLAG_GLOW) !== 0,
     base: rgbAt(bytes, PALETTE_AT),
     accent: rgbAt(bytes, PALETTE_AT + 3),
     cream: rgbAt(bytes, PALETTE_AT + 6),
@@ -602,7 +615,7 @@ export function decodePet(bytes: Uint8Array): PetSource {
     name: def.name,
     rev: def.rev,
     palette: {
-      mode: def.shift ? "shift" : "table",
+      mode: def.shift ? "shift" : def.glow ? "glow" : "table",
       base: hex6(def.base),
       accent: hex6(def.accent),
       cream: hex6(def.cream),
@@ -817,7 +830,8 @@ export function encodePet(json: unknown): Uint8Array {
 
   const pal = obj(src.palette, "palette");
   onlyKeys(pal, ["mode", "base", "accent", "cream", "sclera", "moods"], "palette");
-  const shift = pick(pal.mode, ["table", "shift"], "palette.mode") === 1;
+  const mode = pick(pal.mode, PET_PALETTE_MODES, "palette.mode");
+  const shift = mode === 1;
   const palette = new Writer();
   for (const key of ["base", "accent", "cream", "sclera"]) {
     const c = color(pal[key], `palette.${key}`);
@@ -927,7 +941,7 @@ export function encodePet(json: unknown): Uint8Array {
   out.set([0x44, 0x50, 0x45, 0x54, PET_FORMAT, rev, size & 0xff, size >> 8]);
   for (let i = 0; i < id.length; i++) out[8 + i] = id.charCodeAt(i);
   for (let i = 0; i < name.length; i++) out[16 + i] = name.charCodeAt(i);
-  out.set([shift ? FLAG_SHIFT : 0, (src.parts as unknown[]).length, nOver, osc.length / 4], 28);
+  out.set([shift ? FLAG_SHIFT : mode === 2 ? FLAG_GLOW : 0, (src.parts as unknown[]).length, nOver, osc.length / 4], 28);
   let at = HEADER_BYTES;
   for (const chunk of [palette.bytes(), Uint8Array.from(face, (v) => v & 0xff), aux.bytes(), over.bytes(), osc.bytes(), parts.bytes()]) {
     out.set(chunk, at);

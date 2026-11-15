@@ -25,6 +25,7 @@ FMT = 1
 MAX_SIZE = 2048
 MAX_PARTS, MAX_OVER, MAX_OSC = 28, 48, 32
 FLAG_SHIFT = 0x01
+FLAG_GLOW = 0x02
 LID_OFF = 1000
 OSC_UNIT_MS = 50
 TAGLINE_MAX = 32
@@ -41,12 +42,13 @@ CHANNEL_RANGE = [(0, 100), (4, 48), (0, 100), (-100, 100), (-100, 100), (-60, 60
 ACCESSORIES = ["none", "zzz", "sweat", "tear", "sparkles", "dots", "tongue"]
 GLANCES = ["off", "look", "scan"]
 ROLES = ["body", "dark", "light", "cheek", "accent", "accent-dark", "cream", "ink", "white", "flame", "surface", "fog",
-         "yellow"]
+         "yellow", "mood", "night"]
 SHAPES = ["rrect", "line", "tri"]
 LAYERS = ["behind", "body", "head", "front"]
 OPS = ["move_x", "move_y", "show_nonzero", "show_eq"]
 WAVES = ["sine", "bob", "scan", "jitter"]
-EYES = ["round", "slit", "dot"]
+EYES = ["round", "slit", "dot", "ring"]
+PALETTE_MODES = ["table", "shift", "glow"]
 MOUTHS = ["plain", "snout"]
 WHOLE = 7
 
@@ -106,7 +108,8 @@ def encode(src):
         fail(f"tagline {tagline!r} is not 0..{TAGLINE_MAX} printable ASCII")
     rev = src.get("rev", 1)
     pal = src["palette"]
-    shift = pal["mode"] == "shift"
+    mode = PALETTE_MODES.index(pal["mode"])
+    shift = mode == 1
     palette = rgb(pal["base"]) + rgb(pal["accent"]) + rgb(pal["cream"]) + rgb(pal["sclera"])
     for m in MOODS:
         e = pal["moods"][m]
@@ -195,7 +198,7 @@ def encode(src):
     n_parts = len(src["parts"])
     size = 32 + len(palette) + len(face) + len(aux) + len(over) + len(osc) + len(parts) + 4
     header = b"DPET" + struct.pack("<BBH", FMT, rev, size) + pid.encode().ljust(8, b"\0") + \
-        name.encode().ljust(12, b"\0") + bytes([FLAG_SHIFT if shift else 0, n_parts, n_over, len(osc) // 4])
+        name.encode().ljust(12, b"\0") + bytes([(0, FLAG_SHIFT, FLAG_GLOW)[mode], n_parts, n_over, len(osc) // 4])
     body = header + palette + face + aux + over + osc + parts
     pack = body + struct.pack("<I", zlib.crc32(body))
     decode(pack)
@@ -232,7 +235,7 @@ def decode(pack):
         fail("length")
     out = {"id": text_field(pack[8:16], True), "name": text_field(pack[16:28], False), "rev": rev}
     flags, n_parts, n_over, n_osc = pack[28:32]
-    if flags & ~FLAG_SHIFT:
+    if flags & ~(FLAG_SHIFT | FLAG_GLOW) or flags == FLAG_SHIFT | FLAG_GLOW:
         fail("reserved flags")
     if not 1 <= n_parts <= MAX_PARTS or n_over > MAX_OVER or n_osc > MAX_OSC:
         fail("count")
@@ -248,11 +251,11 @@ def decode(pack):
             fail("reserved palette byte")
         else:
             moods[m] = col(e[:3])
-    out["palette"] = {"mode": "shift" if shift else "table", "base": col(pal[0:3]), "accent": col(pal[3:6]),
+    out["palette"] = {"mode": "shift" if shift else "glow" if flags & FLAG_GLOW else "table", "base": col(pal[0:3]), "accent": col(pal[3:6]),
                       "cream": col(pal[6:9]), "sclera": col(pal[9:12]), "moods": moods}
     f = pack[88:100]
     s8 = lambda v: v - 256 if v > 127 else v
-    if f[0] > 2 or f[1] > 1 or f[2] > 1 or not 4 <= f[3] <= 60 or not 4 <= f[6] <= 60 or f[7] > 30 or f[9] > 16 \
+    if f[0] >= len(EYES) or f[1] > 1 or f[2] > 1 or not 4 <= f[3] <= 60 or not 4 <= f[6] <= 60 or f[7] > 30 or f[9] > 16 \
             or f[10] > 16:
         fail("face range")
     if f[8] & ~0x7E:
@@ -369,7 +372,8 @@ def decode(pack):
 # rules name; the preview sheet is still the final check by eye.
 
 INK, WHITE, CORAL = 0x1A1D26, 0xFFFFFF, 0xFF6B5E
-FIXED_RGB = {"ink": INK, "white": WHITE, "flame": 0xFF8A3D, "surface": 0x161A22, "fog": 0xA7AEBB, "yellow": 0xFFC53D}
+FIXED_RGB = {"ink": INK, "white": WHITE, "flame": 0xFF8A3D, "surface": 0x161A22, "fog": 0xA7AEBB, "yellow": 0xFFC53D,
+             "night": 0x9A4A26}
 DARK_T, LIGHT_T, CHEEK_T, ACC_DARK_T = 71, 102, 107, 64
 SEMANTIC = {"mint": 0x5FD38D, "amber": 0xFFC53D, "coral": 0xFF6B5E, "sky": 0x6CC4FF}
 BOX = (-110, -107, 110, 83)
@@ -422,7 +426,7 @@ def hexrgb(text):
     return int(text.lstrip("#"), 16)
 
 
-def body_rgb(dec, mood):
+def mood_rgb(dec, mood):
     pal = dec["palette"]
     e = pal["moods"][mood]
     if pal["mode"] == "shift":
@@ -430,10 +434,17 @@ def body_rgb(dec, mood):
     return hexrgb(e)
 
 
-def role_rgb(dec, role, body):
+def body_rgb(dec, mood):
+    """The body colour: the base in a glow palette, else the mood colour."""
+    pal = dec["palette"]
+    return hexrgb(pal["base"]) if pal["mode"] == "glow" else mood_rgb(dec, mood)
+
+
+def role_rgb(dec, role, mood):
     pal = dec["palette"]
     accent = hexrgb(pal["accent"])
-    derived = {"body": body, "dark": mix(body, INK, DARK_T), "light": mix(body, WHITE, LIGHT_T),
+    body = body_rgb(dec, mood)
+    derived = {"body": body, "mood": mood_rgb(dec, mood), "dark": mix(body, INK, DARK_T), "light": mix(body, WHITE, LIGHT_T),
                "cheek": mix(body, CORAL, CHEEK_T), "accent": accent, "accent-dark": mix(accent, INK, ACC_DARK_T),
                "cream": hexrgb(pal["cream"])}
     return derived[role] if role in derived else FIXED_RGB[role]
@@ -500,7 +511,8 @@ def shapes(dec, mood, night=False):
                     pt[1] += ay
             if part["shape"] == "line":
                 ends[(i, side)] = tuple(pts[-1])
-            if part_shown(part, aux) and not (night and part.get("outline") is False):
+            hidden = part.get("outline") is False if night else part["role"] == "night"
+            if part_shown(part, aux) and not hidden:
                 out.append((part["shape"], pts, part))
     return out
 
@@ -629,7 +641,6 @@ def lint(dec, size, others):
         counts[n] = counts.get(n, 0) + 1
     seen = set()
     for mood in MOODS:
-        body = body_rgb(dec, mood)
         shares = {}
         for n, c in counts.items():
             role = full[n][2]["role"]
@@ -637,7 +648,7 @@ def lint(dec, size, others):
         for role, share in shares.items():
             if share < HUE_MIN_SHARE:
                 continue
-            c = role_rgb(dec, role, body)
+            c = role_rgb(dec, role, mood)
             hue, de = min(((k, delta_e(c, v)) for k, v in SEMANTIC.items()), key=lambda kv: kv[1])
             key = (role, c)
             if de >= HUE_WARN_DE or key in seen:

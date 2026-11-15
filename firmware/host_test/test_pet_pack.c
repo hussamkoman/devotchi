@@ -122,18 +122,30 @@ static void test_golden_packs_decode(void)
     TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(devo->bytes, devo->len, &s_def));
     TEST_ASSERT_EQUAL_STRING("devo", s_def.id);
     TEST_ASSERT_EQUAL_STRING("Devo", s_def.name);
-    TEST_ASSERT_EQUAL_STRING("changes colour with its mood", devo->tagline);
-    TEST_ASSERT_EQUAL(2, s_def.rev);
+    TEST_ASSERT_EQUAL_STRING("traces glow with its mood", devo->tagline);
+    TEST_ASSERT_EQUAL(3, s_def.rev);
+    /* Devo is the white ghost: the body keeps the base and the mood colour goes to the traces. */
     TEST_ASSERT_FALSE(s_def.shift_palette);
-    TEST_ASSERT_EQUAL_HEX32(0xD9D3F5, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
-    TEST_ASSERT_EQUAL_HEX32(0x5B82F0, pet_pack_mood_color(&s_def, PET_PACK_MOOD_FOCUSED));
-    TEST_ASSERT_EQUAL(PET_EYE_ROUND, s_def.face.eye_style);
+    TEST_ASSERT_TRUE(s_def.glow_palette);
+    TEST_ASSERT_EQUAL_HEX32(0x9D8DF1, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
+    TEST_ASSERT_EQUAL_HEX32(0x3D6BF0, pet_pack_mood_color(&s_def, PET_PACK_MOOD_FOCUSED));
+    TEST_ASSERT_EQUAL_HEX32(0xF4F1EA, pet_pack_body_color(&s_def, pet_pack_mood_color(&s_def, PET_PACK_MOOD_FOCUSED)));
+    TEST_ASSERT_EQUAL(PET_EYE_RING, s_def.face.eye_style);
     TEST_ASSERT_TRUE(s_def.face.brows);
-    TEST_ASSERT_EQUAL(-14, s_def.face.eye_y);
-    TEST_ASSERT_EQUAL(16, s_def.n_parts);
+    TEST_ASSERT_EQUAL(-22, s_def.face.eye_y);
+    TEST_ASSERT_EQUAL(28, s_def.n_parts);
     TEST_ASSERT_TRUE(s_def.parts[7].squash);
     TEST_ASSERT_EQUAL(108, s_def.parts[7].w);
     TEST_ASSERT_TRUE(s_def.parts[4].mirrored);
+    TEST_ASSERT_EQUAL(PET_PACK_ROLE_MOOD, s_def.parts[2].role);
+    TEST_ASSERT_EQUAL(PET_PACK_ROLE_MOOD, s_def.parts[12].role);
+    TEST_ASSERT_TRUE(s_def.parts[12].ring);
+    /* The silhouette of the night clock is four mirrored lines that only outline mode draws. */
+    for (int i = 8; i < 12; i++) {
+        TEST_ASSERT_EQUAL(PET_PACK_ROLE_NIGHT, s_def.parts[i].role);
+        TEST_ASSERT_EQUAL(PET_SHAPE_LINE, s_def.parts[i].shape);
+        TEST_ASSERT_FALSE(s_def.parts[i].no_outline);
+    }
     TEST_ASSERT_EQUAL(16, s_def.aux[PET_PACK_MOOD_SAD][0]);
     TEST_ASSERT_EQUAL(7, s_def.aux[PET_PACK_MOODS + 4][3]);
     TEST_ASSERT_EQUAL(400, s_def.osc[5].period_ms);
@@ -143,7 +155,9 @@ static void test_golden_packs_decode(void)
     TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(mochi->bytes, mochi->len, &s_def));
     TEST_ASSERT_EQUAL_STRING("Mochi", s_def.name);
     TEST_ASSERT_TRUE(s_def.shift_palette);
+    TEST_ASSERT_FALSE(s_def.glow_palette);
     TEST_ASSERT_EQUAL_HEX32(0xF0C594, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
+    TEST_ASSERT_EQUAL_HEX32(0xF0C594, pet_pack_body_color(&s_def, 0xF0C594));
     TEST_ASSERT_EQUAL(12, s_def.n_parts);
     TEST_ASSERT_TRUE(s_def.parts[9].squash);
     TEST_ASSERT_EQUAL(140, s_def.parts[9].w);
@@ -291,7 +305,24 @@ static void test_header_fields(void)
     reseal(s_buf, 164 + sizeof(RRECT) + 4);
     TEST_ASSERT_EQUAL(PET_PACK_ERR_NAME, pet_pack_validate(s_buf, 164 + sizeof(RRECT) + 4));
     build(s_buf, RRECT, sizeof(RRECT), 1, 0, 0);
-    s_buf[28] = 0x02;
+    s_buf[28] = 0x04;
+    reseal(s_buf, 164 + sizeof(RRECT) + 4);
+    TEST_ASSERT_EQUAL(PET_PACK_ERR_RESERVED, pet_pack_validate(s_buf, 164 + sizeof(RRECT) + 4));
+    /* Glow is a palette mode of its own: a table whose colours go to the mood role; never with shift. */
+    build(s_buf, RRECT, sizeof(RRECT), 1, 0, 0);
+    s_buf[28] = PET_PACK_FLAG_GLOW;
+    s_buf[32] = 0xF4;
+    s_buf[32 + 12 + 4 * PET_PACK_MOOD_SAD + 2] = 0xB8;
+    reseal(s_buf, 164 + sizeof(RRECT) + 4);
+    TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(s_buf, 164 + sizeof(RRECT) + 4, &s_def));
+    TEST_ASSERT_TRUE(s_def.glow_palette);
+    TEST_ASSERT_EQUAL_HEX32(0x0000B8, pet_pack_mood_color(&s_def, PET_PACK_MOOD_SAD));
+    TEST_ASSERT_EQUAL_HEX32(0xF40000, pet_pack_body_color(&s_def, 0x0000B8));
+    s_buf[32 + 12 + 3] = 1;
+    reseal(s_buf, 164 + sizeof(RRECT) + 4);
+    TEST_ASSERT_EQUAL(PET_PACK_ERR_RESERVED, pet_pack_validate(s_buf, 164 + sizeof(RRECT) + 4));
+    build(s_buf, RRECT, sizeof(RRECT), 1, 0, 0);
+    s_buf[28] = PET_PACK_FLAG_SHIFT | PET_PACK_FLAG_GLOW;
     reseal(s_buf, 164 + sizeof(RRECT) + 4);
     TEST_ASSERT_EQUAL(PET_PACK_ERR_RESERVED, pet_pack_validate(s_buf, 164 + sizeof(RRECT) + 4));
     /* Table palette: the fourth byte of a mood entry is reserved. */
@@ -307,9 +338,10 @@ static void test_header_fields(void)
         pet_pack_err_t want;
     } FACE[] = {
         {88 + 8, 0x01, PET_PACK_ERR_RESERVED}, {88 + 8, 0x80, PET_PACK_ERR_RESERVED},
-        {88 + 0, 3, PET_PACK_ERR_RANGE},       {88 + 1, 2, PET_PACK_ERR_RANGE},
+        {88 + 0, 4, PET_PACK_ERR_RANGE},       {88 + 1, 2, PET_PACK_ERR_RANGE},
         {88 + 2, 2, PET_PACK_ERR_RANGE},       {88 + 3, 0, PET_PACK_ERR_RANGE},
         {88 + 9, 17, PET_PACK_ERR_RANGE},      {88 + 8, 0x7E, PET_PACK_OK},
+        {88 + 0, PET_EYE_RING, PET_PACK_OK},
     };
     for (size_t i = 0; i < sizeof(FACE) / sizeof(FACE[0]); i++) {
         build(s_buf, RRECT, sizeof(RRECT), 1, 0, 0);
@@ -388,8 +420,10 @@ static void test_parts(void)
         {{0x03, 0x00, 0, 0, 20, 10, 5}, 7, 1, PET_PACK_ERR_PART},
         /* five drivers */
         {{0x50, 0x00, 0, 0, 20, 10, 5}, 7, 1, PET_PACK_ERR_PART},
-        /* colour role 13 */
-        {{0x00, 13, 0, 0, 20, 10, 5}, 7, 1, PET_PACK_ERR_RANGE},
+        /* colour roles 13 (mood) and 14 (night) are the last ones */
+        {{0x00, 13, 0, 0, 20, 10, 5}, 7, 1, PET_PACK_OK},
+        {{0x00, 14, 0, 0, 20, 10, 5}, 7, 1, PET_PACK_OK},
+        {{0x00, 15, 0, 0, 20, 10, 5}, 7, 1, PET_PACK_ERR_RANGE},
         /* radius over half the short side, zero width */
         {{0x00, 0x00, 0, 0, 20, 10, 6}, 7, 1, PET_PACK_ERR_PART},
         {{0x00, 0x00, 0, 0, 0, 10, 0}, 7, 1, PET_PACK_ERR_PART},

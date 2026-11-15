@@ -30,6 +30,8 @@
 #define PET_PACK_LID_OFF        1000
 /** Header flags. */
 #define PET_PACK_FLAG_SHIFT     0x01
+/** The body keeps the base colour; the eleven table colours go to the mood role (not with shift). */
+#define PET_PACK_FLAG_GLOW      0x02
 
 /** Moods, in proto_mood_t order. */
 #define PET_PACK_MOOD_HAPPY     0
@@ -102,7 +104,11 @@
 #define PET_PACK_ROLE_SURFACE     10
 #define PET_PACK_ROLE_FOG         11
 #define PET_PACK_ROLE_YELLOW      12
-#define PET_PACK_ROLE_COUNT       13
+/** The mood colour: the body's, except in a glow palette, where only this role takes it. */
+#define PET_PACK_ROLE_MOOD        13
+/** No fill colour: the part is drawn only in outline mode (the night clock), as a line of the silhouette. */
+#define PET_PACK_ROLE_NIGHT       14
+#define PET_PACK_ROLE_COUNT       15
 
 typedef enum {
     PET_SHAPE_RRECT,
@@ -141,6 +147,8 @@ typedef enum {
     PET_EYE_ROUND,
     PET_EYE_SLIT,
     PET_EYE_DOT,
+    /** A round eye with an ink ring around the sclera. */
+    PET_EYE_RING,
 } pet_eye_style_t;
 
 typedef enum {
@@ -223,6 +231,7 @@ typedef struct {
     char id[PET_PACK_ID_LEN + 1];
     char name[PET_PACK_NAME_LEN + 1];
     bool shift_palette;
+    bool glow_palette;
     uint32_t base, accent, cream, sclera;
     /** Table mode: the mood colours; shift mode: the targets the base mixes towards. */
     uint32_t mood_rgb[PET_PACK_MOODS];
@@ -279,6 +288,9 @@ int pet_pack_row(uint8_t mood);
 
 /** Mood colour (0xRRGGBB) of mood 0..10: the table entry, or the base mixed towards the shift. */
 uint32_t pet_pack_mood_color(const pet_def_t *def, unsigned mood);
+
+/** Body colour while the mood colour is mood_color: the base in a glow palette, else the mood colour itself. */
+uint32_t pet_pack_body_color(const pet_def_t *def, uint32_t mood_color);
 
 /** a mixed towards b by t/255 per channel, rounded. */
 uint32_t pet_pack_mix(uint32_t a, uint32_t b, unsigned t);

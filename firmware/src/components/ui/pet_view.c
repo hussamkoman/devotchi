@@ -46,6 +46,9 @@
 #define Q                16
 #define EYE_SHUT_OPEN    15
 #define BROW_MIN_ANGLE   4
+/* Ring eyes: the ring is 1/RING_DIV of the eye size wide; the pupil has RING_PUPIL_PCT of a round eye's radius. */
+#define RING_DIV         7
+#define RING_PUPIL_PCT   60
 #define MOUTH_POINTS     7
 #define SPIRAL_POINTS    12
 #define TEAR_FALL_MS     2500
@@ -316,7 +319,7 @@ static void quad(int32_t (*out)[2], int n, const int32_t p0[2], const int32_t c[
 
 static uint32_t role_color(const pet_view_t *v, uint8_t role)
 {
-    const uint32_t body = v->col_cur;
+    const uint32_t body = pet_pack_body_color(&v->def, v->col_cur);
     switch (role) {
     case PET_PACK_ROLE_BODY:
         return body;
@@ -344,6 +347,8 @@ static uint32_t role_color(const pet_view_t *v, uint8_t role)
         return UI_PET_FOG;
     case PET_PACK_ROLE_YELLOW:
         return UI_PET_YELLOW;
+    case PET_PACK_ROLE_MOOD:
+        return v->col_cur;
     default:
         return body;
     }
@@ -433,7 +438,7 @@ static void build_part(pet_view_t *v, const frame_t *f, int index, int side, ite
         pts[k][0] += dx;
         pts[k][1] += dy;
     }
-    if (!part_shown(v, part) || (v->outline && part->no_outline)) {
+    if (!part_shown(v, part) || (v->outline ? part->no_outline : part->role == PET_PACK_ROLE_NIGHT)) {
         hide(it);
         return;
     }
@@ -528,7 +533,12 @@ static void build_eye(pet_view_t *v, const frame_t *f, int side, item_t **its)
     }
     const int32_t r = (w < h ? w : h) / 2;
     const bool dot = face->eye_style == PET_EYE_DOT;
+    const bool ringed = face->eye_style == PET_EYE_RING;
     rect_q(v, sclera, x, y, w, h, r, v->def.sclera);
+    if (ringed && sclera->kind == IT_RECT) {
+        sclera->border = (uint8_t)clampi(px(v, w / RING_DIV), 2, 8);
+        sclera->border_color = UI_PET_INK;
+    }
     const int32_t vis_top = has_lid ? y + hf / 2 - hf * eo / 100 : y - h / 2;
     const int32_t vis_h = y + h / 2 - vis_top;
     const int32_t vis_cy = (vis_top + y + h / 2) / 2;
@@ -549,16 +559,19 @@ static void build_eye(pet_view_t *v, const frame_t *f, int side, item_t **its)
         rect_q(v, pupil, x + tx, vis_cy + ty, pw, ph, pw / 2, UI_PET_INK);
         circle_q(v, glint, x + tx + pw / 5 + 2 * Q, vis_cy + ty - ph * 26 / 100, 8 * Q / 5, UI_PET_WHITE);
     } else {
-        const int32_t pr = w * f->p.pupil_size / 200;
-        const int32_t tx = (w / 2 - pr - 2 * Q) * look_x / 100;
-        int32_t room = vis_h / 2 - pr - 2 * Q;
+        const int32_t pr = w * f->p.pupil_size / 200 * (ringed ? RING_PUPIL_PCT : 100) / 100;
+        const int32_t edge = ringed ? w / RING_DIV + Q : 2 * Q;
+        const int32_t tx = (w / 2 - pr - edge) * look_x / 100;
+        int32_t room = vis_h / 2 - pr - edge;
         const int32_t ty = (room > 0 ? room : 0) * look_y / 100;
         circle_q(v, pupil, x + tx, vis_cy + ty, dot ? w / 2 : pr, UI_PET_INK);
-        int32_t gr = pr * 28 / 100;
-        if (gr < 3 * Q / 2) {
-            gr = 3 * Q / 2;
+        if (!ringed) {
+            int32_t gr = pr * 28 / 100;
+            if (gr < 3 * Q / 2) {
+                gr = 3 * Q / 2;
+            }
+            circle_q(v, glint, x + tx + pr * 35 / 100, vis_cy + ty - pr * 35 / 100, gr, UI_PET_WHITE);
         }
-        circle_q(v, glint, x + tx + pr * 35 / 100, vis_cy + ty - pr * 35 / 100, gr, UI_PET_WHITE);
     }
     if (dot) {
         hide(sclera);
@@ -573,7 +586,7 @@ static void build_eye(pet_view_t *v, const frame_t *f, int side, item_t **its)
         const int32_t yi = vis_top + k;
         const int32_t yo = vis_top - k;
         const int32_t top = y - hf / 2 - 3 * Q;
-        const uint32_t body = v->col_cur;
+        const uint32_t body = pet_pack_body_color(&v->def, v->col_cur);
         const int32_t a[3][2] = {{xi, top}, {xo, top}, {xo, yo}};
         const int32_t b[3][2] = {{xi, top}, {xo, yo}, {xi, yi}};
         tri_q(v, lid_a, a, body);
