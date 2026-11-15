@@ -15,7 +15,10 @@
 
 ## Open
 
-- [ ] Firmware: finish the plain-C rewrite (ESP-IDF v6.0, LVGL 9, cJSON) and run the end-to-end board test against a real server
+- [ ] Switch the owner's own setup to the v2 server (start it on the real database, re-run `devotchi setup`; the board keeps its pairing)
+- [ ] Power: the board browns out on USB power without a battery (backlight 75 % + WiFi TX or motor); re-test with a cell fitted, check the supply path if it persists
+- [ ] Battery presence: with no cell the TP4056 CHRG pin toggles at about 800 Hz; confirm detection with a cell, consider a pull or capacitor on CHRG in the next board revision
+- [ ] Check for ghost APPROVE presses on GPIO4 (three unexplained presses during a test on 2026-11-15 around 00:50)
 - [ ] Hardware checks only the owner can do: buttons and wake from deep sleep, vibration and LED feel, BLE provisioning end to end, battery behaviour with a real cell, light sleep and current draw
 - [ ] Observe in real use whether Claude Code's terminal prompt is usable while a hook is pending (`devotchi doctor` reports `dialogWhilePending`) and tune the default hold time
 - [ ] Deploy a hosted multi-user server (files are ready; no real deploy yet)
@@ -23,6 +26,15 @@
 - [ ] Run the CI workflow on GitHub once (written and syntax-checked only)
 - [ ] Case: back cover, USB opening, print front and back
 - [ ] Investigate the Claude Code Buddy system and whether Devotchi can integrate with it
+
+## Phase 2 (planned)
+
+- Answer Claude Code questions (AskUserQuestion) on the device with the buttons
+- Richer, safe decisions on permission requests beyond approve/reject
+- Clock face with a sleeping pet when idle
+- Pet system: a signature pet plus selectable pet packs (on-device picker; more packs loaded from the dashboard)
+- Demo/showcase mode: trigger moods, animations, a sample question and a sample permission request by hand
+- Professional UI redesign: design system and mockups first (docs/design/), then the LVGL port
 
 ## Backlog (not approved or deferred)
 
