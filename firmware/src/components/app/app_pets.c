@@ -70,7 +70,7 @@ static void load_selected(void)
     s_source = pet_install_resolve(storage_pets_ops(), s_selected, s_scratch, sizeof(s_scratch), &bytes, &len);
     if (pet_pack_decode(bytes, len, &s_def) != PET_PACK_OK) {
         const pet_builtin_t *b = pet_builtin_find(PET_BUILTIN_DEFAULT);
-        pet_pack_decode(b->bytes, *b->len, &s_def);
+        pet_pack_decode(b->bytes, b->len, &s_def);
         s_source = PET_SOURCE_FALLBACK;
     }
     if (s_source == PET_SOURCE_FALLBACK) {
@@ -88,7 +88,7 @@ void app_pets_init(void)
 
 static uint8_t builtin_rev(const pet_builtin_t *b)
 {
-    return *b->len > 5 ? b->bytes[5] : 0;
+    return b->len > 5 ? b->bytes[5] : 0;
 }
 
 static void send_pets(uint32_t now, const char *op, const char *pet, pet_result_t result)
@@ -268,7 +268,7 @@ const pet_def_t *app_pets_load(size_t index, bool *builtin)
     if (*builtin) {
         const pet_builtin_t *b = pet_builtin_at((unsigned)index);
         bytes = b->bytes;
-        len = *b->len;
+        len = b->len;
     } else {
         storage_pet_entry_t stored[PET_STORE_SLOTS];
         const size_t n = storage_pets_list(stored, PET_STORE_SLOTS);

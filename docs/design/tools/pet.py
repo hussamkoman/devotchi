@@ -1,5 +1,6 @@
-"""Pet rig for the mockups (v2). A pet is data: a palette, a face style, a body
-built from simple parts, four auxiliary channels and optional pose overrides.
+"""Pet rig for the design mockups only (v2): it draws Devo and Ember by hand
+for pet-moods.html and the screen renders, and nothing else reads it. The
+preview of any pet from its pets/<id>.pet.json is `pnpm run pet-sheet`.
 The shared pose table mirrors firmware/src/components/core/pet_pose.c; the four
 everyday moods (focused, working, thinking, idle) are re-tuned for warmth.
 See pet-animations.md."""

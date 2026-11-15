@@ -1,17 +1,62 @@
 # Pet sources
 
-A pet is data (`docs/design/pet-animations.md` 2). Each `<id>.pet.json` here is
-the editable source of one pet; `firmware/tools/petpack.py` turns it into the
-binary pack of `docs/architecture.md` 7.2, which the firmware compiles in
-(`core/pet_builtin_<id>.c`), stores and downloads, and which
-`packages/shared` encodes byte for byte the same way. `golden/<id>.pet` and
-`golden/<id>.crc32` are the committed encodings both test suites compare
-against.
+A pet is data (`docs/design/pet-animations.md` 2). This directory is the one
+place every pet lives: each `<id>.pet.json` is the editable source of one pet,
+and everything else is generated from it.
 
-```bash
-python3 -I firmware/tools/petpack.py check pets/devo.pet.json pets/golden/devo.pet
-python3 -I firmware/tools/petpack.py decode pets/golden/ember.pet
-```
+- `firmware/tools/petpack.py` turns a source into the binary pack of
+  `docs/architecture.md` 7.2 (`packages/shared` encodes it byte for byte the
+  same way).
+- `builtin.txt` lists the pets compiled into the firmware, in picker order;
+  the first is the default pet. The firmware build generates its C arrays
+  from this list (`petpack.py builtins`, run by CMake), so adding a built-in
+  is one line here and no code.
+- The server build (`packages/server/scripts/build-pets.mjs`) ships every
+  `*.pet.json` here as its catalog (`GET /api/pets`, `source: "catalog"`,
+  built-ins flagged `builtin`); a pet that is not built in is installed from
+  there into one of the device's 8 slots. The sim takes its built-ins from the
+  same list.
+- `golden/<id>.pet` and `golden/<id>.crc32` are the committed encodings both
+  test suites compare against; every pet here has one.
+- Files starting with `_` are not pets: `_template.pet.json` is the starting
+  point for a new one.
+
+## Add a pet in 4 steps
+
+1. **Copy the template**: `cp pets/_template.pet.json pets/<id>.pet.json`,
+   then set `id` (`[a-z0-9]{1,8}`, the file name), `name` and the design:
+   palette, face, parts, aux rows (fields below; Devo, Ember and Sprout are
+   worked examples).
+2. **Render the preview sheet**: `pnpm run pet-sheet <id> [--png]` writes
+   `<tmp>/devotchi-pet-sheets/<id>.svg` (`--out DIR` to change it): the 11
+   moods and 5 reactions, the night outline at clock size and every frame in
+   greyscale, drawn by the dashboard's renderer from the encoded pack.
+3. **Check it**: `python3 -I firmware/tools/petpack.py check pets/<id>.pet.json`
+   encodes and validates the pack exactly as the firmware does, then lints it
+   against the rules of pet-animations 5 (below). Fix every error; read every
+   warning. Then write its golden pack:
+   `python3 -I firmware/tools/petpack.py golden pets/<id>.pet.json`.
+4. **Ship it**: either add the id to `builtin.txt` (compiled in; rebuild and
+   flash the firmware), or leave it out and it is a catalog pet the dashboard
+   and `devotchi pets send <id>` install. A pack that only one room needs is
+   uploaded instead: `devotchi pets add pets/<id>.pet.json`.
+
+Changing a pet later: raise `rev`, run `petpack.py golden` again and commit
+the source and the golden pack together; the host tests (`test_pet_pack`,
+`test_petpack`) and the TypeScript tests fail while they disagree.
+
+## The lint (`petpack.py check`)
+
+A static model of the rig at rest, so it catches the mistakes the rules name;
+the preview sheet stays the final check by eye. Errors make `check` exit 1,
+warnings only print.
+
+| Rule (pet-animations 5) | Error | Warning |
+|---|---|---|
+| 5: silhouette differs from every other pet here: the night outline (parts not marked `outline: false`, idle) at clock scale 9/16, compared pixel by pixel | 90 % or more the same | 80 % or more |
+| 7: moods distinguishable without colour: per pair of moods, the face pose (shared table + overrides), the accessory, the parts aux shows, hides or moves, and the body's grey level | difference under 0.3 | under 0.5 (the shared table alone never goes below 0.56) |
+| 4: no semantic UI hue (mint, amber, coral, sky) for anything shown often: every colour covering 15 % or more of the pet at idle, in every mood, against the UI hues (CIE76 distance) | closer than 10 | closer than 20 |
+| 1, 2: the 220x190 mockup box, pack size | | a part outside the box at idle; a pack over 1400 bytes |
 
 Coordinates are body units at rig scale 16/16 (one unit is one pixel at full
 size) with the body centre at 0,0, x to the right and y down; every

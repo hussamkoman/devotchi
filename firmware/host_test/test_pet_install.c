@@ -166,12 +166,12 @@ static void reseal(uint8_t *p, size_t len)
 static size_t make_pack(uint8_t *out, const char *id, uint8_t rev)
 {
     const pet_builtin_t *b = pet_builtin_find("devo");
-    memcpy(out, b->bytes, *b->len);
+    memcpy(out, b->bytes, b->len);
     memset(out + 8, 0, PET_PACK_ID_LEN);
     memcpy(out + 8, id, strlen(id));
     out[5] = rev;
-    reseal(out, *b->len);
-    return *b->len;
+    reseal(out, b->len);
+    return b->len;
 }
 
 static uint32_t crc_of(const uint8_t *p, size_t len)
@@ -365,7 +365,7 @@ static void test_install_and_select(void)
     TEST_ASSERT_EQUAL_MEMORY(s_pack, bytes, len);
     TEST_ASSERT_EQUAL(PET_SOURCE_BUILTIN, pet_install_resolve(&OPS, "ember", s_scratch, sizeof(s_scratch), &bytes, &len));
     TEST_ASSERT_EQUAL(PET_SOURCE_FALLBACK, pet_install_resolve(&OPS, "nope", s_scratch, sizeof(s_scratch), &bytes, &len));
-    TEST_ASSERT_EQUAL_MEMORY(pet_builtin_devo, bytes, len);
+    TEST_ASSERT_EQUAL_MEMORY(pet_builtin_find(PET_BUILTIN_DEFAULT)->bytes, bytes, len);
     TEST_ASSERT_EQUAL(PET_SOURCE_FALLBACK, pet_install_resolve(&OPS, "../x", s_scratch, sizeof(s_scratch), &bytes, &len));
 
     TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_select(&OPS, "ember", s_scratch, sizeof(s_scratch)));

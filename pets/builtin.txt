@@ -1,0 +1,4 @@
+# Pets compiled into the firmware, in picker order; the first is the default.
+# Each id is pets/<id>.pet.json with a golden pack in pets/golden/.
+devo
+ember

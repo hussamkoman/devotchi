@@ -84,17 +84,21 @@ firmware-owned strings only; dynamic text uses `body`, `small` or `mono`.
 ## Pet packs
 
 Pets are data (architecture 7.2): `pets/<id>.pet.json` is the source,
-`tools/petpack.py` (standard library only) turns it into the binary pack.
-After editing a source, regenerate the golden pack, its CRC and the
-compiled-in array together; the host test `test_pet_pack` fails when they
-disagree:
+`tools/petpack.py` (standard library only) turns it into the binary pack;
+[pets/README.md](../pets/README.md) has the whole recipe. The built-in pets
+are the ids of `pets/builtin.txt`, the first the default: the CMake configure
+step (`tools/pet_builtins.cmake`, in the IDF build and the host tests) runs
+`petpack.py builtins` and compiles the generated `pet_builtins.c` /
+`pet_builtins.h` (`PET_BUILTIN_COUNT`, `PET_BUILTIN_DEFAULT`, the
+`pet_builtins` table) from the build directory; a change to the list, a
+listed source or the tool re-runs it. After editing a source, rewrite its
+golden pack; `test_pet_pack` (the compiled-in packs equal the golden ones) and
+`test_petpack` (`petpack.py check` on every pet, plus the tool's own tests)
+fail while they disagree:
 
 ```bash
-python3 -I tools/petpack.py encode ../pets/devo.pet.json ../pets/golden/devo.pet
-python3 -I -c "import zlib,sys;d=open(sys.argv[1],'rb').read();print('%08x'%zlib.crc32(d[:-4]))" \
-  ../pets/golden/devo.pet > ../pets/golden/devo.crc32
-python3 -I tools/petpack.py c-array ../pets/devo.pet.json src/components/core/pet_builtin_devo.c
-python3 -I tools/petpack.py check ../pets/devo.pet.json ../pets/golden/devo.pet
+python3 -I tools/petpack.py golden ../pets/devo.pet.json   # pets/golden/devo.pet and devo.crc32
+python3 -I tools/petpack.py check ../pets/[!_]*.pet.json   # validate, compare, lint (not the template)
 ```
 
 Console: `pet list`, `pet use <id>`, `pet rm <id>`, `pet install <id> <rev>

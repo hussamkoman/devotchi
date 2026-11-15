@@ -179,7 +179,7 @@ export class PetsPanel {
   private fillCard(view: CardView, pet: PetListEntry, targets: Device[], now: number): void {
     setText(view.name, pet.name);
     setText(view.meta, `${pet.id} · rev ${pet.rev} · ${pet.size} bytes · ${pet.source === "catalog" ? "catalog" : "uploaded"}`);
-    const builtin = targets.some((d) => d.pets?.installed.some((p) => p.id === pet.id && p.builtin === true));
+    const builtin = pet.builtin === true || targets.some((d) => d.pets?.installed.some((p) => p.id === pet.id && p.builtin === true));
     setText(view.tag, builtin ? "built in" : pet.source === "room" ? "this room" : "");
     view.tag.hidden = view.tag.textContent === "";
     view.remove.hidden = pet.source !== "room";

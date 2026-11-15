@@ -1,7 +1,9 @@
 // The sim's pet store (protocol 14.8): the device side of `pet_cmd` with the
-// firmware's checks in the firmware's order, in memory. Built-in pets are
-// Devo and Ember, as compiled into the firmware.
+// firmware's checks in the firmware's order, in memory. The built-in pets are
+// the catalog's `builtin` entries (pets/builtin.txt), as compiled into the
+// firmware, the first one the default.
 
+import { readFileSync } from "node:fs";
 import {
   PET_ID_RE,
   PET_MAX_BYTES,
@@ -15,12 +17,29 @@ import {
   type PetsResult,
 } from "@devotchi/shared";
 
-export const SIM_BUILTIN_PETS: readonly PetsEntry[] = [
-  { id: "devo", rev: 1, builtin: true },
-  { id: "ember", rev: 1, builtin: true },
-];
+/** Set by the client's bundler; from source the server build's dist/pets.json is read. */
+declare const __DEVOTCHI_PET_CATALOG__: string | undefined;
+
+let builtins: readonly PetsEntry[] | undefined;
+
+/** The firmware's built-in pets in its order, read once from the pet catalog. */
+export function simBuiltinPets(): readonly PetsEntry[] {
+  if (builtins) return builtins;
+  const text =
+    typeof __DEVOTCHI_PET_CATALOG__ === "string" ? __DEVOTCHI_PET_CATALOG__ : readFileSync(new URL("../../server/dist/pets.json", import.meta.url), "utf8");
+  const entries = JSON.parse(text) as { pack: string; builtin?: boolean }[];
+  builtins = entries
+    .filter((e) => e.builtin === true)
+    .map((e) => {
+      const result = validatePet(new Uint8Array(Buffer.from(e.pack, "base64")));
+      if (!result.ok) throw new Error(`the pet catalog holds a broken built-in pack: ${result.message}`);
+      return { id: result.pet.id, rev: result.pet.rev, builtin: true };
+    });
+  if (builtins.length === 0) throw new Error("the pet catalog has no built-in pet");
+  return builtins;
+}
+
 export const SIM_PET_SLOTS = 8;
-const DEFAULT_PET = "devo";
 const MIN_PACK_BYTES = 36;
 const CRC_RE = /^[0-9a-f]{8}$/;
 
@@ -36,7 +55,8 @@ const failed = (error: PetResultError): Outcome => ({ ok: false, error });
 
 export class SimPets {
   private readonly stored = new Map<string, { rev: number; bytes: Uint8Array }>();
-  private selected = DEFAULT_PET;
+  private readonly builtins = simBuiltinPets();
+  private selected = this.builtins[0].id;
   private fetching = false;
 
   constructor(private readonly deps: SimPetsDeps) {}
@@ -47,7 +67,7 @@ export class SimPets {
 
   /** The `pets` state; sent once after register_ack and after every change. */
   report(result?: PetsResult): void {
-    const installed: PetsEntry[] = [...SIM_BUILTIN_PETS, ...[...this.stored].map(([id, p]) => ({ id, rev: p.rev }))];
+    const installed: PetsEntry[] = [...this.builtins, ...[...this.stored].map(([id, p]) => ({ id, rev: p.rev }))];
     this.deps.send(
       buildPets({
         selected: this.selected,
@@ -74,7 +94,7 @@ export class SimPets {
   private async run(op: string, pet: string, msg: Record<string, unknown>): Promise<Outcome> {
     // A malformed command is refused before any URL is built or the store is touched.
     if (pet === "") return failed("unknown");
-    const builtin = SIM_BUILTIN_PETS.some((p) => p.id === pet);
+    const builtin = this.builtins.some((p) => p.id === pet);
     switch (op) {
       case "select":
         if (!builtin && !this.stored.has(pet)) return failed("unknown");
@@ -83,7 +103,7 @@ export class SimPets {
       case "remove":
         if (builtin) return failed("builtin");
         if (!this.stored.delete(pet)) return failed("unknown");
-        if (this.selected === pet) this.selected = DEFAULT_PET;
+        if (this.selected === pet) this.selected = this.builtins[0].id;
         return { ok: true };
       case "install":
         return this.install(pet, builtin, msg);

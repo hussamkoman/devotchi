@@ -373,7 +373,7 @@ describe("REST proxy", () => {
 
   it("proxies the pets routes, binary packs included", async () => {
     const list = await apiFetch("/api/pets");
-    expect(((await list.json()) as { pets: { id: string }[] }).pets.map((p) => p.id)).toEqual(["devo", "ember", "mochi"]);
+    expect(((await list.json()) as { pets: { id: string }[] }).pets.map((p) => p.id)).toEqual(["devo", "ember", "sprout"]);
     const pack = await apiFetch("/api/pets/devo/pack");
     expect(pack.status).toBe(200);
     expect(pack.headers.get("content-type")).toBe("application/octet-stream");

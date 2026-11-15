@@ -165,9 +165,10 @@ void ui_picker_set(const ui_picker_t *p)
 void screen_picker_demo(int variant)
 {
     static pet_def_t def;
-    const pet_builtin_t *b = pet_builtin_at(variant == 1 ? 1 : 0);
+    /* The showcase reproduces the design renders of Devo and Ember, whatever pets/builtin.txt lists. */
+    const pet_builtin_t *b = pet_builtin_find(variant == 1 ? "ember" : "devo");
     ui_picker_t p = {.pages = 3, .page = (uint8_t)variant};
-    if (variant < 2 && pet_pack_decode(b->bytes, *b->len, &def) == PET_PACK_OK) {
+    if (variant < 2 && b != NULL && pet_pack_decode(b->bytes, b->len, &def) == PET_PACK_OK) {
         p.def = &def;
         p.in_use = variant == 0;
         p.can_use = variant != 0;

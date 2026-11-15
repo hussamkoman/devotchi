@@ -1,9 +1,14 @@
 # Pets: rig, animations and the pet format (phase 2, v2 after review)
 
 Pictures: `pet-moods.html` (render: `renders/pet-moods.png`), including a
-greyscale check and a half-size check. Drawing code for the mockups:
-`tools/pet.py`, which mirrors the pose table of
-`firmware/src/components/core/pet_pose.c`.
+greyscale check and a half-size check. `tools/pet.py` draws Devo and Ember
+for these mockups only; it is hand-drawn and not read by anything else. The
+source of truth for any pet is its `pets/<id>.pet.json`: `pnpm run pet-sheet
+<id>` draws its preview sheet from the encoded pack (the dashboard's renderer,
+`packages/shared/src/pet-render.ts`, which follows
+`firmware/src/components/core/pet_pose.c` and `ui/pet_view.c`), and
+`firmware/tools/petpack.py check` lints it against section 5
+(`pets/README.md`).
 
 ## 1. What stays from the current rig
 
@@ -281,5 +286,6 @@ budget of design-system 9 on hardware, its wing flap runs at 15 fps.
    outline first.
 6. It must read at 9/16 scale (clock) and 10/16 (connecting screens).
 7. All 11 moods and 5 reactions must be distinguishable without colour:
-   check the sheet in greyscale (both checks are generated in
-   `pet-moods.html`).
+   check the sheet in greyscale (both checks are on the pet's preview sheet,
+   `pnpm run pet-sheet <id>`, and for Devo and Ember also in
+   `pet-moods.html`). `petpack.py check` lints rules 1, 2, 4, 5 and 7.

@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   PET_MAX_BYTES,
@@ -9,6 +11,9 @@ import {
   decodePet,
   encodePet,
   parsePet,
+  PET_MOODS,
+  petPose,
+  renderPetSheetSvg,
   renderPetSvg,
   validatePet,
   validatePetSource,
@@ -20,6 +25,10 @@ const read = (path: string) => readFileSync(new URL(path, repo));
 const source = (id: string): PetSource => JSON.parse(read(`pets/${id}.pet.json`).toString("utf8")) as PetSource;
 const golden = (id: string) => new Uint8Array(read(`pets/golden/${id}.pet`));
 const clone = <T>(v: T): T => structuredClone(v);
+/** Every pet of pets/ (files starting with _ are templates). */
+const PET_IDS = readdirSync(new URL("pets/", repo))
+  .filter((f) => f.endsWith(".pet.json") && !f.startsWith("_"))
+  .map((f) => f.slice(0, -".pet.json".length));
 
 /** Re-seals a modified pack so only the structure checks see the change. */
 function reseal(pack: Uint8Array): Uint8Array {
@@ -58,7 +67,7 @@ describe("crc32", () => {
   });
 });
 
-describe.each(["devo", "ember"])("golden pack %s", (id) => {
+describe.each(PET_IDS)("golden pack %s", (id) => {
   it("encodes byte for byte as petpack.py", () => {
     const pack = encodePet(source(id));
     expect(Buffer.from(pack).equals(Buffer.from(golden(id)))).toBe(true);
@@ -197,9 +206,10 @@ describe("encodePet source checks", () => {
     expect(validatePetSource(s)).toBe(s);
   });
 
-  it("encodes the gallery pet Mochi under the size limit", () => {
-    const mochi = JSON.parse(read("packages/server/pets/mochi.pet.json").toString("utf8")) as unknown;
-    const pack = encodePet(mochi);
+  it("lists every pet with its golden pack, and the template is a valid source", () => {
+    expect(PET_IDS).toEqual(expect.arrayContaining(["devo", "ember", "sprout"]));
+    const template = JSON.parse(read("pets/_template.pet.json").toString("utf8")) as unknown;
+    const pack = encodePet(template);
     expect(pack.length).toBeLessThan(PET_MAX_BYTES);
     expect(parsePet(pack).parts.length).toBeLessThanOrEqual(28);
   });
@@ -229,5 +239,56 @@ describe("renderPetSvg", () => {
     const focused = renderPetSvg(golden("devo"), "focused");
     expect(idle).toContain('points="0,-55 0,-67 4.38,-77 10,-81"');
     expect(focused).toContain('points="0,-55 0,-88"');
+  });
+});
+
+describe("reactions, outline and the preview sheet", () => {
+  const hasPython = (() => {
+    try {
+      execFileSync("python3", ["--version"], { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  it.skipIf(!hasPython)("rests in the same pose as petpack.py's lint model, for every pet", () => {
+    const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    for (const id of PET_IDS) {
+      const out = execFileSync("python3", ["-I", "firmware/tools/petpack.py", "poses", `pets/${id}.pet.json`], { cwd: fileURLToPath(repo) });
+      const poses = JSON.parse(out.toString("utf8")) as Record<string, Record<string, number>>;
+      for (const mood of PET_MOODS) {
+        const py = Object.fromEntries(Object.entries(poses[mood]).map(([k, v]) => [camel(k), v]));
+        expect(petPose(golden(id), mood), `${id} ${mood}`).toEqual(py);
+      }
+    }
+  });
+
+  it("draws a reaction on top of idle with its effect and the pack's overrides", () => {
+    expect(renderPetSvg(golden("devo"), "pat")).toContain('fill="#FF8FA3"');
+    expect(renderPetSvg(golden("devo"), "attention")).toContain('<circle cx="80" cy="-62" r="14" fill="#FFC53D"/>');
+    expect(petPose(golden("devo"), "attention")).toMatchObject({ eyeSize: 30, pupilDy: -30, mouthOpen: 22, browL: 0 });
+    const pet = parsePet(golden("ember"));
+    pet.overrides.push({ mood: 16, channel: 6, value: -40 });
+    expect(petPose(pet, "pat").mouthCurve).toBe(-40);
+    expect(petPose(pet, "poke").mouthCurve).toBe(-20);
+  });
+
+  it("draws the night outline in the night colour without hidden parts or face colour", () => {
+    const night = renderPetSvg(golden("devo"), "idle", { outline: true });
+    expect(night).toContain('stroke="#9A4A26"');
+    expect(night).not.toContain("#F0C594");
+    expect(night).not.toContain("#1A1D26");
+    const ember = renderPetSvg(golden("ember"), "idle", { outline: true });
+    expect(ember).not.toContain("#F6E7C1");
+  });
+
+  it("puts 16 frames in colour, the outline and 16 in greyscale on one sheet", () => {
+    const sheet = renderPetSheetSvg(golden("ember"));
+    expect(sheet.match(/<svg /g)).toHaveLength(1 + 16 + 1 + 16);
+    expect(sheet).toContain(">Ember</text>");
+    expect(sheet).toContain("crc32 8f684d5d");
+    const gray = sheet.slice(sheet.indexOf("Greyscale")).replace(/<text[^>]*>[^<]*<\/text>/g, "");
+    for (const [, hex] of gray.matchAll(/#([0-9A-F]{6})/g)) expect(hex.slice(0, 2).repeat(3)).toBe(hex);
   });
 });

@@ -79,25 +79,47 @@ static void test_builtins_equal_the_golden_files(void)
         char name[32];
         snprintf(name, sizeof(name), "%s.pet", b->id);
         const size_t n = read_file(name, s_buf, sizeof(s_buf));
-        TEST_ASSERT_EQUAL_size_t(n, *b->len);
+        TEST_ASSERT_EQUAL_size_t(n, b->len);
         TEST_ASSERT_EQUAL_MEMORY(s_buf, b->bytes, n);
         snprintf(name, sizeof(name), "%s.crc32", b->id);
         char text[16] = {0};
         read_file(name, (uint8_t *)text, sizeof(text) - 1);
         char want[9];
-        snprintf(want, sizeof(want), "%08lx", (unsigned long)pet_pack_crc32(b->bytes, *b->len - 4));
+        snprintf(want, sizeof(want), "%08lx", (unsigned long)pet_pack_crc32(b->bytes, b->len - 4));
         TEST_ASSERT_EQUAL_MEMORY(want, text, 8);
     }
     TEST_ASSERT_NULL(pet_builtin_at(PET_BUILTIN_COUNT));
-    TEST_ASSERT_NOT_NULL(pet_builtin_find("ember"));
-    TEST_ASSERT_NULL(pet_builtin_find("mochi"));
-    TEST_ASSERT_EQUAL_STRING("devo", pet_builtin_at(0)->id);
+    TEST_ASSERT_NULL(pet_builtin_find("nope"));
+    TEST_ASSERT_EQUAL_STRING(PET_BUILTIN_DEFAULT, pet_builtin_at(0)->id);
+}
+
+/* The generated table is pets/builtin.txt: its ids in its order, comments and blank lines skipped. */
+static void test_builtins_follow_the_list(void)
+{
+    char text[1024] = {0};
+    read_file("../builtin.txt", (uint8_t *)text, sizeof(text) - 1);
+    unsigned n = 0;
+    for (char *line = strtok(text, "\n"); line != NULL; line = strtok(NULL, "\n")) {
+        char *hash = strchr(line, '#');
+        if (hash != NULL) {
+            *hash = '\0';
+        }
+        char id[16] = {0};
+        if (sscanf(line, " %15s", id) != 1) {
+            continue;
+        }
+        TEST_ASSERT_TRUE_MESSAGE(n < PET_BUILTIN_COUNT, id);
+        TEST_ASSERT_EQUAL_STRING(id, pet_builtin_at(n)->id);
+        TEST_ASSERT_EQUAL_PTR(pet_builtin_at(n), pet_builtin_find(id));
+        n++;
+    }
+    TEST_ASSERT_EQUAL_UINT(PET_BUILTIN_COUNT, n);
 }
 
 static void test_golden_packs_decode(void)
 {
     const pet_builtin_t *devo = pet_builtin_find("devo");
-    TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(devo->bytes, *devo->len, &s_def));
+    TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(devo->bytes, devo->len, &s_def));
     TEST_ASSERT_EQUAL_STRING("devo", s_def.id);
     TEST_ASSERT_EQUAL_STRING("Devo", s_def.name);
     TEST_ASSERT_EQUAL(1, s_def.rev);
@@ -116,7 +138,7 @@ static void test_golden_packs_decode(void)
     TEST_ASSERT_EQUAL(500, s_def.osc[5].period_ms);
 
     const pet_builtin_t *ember = pet_builtin_find("ember");
-    TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(ember->bytes, *ember->len, &s_def));
+    TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(ember->bytes, ember->len, &s_def));
     TEST_ASSERT_EQUAL_STRING("Ember", s_def.name);
     TEST_ASSERT_TRUE(s_def.shift_palette);
     TEST_ASSERT_EQUAL_HEX32(0x2FAE9C, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
@@ -133,7 +155,7 @@ static void test_every_truncation_fails(void)
 {
     for (unsigned i = 0; i < PET_BUILTIN_COUNT; i++) {
         const pet_builtin_t *b = pet_builtin_at(i);
-        for (size_t len = 0; len < *b->len; len++) {
+        for (size_t len = 0; len < b->len; len++) {
             /* A heap copy of exactly len bytes so ASan sees any read past the end. */
             uint8_t *copy = malloc(len ? len : 1);
             memcpy(copy, b->bytes, len);
@@ -152,7 +174,7 @@ static void test_every_truncation_fails(void)
 static void test_every_bit_flip_is_a_crc_error(void)
 {
     const pet_builtin_t *b = pet_builtin_find("ember");
-    const size_t n = *b->len;
+    const size_t n = b->len;
     memcpy(s_buf, b->bytes, n);
     for (size_t i = 0; i < n; i++) {
         for (int bit = 0; bit < 8; bit++) {
@@ -181,7 +203,7 @@ static void test_resealed_fuzz(void)
 {
     for (int round = 0; round < 20000; round++) {
         const pet_builtin_t *b = pet_builtin_at((unsigned)round % PET_BUILTIN_COUNT);
-        size_t n = *b->len;
+        size_t n = b->len;
         memcpy(s_buf, b->bytes, n);
         const int edits = 1 + (int)(rnd() % 4);
         for (int e = 0; e < edits; e++) {
@@ -209,7 +231,7 @@ static void test_resealed_fuzz(void)
 static void test_size_and_format(void)
 {
     const pet_builtin_t *b = pet_builtin_find("devo");
-    const size_t n = *b->len;
+    const size_t n = b->len;
     memcpy(s_buf, b->bytes, n);
     s_buf[4] = 2;
     reseal(s_buf, n);
@@ -407,6 +429,7 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_builtins_equal_the_golden_files);
+    RUN_TEST(test_builtins_follow_the_list);
     RUN_TEST(test_golden_packs_decode);
     RUN_TEST(test_every_truncation_fails);
     RUN_TEST(test_every_bit_flip_is_a_crc_error);

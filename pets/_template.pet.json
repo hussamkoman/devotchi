@@ -1,0 +1,65 @@
+{
+  "id": "mypet",
+  "name": "My pet",
+  "rev": 1,
+  "palette": {
+    "mode": "shift",
+    "base": "#B9A7E8",
+    "accent": "#F2A65A",
+    "cream": "#F6E7C1",
+    "sclera": "#FFFFFF",
+    "moods": {
+      "happy": ["#FFFFFF", 0.12],
+      "sad": ["#8E9BB5", 0.45],
+      "excited": ["#FF8DB4", 0.3],
+      "anxious": ["#C9D6D2", 0.35],
+      "sleeping": ["#3F5A8C", 0.35],
+      "angry": ["#B8325E", 0.4],
+      "proud": ["#FFFFFF", 0.06],
+      "idle": ["#FFFFFF", 0],
+      "focused": ["#1A1D26", 0.1],
+      "working": ["#FFFFFF", 0],
+      "thinking": ["#7377CF", 0.2]
+    }
+  },
+  "face": {
+    "eyes": "round",
+    "mouth": "plain",
+    "brows": true,
+    "eye_dx": 24,
+    "eye_y": -6,
+    "mouth_y": 26,
+    "mouth_hw": 14,
+    "sleep_drop": 8,
+    "replaces": [],
+    "eye_sq": 12,
+    "mouth_sq": 8,
+    "sweat_y": -40
+  },
+  "aux_names": ["ear tilt", "unused", "unused", "unused"],
+  "aux": {
+    "happy": [3, 0, 0, 0],
+    "sad": [-6, 0, 0, 0],
+    "excited": [5, 0, 0, 0],
+    "anxious": [-3, 0, 0, 0],
+    "sleeping": [-8, 0, 0, 0],
+    "angry": [-4, 0, 0, 0],
+    "proud": [4, 0, 0, 0],
+    "pat": [4, 0, 0, 0],
+    "poke": [-4, 0, 0, 0]
+  },
+  "overrides": {},
+  "oscillators": [
+    {"mood": "idle", "aux": 0, "wave": "sine", "amp": 2, "period_ms": 3000}
+  ],
+  "parts": [
+    {"name": "shadow", "shape": "rrect", "layer": "behind", "role": "surface", "x": 0, "y": 64, "w": 110, "h": 10, "r": 5, "outline": false},
+    {"name": "feet", "shape": "rrect", "layer": "behind", "role": "dark", "mirror": true, "x": 26, "y": 54, "w": 26, "h": 14, "r": 7},
+    {"name": "ears", "shape": "tri", "layer": "head", "role": "body", "mirror": true, "points": [[22, -46], [46, -78], [52, -36]], "drivers": [{"op": "move_y", "aux": 0, "point": 1, "scale": -16}]},
+    {"name": "inner_ears", "shape": "tri", "layer": "head", "role": "cheek", "mirror": true, "outline": false, "points": [[32, -46], [45, -66], [47, -42]], "drivers": [{"op": "move_y", "aux": 0, "point": 1, "scale": -12}]},
+    {"name": "body", "shape": "rrect", "layer": "body", "role": "body", "squash": true, "x": 0, "y": 6, "w": 124, "h": 104, "r": 50},
+    {"name": "belly", "shape": "rrect", "layer": "body", "role": "light", "outline": false, "x": 0, "y": 34, "w": 56, "h": 32, "r": 16},
+    {"name": "sheen", "shape": "rrect", "layer": "front", "role": "light", "outline": false, "x": -28, "y": -32, "w": 24, "h": 7, "r": 3},
+    {"name": "cheeks", "shape": "rrect", "layer": "front", "role": "cheek", "mirror": true, "outline": false, "x": 40, "y": 18, "w": 14, "h": 8, "r": 4}
+  ]
+}
