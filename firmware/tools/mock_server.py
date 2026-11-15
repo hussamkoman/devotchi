@@ -37,6 +37,7 @@ Control, as lines on stdin or as the body of POST /_ctl:
   pet-mode <mode>                  how the pack route answers: normal, truncate (short body, then close),
                                    drop (half the body, then close), delay:<s> (100 bytes, wait, the rest),
                                    status:<code>, length:<n> (that Content-Length, the whole body)
+  time [offset_min]                send `time` (protocol 14.9) with the offset, which also goes into later register_acks
   status                           counters and connection state as JSON
   tokens                           the tokens this server accepts (test tokens, for leak checks)
 """
@@ -221,6 +222,7 @@ class Connection:
         ack = {
             "type": "register_ack", "role": "consumer", "roomId": ROOM_ID, "proto": 2,
             "serverVersion": SERVER_VERSION, "serverTime": int(time.time() * 1000), "mode": self.state.mode,
+            "utcOffsetMin": self.state.utc_offset,
             "peers": {"producers": 0, "consumers": 1, "devices": 1},
             "device": {"id": client["deviceId"], "name": self.state.device_name},
         }
@@ -281,6 +283,7 @@ class State:
         self.pairings = {}
         self.counters = {}
         self.caps = [c for c in args.caps.split(",") if c] if args.caps != "none" else []
+        self.utc_offset = args.utc_offset
         self.extend_reply = True
         self.pets = {}
         self.pet_mode = "truncate" if args.pet_truncate else "normal"
@@ -336,6 +339,12 @@ class State:
         rest = rest.strip()
         log("ctl", command=command)
         try:
+            if command == "time":
+                if rest:
+                    self.utc_offset = int(rest)
+                msg = {"type": "time", "serverTime": int(time.time() * 1000), "utcOffsetMin": self.utc_offset}
+                data = encode_frame(OP_TEXT, json.dumps(msg, separators=(",", ":")).encode())
+                return {"ok": True, "sent": sum(1 for c in self.live() if c.send_raw(data)), "utcOffsetMin": self.utc_offset}
             if command == "send":
                 json.loads(rest)
                 data = encode_frame(OP_TEXT, rest.encode())
@@ -738,6 +747,8 @@ def parse_args(argv):
                         help="confirm flow A codes automatically this long after they were issued")
     parser.add_argument("--code-life", type=int, default=300, metavar="SECONDS")
     parser.add_argument("--poll-ms", type=int, default=2000)
+    parser.add_argument("--utc-offset", type=int, default=-time.altzone // 60 if time.daylight and time.localtime().tm_isdst
+                        else -time.timezone // 60, metavar="MINUTES", help="utcOffsetMin of register_ack and time")
     parser.add_argument("--ping", type=float, default=30.0, metavar="SECONDS", help="protocol ping interval")
     parser.add_argument("--pets", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "pets",
                                                        "golden"),

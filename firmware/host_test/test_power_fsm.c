@@ -699,6 +699,182 @@ static void test_card_hidden_keeps_the_pending_cap(void)
     expect_stage(POWER_STAGE_DIM);
 }
 
+
+/* ux-flows 5, every cell: stage x (agent idle | busy) x power x day/night x Show clock. */
+static void test_clock_table(void)
+{
+    typedef struct {
+        const char *name;
+        uint32_t idle_ms;
+        bool ext;
+        bool agent_idle;
+        bool night;
+        power_clock_mode_t mode;
+        uint16_t timeout_s;
+        power_stage_t stage;
+        bool clock;
+        uint8_t pct;
+    } row_t;
+    /* T = 30 s: battery dim at 30 s and off at 60 s; external power dim at 60 s and off at 300 s. */
+    static const row_t rows[] = {
+        {"active idle", 10000, false, true, false, POWER_CLOCK_RESTING, T_S, POWER_STAGE_ACTIVE, false, 75},
+        {"active busy", 10000, false, false, false, POWER_CLOCK_RESTING, T_S, POWER_STAGE_ACTIVE, false, 75},
+        {"never timeout, 1 min", 60000, false, true, false, POWER_CLOCK_RESTING, 0, POWER_STAGE_ACTIVE, false, 75},
+        {"never timeout, 2 min", 120000, false, true, false, POWER_CLOCK_RESTING, 0, POWER_STAGE_ACTIVE, true, 10},
+        {"never timeout, busy", 600000, false, false, false, POWER_CLOCK_RESTING, 0, POWER_STAGE_ACTIVE, false, 75},
+        {"dim batt day", 31000, false, true, false, POWER_CLOCK_RESTING, T_S, POWER_STAGE_DIM, true, 10},
+        {"dim batt night", 31000, false, true, true, POWER_CLOCK_RESTING, T_S, POWER_STAGE_DIM, true, 5},
+        {"dim ext day", 61000, true, true, false, POWER_CLOCK_RESTING, T_S, POWER_STAGE_DIM, true, 30},
+        {"dim ext night", 61000, true, true, true, POWER_CLOCK_RESTING, T_S, POWER_STAGE_DIM, true, 5},
+        {"dim busy batt", 31000, false, false, false, POWER_CLOCK_RESTING, T_S, POWER_STAGE_DIM, false, 10},
+        {"dim busy ext", 61000, true, false, true, POWER_CLOCK_RESTING, T_S, POWER_STAGE_DIM, false, 10},
+        {"dim never mode", 31000, false, true, false, POWER_CLOCK_NEVER, T_S, POWER_STAGE_DIM, false, 10},
+        {"off batt", 61000, false, true, false, POWER_CLOCK_RESTING, T_S, POWER_STAGE_OFF, false, 0},
+        {"off ext resting", 301000, true, true, false, POWER_CLOCK_RESTING, T_S, POWER_STAGE_OFF, false, 0},
+        {"off ext always", 301000, true, true, false, POWER_CLOCK_ALWAYS_USB, T_S, POWER_STAGE_DIM, true, 30},
+        {"off ext always night", 301000, true, true, true, POWER_CLOCK_ALWAYS_USB, T_S, POWER_STAGE_DIM, true, 5},
+        {"off ext always busy", 301000, true, false, false, POWER_CLOCK_ALWAYS_USB, T_S, POWER_STAGE_OFF, false, 0},
+        {"off batt always", 61000, false, true, false, POWER_CLOCK_ALWAYS_USB, T_S, POWER_STAGE_OFF, false, 0},
+        {"dim batt always", 31000, false, true, false, POWER_CLOCK_ALWAYS_USB, T_S, POWER_STAGE_DIM, true, 10},
+    };
+    for (size_t i = 0; i < sizeof(rows) / sizeof(rows[0]); i++) {
+        const row_t *r = &rows[i];
+        reset(0);
+        s_in.boot_grace_s = 0;
+        s_in.deep_timeout_ms = 0;
+        s_in.ext_power = r->ext;
+        s_in.agent_idle = r->agent_idle;
+        s_in.night = r->night;
+        s_in.clock_mode = r->mode;
+        s_in.clock_brightness_pct = 30;
+        s_in.screen_timeout_s = r->timeout_s;
+        at(r->idle_ms);
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(power_stage_name(r->stage), power_stage_name(s_out.stage), r->name);
+        TEST_ASSERT_EQUAL_MESSAGE(r->clock, s_out.show_clock, r->name);
+        TEST_ASSERT_EQUAL_MESSAGE(r->pct, s_out.backlight_pct, r->name);
+        TEST_ASSERT_EQUAL_MESSAGE(r->stage == POWER_STAGE_OFF, s_out.panel_sleep, r->name);
+        TEST_ASSERT_EQUAL_MESSAGE(r->stage != POWER_STAGE_OFF && !r->clock, s_out.hold_cpu_lock, r->name);
+    }
+}
+
+static void test_clock_needs_nothing_pending(void)
+{
+    reset(0);
+    s_in.agent_idle = true;
+    s_in.pending_count = 1;
+    at(31000);
+    expect_stage(POWER_STAGE_DIM);
+    TEST_ASSERT_FALSE(s_out.show_clock);
+    TEST_ASSERT_EQUAL(10, s_out.backlight_pct);
+    s_in.pending_count = 0;
+    s_in.card_visible = true;
+    at(32000);
+    expect_stage(POWER_STAGE_ACTIVE);
+    TEST_ASSERT_FALSE(s_out.show_clock);
+    s_in.card_visible = false;
+    at(33000);
+    TEST_ASSERT_FALSE(s_out.show_clock);
+    /* The closed card counts as activity: the clock comes back one timeout later. */
+    at(33000 + T_MS);
+    TEST_ASSERT_TRUE(s_out.show_clock);
+}
+
+static void test_clock_battery_window(void)
+{
+    /* Default timeouts on battery: the clock is visible from 30 s to 60 s of idle. */
+    reset(0);
+    s_in.agent_idle = true;
+    for (uint32_t t = 0; t <= 70000; t += 1000) {
+        at(t);
+        const bool expect = t >= T_MS && t < 2 * T_MS;
+        TEST_ASSERT_EQUAL(expect, s_out.show_clock);
+    }
+}
+
+static void test_night_switch_changes_backlight(void)
+{
+    reset(0);
+    s_in.agent_idle = true;
+    s_in.ext_power = true;
+    s_in.clock_brightness_pct = 30;
+    at(61000);
+    TEST_ASSERT_EQUAL(30, s_out.backlight_pct);
+    s_in.night = true;
+    at(62000);
+    TEST_ASSERT_EQUAL(5, s_out.backlight_pct);
+    s_in.night = false;
+    at(63000);
+    TEST_ASSERT_EQUAL(30, s_out.backlight_pct);
+}
+
+static void test_sleep_warning(void)
+{
+    reset(0);
+    s_in.boot_grace_s = 0;
+    at(DEEP_MS - POWER_FSM_SLEEP_WARN_MS - 1);
+    TEST_ASSERT_FALSE(s_out.sleep_warning);
+    expect_stage(POWER_STAGE_OFF);
+    at(DEEP_MS - POWER_FSM_SLEEP_WARN_MS);
+    TEST_ASSERT_TRUE(s_out.sleep_warning);
+    TEST_ASSERT_EQUAL_UINT32(POWER_FSM_SLEEP_WARN_MS, s_out.sleep_in_ms);
+    expect_stage(POWER_STAGE_DIM);
+    TEST_ASSERT_EQUAL(75, s_out.backlight_pct);
+    TEST_ASSERT_FALSE(s_out.panel_sleep);
+    TEST_ASSERT_FALSE(s_out.enter_deep_sleep);
+    at(DEEP_MS - 4000);
+    TEST_ASSERT_EQUAL_UINT32(4000, s_out.sleep_in_ms);
+    /* Any button is user activity: the warning ends and the screen is active again. */
+    s_in.last_user_ms = DEEP_MS - 3000;
+    at(DEEP_MS - 3000);
+    TEST_ASSERT_FALSE(s_out.sleep_warning);
+    expect_stage(POWER_STAGE_ACTIVE);
+    TEST_ASSERT_FALSE(s_out.enter_deep_sleep);
+
+    /* Left alone, the warning runs out into the deep sleep. */
+    reset(0);
+    s_in.boot_grace_s = 0;
+    at(DEEP_MS - 5000);
+    TEST_ASSERT_TRUE(s_out.sleep_warning);
+    at(DEEP_MS);
+    TEST_ASSERT_FALSE(s_out.sleep_warning);
+    TEST_ASSERT_TRUE(s_out.enter_deep_sleep);
+
+    /* No warning while something else blocks the sleep. */
+    reset(0);
+    s_in.boot_grace_s = 0;
+    s_in.usb_host = true;
+    at(DEEP_MS - 5000);
+    TEST_ASSERT_FALSE(s_out.sleep_warning);
+    s_in.usb_host = false;
+    s_in.deep_timeout_ms = 0;
+    at(DEEP_MS - 5000);
+    TEST_ASSERT_FALSE(s_out.sleep_warning);
+}
+
+static void test_low_pct_toasts(void)
+{
+    reset(0);
+    const struct {
+        uint8_t pct;
+        bool ext;
+        uint8_t toast;
+    } steps[] = {
+        {40, false, 0}, {16, false, 0}, {15, false, 15}, {14, false, 0}, {9, false, 0}, {8, false, 8},
+        {5, false, 0},  {5, true, 0},   {5, false, 8},   {50, true, 0},  {12, false, 15}, {3, false, 8},
+    };
+    for (size_t i = 0; i < sizeof(steps) / sizeof(steps[0]); i++) {
+        s_in.batt_pct = steps[i].pct;
+        s_in.ext_power = steps[i].ext;
+        at((uint32_t)i * 1000u);
+        TEST_ASSERT_EQUAL_MESSAGE(steps[i].toast, s_out.low_toast_pct, "step");
+    }
+    reset(0);
+    s_in.batt_present = false;
+    s_in.batt_pct = 3;
+    at(1000);
+    TEST_ASSERT_EQUAL(0, s_out.low_toast_pct);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -741,5 +917,11 @@ int main(void)
     RUN_TEST(test_card_visible_holds_active);
     RUN_TEST(test_card_close_restarts_timers);
     RUN_TEST(test_card_hidden_keeps_the_pending_cap);
+    RUN_TEST(test_clock_table);
+    RUN_TEST(test_clock_needs_nothing_pending);
+    RUN_TEST(test_clock_battery_window);
+    RUN_TEST(test_night_switch_changes_backlight);
+    RUN_TEST(test_sleep_warning);
+    RUN_TEST(test_low_pct_toasts);
     return UNITY_END();
 }

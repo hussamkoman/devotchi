@@ -103,6 +103,19 @@ static void test_low_reject_click_denies(void)
     expect_decision(press(BTN_REJECT, BTN_CLICK), CARD_DECISION_DENY);
 }
 
+static void test_hold_only_low_risk_needs_hold(void)
+{
+    entry(PROTO_RISK_LOW, "pnpm test");
+    open_card(true);
+    card_fsm_set_hold_only(&s_c, true);
+    TEST_ASSERT_EQUAL(CARD_ALLOW_HOLD, card_fsm_allow(&s_c));
+    TEST_ASSERT_EQUAL(BTN_MODE_COMMIT_HOLD, card_fsm_mode(&s_c, BTN_APPROVE, NOW));
+    TEST_ASSERT_EQUAL(CARD_OUT_NONE, press(BTN_APPROVE, BTN_CLICK).kind);
+    expect_decision(commit_hold(), CARD_DECISION_ALLOW);
+    open_card(true);
+    TEST_ASSERT_EQUAL(CARD_ALLOW_CLICK, card_fsm_allow(&s_c));
+}
+
 static void test_low_approve_click_allows_once(void)
 {
     entry(PROTO_RISK_MED, "pnpm test");
@@ -564,6 +577,7 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_low_reject_click_denies);
     RUN_TEST(test_low_approve_click_allows_once);
+    RUN_TEST(test_hold_only_low_risk_needs_hold);
     RUN_TEST(test_action_click_pages_only_with_two_pages);
     RUN_TEST(test_read_before_yes);
     RUN_TEST(test_more_than_four_pages_has_no_allow);

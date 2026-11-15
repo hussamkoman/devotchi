@@ -21,6 +21,8 @@ lv_obj_t *screen_identify_create(void);
 lv_obj_t *screen_settings_create(void);
 lv_obj_t *screen_picker_create(void);
 lv_obj_t *screen_lowbatt_create(void);
+lv_obj_t *screen_clock_create(void);
+lv_obj_t *screen_sleep_create(void);
 
 /** Caller holds the ui lock; tells the pet screen whether it is the loaded screen. */
 void screen_pet_set_shown(bool shown);
@@ -46,6 +48,10 @@ typedef enum {
     PET_DEMO_IDLE_BARE,
     PET_DEMO_ABOUT1,
     PET_DEMO_ABOUT2,
+    PET_DEMO_RECENT,
+    /** Showcase moods (81) and reactions (82). */
+    PET_DEMO_MOODS,
+    PET_DEMO_REACTIONS,
 } ui_pet_demo_t;
 
 /* `approval` variants (20-24, 28b), then `menu` (25-27 and the locked session row), then `tabs`. */
@@ -64,6 +70,8 @@ typedef enum {
     APPROVAL_DEMO_MENU_SESSION,
     APPROVAL_DEMO_MENU_HIGH,
     APPROVAL_DEMO_MENU_LOCKED,
+    /** The low-risk card as a real request during the showcase (85): hold to allow. */
+    APPROVAL_DEMO_REAL,
     /** High-risk card with its tabs holding, nudged, as one "any" tab, inactive; these stay last. */
     APPROVAL_DEMO_HOLD,
     APPROVAL_DEMO_NUDGE,
@@ -116,7 +124,14 @@ void screen_pet_demo(ui_pet_demo_t demo);
 void screen_approval_demo(int demo);
 void screen_question_demo(int demo);
 void screen_plan_demo(int demo);
-void screen_settings_demo(void);
+/** 0 top list, 1 a sub-list, 2 value editor, 3 destructive confirm, 4 quick menu, 5 showcase menu. */
+void screen_settings_demo(int variant);
+/** 0 day, 1 night, 2 without time. */
+void screen_clock_demo(int variant);
+void screen_sleep_demo(void);
+/** Caller holds the ui lock; the screen is the loaded one. */
+void screen_clock_set_shown(bool shown);
+void screen_sleep_set_shown(bool shown);
 /** 0 Devo in use, 1 Ember, 2 More pets. */
 void screen_picker_demo(int variant);
 /** Caller holds the ui lock; the picker is the loaded screen. */
@@ -152,6 +167,8 @@ void pet_view_set_mood(pet_view_t *v, proto_mood_t mood);
 /** On screen; only a visible, powered view runs its frame timer. */
 void pet_view_set_visible(pet_view_t *v, bool visible);
 void pet_view_set_powered(pet_view_t *v, bool powered);
+/** Frame period of the view's animation timer (33 ms by default). */
+void pet_view_set_frame_ms(pet_view_t *v, uint32_t ms);
 void pet_view_set_frozen(pet_view_t *v, bool frozen);
 void pet_view_set_outline(pet_view_t *v, bool outline);
 /** Lifts the whole pet by px (the sticky banner, pet-animations 3), stepping over 200 ms. */
@@ -228,6 +245,10 @@ void ui_set_hidden(lv_obj_t *obj, bool hidden);
 /* Status bar on the top layer (design-system 4). */
 void w_status_create(void);
 void w_status_set_visible(bool visible);
+/** Draws mark (the showcase frame, tag or real-request bar); caller holds the ui lock. */
+void w_status_set_mark(ui_mark_t mark);
+/** The mark the app asked for (ui_mark_set), drawn again after a demo. */
+ui_mark_t w_status_app_mark(void);
 /** Page title in caps on the left; "" leaves the time slot, which stays empty until the clock is known. */
 void w_status_set_title(const char *title);
 
@@ -257,6 +278,8 @@ typedef struct {
     bool muted;
     /** The icon is a mark in mint (a chosen or ticked option) while the row is not focused. */
     bool accent;
+    /** A chevron in the value's place: the row opens a list. */
+    bool chevron;
 } w_list_row_t;
 
 typedef enum {
@@ -278,6 +301,8 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
 void w_list_set_label_lines(w_list_t *l, uint8_t lines);
 /** Moves the list's band to y with height h. */
 void w_list_move(w_list_t *l, int32_t y, int32_t h);
+/** The list's outer object, to hide or show it. */
+lv_obj_t *w_list_obj(w_list_t *l);
 
 typedef struct w_well w_well_t;
 

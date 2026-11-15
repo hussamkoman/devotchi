@@ -9,311 +9,295 @@
 void setUp(void) {}
 void tearDown(void) {}
 
-static const uint16_t DEFAULTS[SETTINGS_VALUE_ROWS] = {
-    [SETTINGS_ROW_BRIGHTNESS] = 75, [SETTINGS_ROW_SCREEN_TIMEOUT] = 30, [SETTINGS_ROW_DEEP_SLEEP] = 20,
-    [SETTINGS_ROW_HAPTICS] = 2,     [SETTINGS_ROW_LED] = 1,             [SETTINGS_ROW_MODE] = SETTINGS_MODE_ASK,
+#define V(item) ((item) - SETTINGS_VALUE_FIRST)
+
+static const uint16_t DEFAULTS[SETTINGS_VALUE_COUNT] = {
+    [V(SETTINGS_ITEM_BRIGHTNESS)] = 75, [V(SETTINGS_ITEM_SCREEN_TIMEOUT)] = 30, [V(SETTINGS_ITEM_DEEP_SLEEP)] = 20,
+    [V(SETTINGS_ITEM_SHOW_CLOCK)] = 0,  [V(SETTINGS_ITEM_CLOCK_BRIGHTNESS)] = 30, [V(SETTINGS_ITEM_H24)] = 1,
+    [V(SETTINGS_ITEM_NIGHT)] = 1,       [V(SETTINGS_ITEM_HAPTICS)] = 2,         [V(SETTINGS_ITEM_LED)] = 1,
 };
+
+static settings_act_t press(settings_menu_t *m, btn_id_t id, btn_kind_t kind, uint32_t now)
+{
+    const btn_fsm_out_t out = {.id = id, .kind = kind, .permille = 500};
+    return settings_menu_button(m, &out, now);
+}
 
 static settings_act_t click(settings_menu_t *m, btn_id_t id, uint32_t now)
 {
-    const btn_fsm_out_t out = {.id = id, .kind = BTN_CLICK};
-    return settings_menu_button(m, &out, now);
+    return press(m, id, BTN_CLICK, now);
 }
 
-static settings_act_t hold(settings_menu_t *m, btn_id_t id, uint32_t now)
+static void go_to(settings_menu_t *m, settings_item_t item)
 {
-    const btn_fsm_out_t out = {.id = id, .kind = BTN_HOLD};
-    return settings_menu_button(m, &out, now);
-}
-
-static void go_to(settings_menu_t *m, settings_row_t row)
-{
-    while (m->cursor != row) {
-        click(m, BTN_APPROVE, 0);
+    for (int i = 0; i < SETTINGS_LIST_MAX && settings_menu_item(m) != item; i++) {
+        click(m, BTN_ACTION, 0);
     }
+    TEST_ASSERT_EQUAL(item, settings_menu_item(m));
 }
 
-static void test_open_and_navigation(void)
+static void test_top_list_order_and_wrap(void)
 {
-    settings_menu_t m;
-    settings_menu_open(&m, DEFAULTS);
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_BRIGHTNESS, m.cursor);
-    TEST_ASSERT_FALSE(m.confirming);
-    TEST_ASSERT_EQUAL_UINT16(75, m.values[SETTINGS_ROW_BRIGHTNESS]);
-
-    settings_act_t a = click(&m, BTN_APPROVE, 0);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, a.kind);
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_SCREEN_TIMEOUT, a.row);
-    a = click(&m, BTN_REJECT, 0);
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_BRIGHTNESS, a.row);
-    /* Up from the first row wraps to the last, down from the last to the first. */
-    a = click(&m, BTN_REJECT, 0);
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_ABOUT, a.row);
-    a = click(&m, BTN_APPROVE, 0);
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_BRIGHTNESS, a.row);
-    for (int i = 0; i < SETTINGS_ROW_COUNT; i++) {
-        click(&m, BTN_APPROVE, 0);
-    }
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_BRIGHTNESS, m.cursor);
-
-    /* Long presses of APPROVE/REJECT and swallowed outputs do nothing. */
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, hold(&m, BTN_APPROVE, 0).kind);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, hold(&m, BTN_REJECT, 0).kind);
-    const btn_fsm_out_t swallowed = {.id = BTN_ACTION, .kind = BTN_CLICK, .swallowed = true};
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_button(&m, &swallowed, 0).kind);
-    const btn_fsm_out_t swallowed_long = {.id = BTN_ACTION, .kind = BTN_HOLD, .swallowed = true};
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_button(&m, &swallowed_long, 0).kind);
-    TEST_ASSERT_EQUAL_UINT16(75, m.values[SETTINGS_ROW_BRIGHTNESS]);
-
-    a = hold(&m, BTN_ACTION, 0);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, a.kind);
-}
-
-static void test_value_cycling(void)
-{
-    static const struct {
-        settings_row_t row;
-        uint16_t sequence[5];
-        size_t count;
-    } CASES[] = {
-        {SETTINGS_ROW_BRIGHTNESS, {100, 25, 50, 75, 100}, 5},
-        {SETTINGS_ROW_SCREEN_TIMEOUT, {60, 120, 15, 30, 60}, 5},
-        {SETTINGS_ROW_DEEP_SLEEP, {60, 0, 10, 20, 60}, 5},
-        {SETTINGS_ROW_HAPTICS, {0, 1, 2, 0}, 4},
-        {SETTINGS_ROW_LED, {0, 1, 0}, 3},
-        {SETTINGS_ROW_MODE, {SETTINGS_MODE_DESK, SETTINGS_MODE_ASK, SETTINGS_MODE_DESK}, 3},
+    static const settings_item_t EXPECTED[] = {
+        SETTINGS_ITEM_PET,  SETTINGS_ITEM_DISPLAY, SETTINGS_ITEM_CLOCK,    SETTINGS_ITEM_HAPTICS_LED,
+        SETTINGS_ITEM_DESK, SETTINGS_ITEM_NETWORK, SETTINGS_ITEM_SHOWCASE, SETTINGS_ITEM_ABOUT,
     };
-    for (size_t c = 0; c < sizeof(CASES) / sizeof(CASES[0]); c++) {
-        settings_menu_t m;
-        settings_menu_open(&m, DEFAULTS);
-        go_to(&m, CASES[c].row);
-        for (size_t i = 0; i < CASES[c].count; i++) {
-            const settings_act_t a = click(&m, BTN_ACTION, 0);
-            TEST_ASSERT_EQUAL(SETTINGS_ACT_VALUE, a.kind);
-            TEST_ASSERT_EQUAL(CASES[c].row, a.row);
-            TEST_ASSERT_EQUAL_UINT16(CASES[c].sequence[i], a.value);
-            TEST_ASSERT_EQUAL_UINT16(a.value, m.values[a.row]);
-            TEST_ASSERT_TRUE(settings_menu_allowed(a.row, a.value));
-        }
-        TEST_ASSERT_FALSE(m.confirming);
-    }
-
-    /* A stored value outside the table restarts at the first choice. */
-    uint16_t odd[SETTINGS_VALUE_ROWS];
-    memcpy(odd, DEFAULTS, sizeof(odd));
-    odd[SETTINGS_ROW_BRIGHTNESS] = 33;
+    size_t n;
+    const settings_item_t *items = settings_list_items(SETTINGS_LIST_TOP, &n);
+    TEST_ASSERT_EQUAL(8, n);
+    TEST_ASSERT_EQUAL_MEMORY(EXPECTED, items, sizeof(EXPECTED));
     settings_menu_t m;
-    settings_menu_open(&m, odd);
-    TEST_ASSERT_EQUAL_UINT16(25, click(&m, BTN_ACTION, 0).value);
-
-    /* The room mode is synced from outside; other rows are not touched by a sync past the value rows. */
-    settings_menu_sync(&m, SETTINGS_ROW_MODE, SETTINGS_MODE_DESK);
-    TEST_ASSERT_EQUAL_UINT16(SETTINGS_MODE_DESK, m.values[SETTINGS_ROW_MODE]);
-    settings_menu_sync(&m, SETTINGS_ROW_ABOUT, 7);
-    TEST_ASSERT_EQUAL_UINT16(25, m.values[SETTINGS_ROW_BRIGHTNESS]);
+    settings_menu_open(&m, SETTINGS_LIST_TOP, DEFAULTS, false, 0);
+    for (size_t i = 0; i < n; i++) {
+        TEST_ASSERT_EQUAL(EXPECTED[i], settings_menu_item(&m));
+        TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, click(&m, BTN_ACTION, 0).kind);
+    }
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_PET, settings_menu_item(&m));
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, click(&m, BTN_REJECT, 0).kind);
 }
 
-static void test_about_executes_at_once(void)
+static void test_clock_sub_list(void)
+{
+    static const settings_item_t EXPECTED[] = {SETTINGS_ITEM_SHOW_CLOCK, SETTINGS_ITEM_CLOCK_BRIGHTNESS,
+                                               SETTINGS_ITEM_H24, SETTINGS_ITEM_NIGHT};
+    size_t n;
+    const settings_item_t *items = settings_list_items(SETTINGS_LIST_CLOCK, &n);
+    TEST_ASSERT_EQUAL(4, n);
+    TEST_ASSERT_EQUAL_MEMORY(EXPECTED, items, sizeof(EXPECTED));
+}
+
+static void test_sub_list_back_lands_on_its_row(void)
 {
     settings_menu_t m;
-    settings_menu_open(&m, DEFAULTS);
-    go_to(&m, SETTINGS_ROW_ABOUT);
-    const settings_act_t a = click(&m, BTN_ACTION, 0);
+    settings_menu_open(&m, SETTINGS_LIST_TOP, DEFAULTS, false, 0);
+    go_to(&m, SETTINGS_ITEM_NETWORK);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, click(&m, BTN_APPROVE, 0).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_LIST_NETWORK, m.list);
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_WIFI_SETUP, settings_menu_item(&m));
+    click(&m, BTN_REJECT, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_LIST_TOP, m.list);
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_NETWORK, settings_menu_item(&m));
+}
+
+static void test_editor_preview_cancel_restores(void)
+{
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_DISPLAY, DEFAULTS, false, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, click(&m, BTN_APPROVE, 0).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_EDITOR, m.view);
+    settings_act_t a = click(&m, BTN_ACTION, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_PREVIEW, a.kind);
+    TEST_ASSERT_EQUAL(100, a.value);
+    a = click(&m, BTN_ACTION, 0);
+    TEST_ASSERT_EQUAL(25, a.value);
+    TEST_ASSERT_EQUAL(25, settings_menu_value(&m, SETTINGS_ITEM_BRIGHTNESS));
+    a = click(&m, BTN_REJECT, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_CANCEL, a.kind);
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_BRIGHTNESS, a.item);
+    TEST_ASSERT_EQUAL(75, a.value);
+    TEST_ASSERT_EQUAL(75, settings_menu_value(&m, SETTINGS_ITEM_BRIGHTNESS));
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_LIST, m.view);
+}
+
+static void test_editor_save(void)
+{
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_DISPLAY, DEFAULTS, false, 0);
+    go_to(&m, SETTINGS_ITEM_SCREEN_TIMEOUT);
+    click(&m, BTN_APPROVE, 0);
+    click(&m, BTN_ACTION, 0);
+    click(&m, BTN_ACTION, 0);
+    click(&m, BTN_ACTION, 0);
+    const settings_act_t a = click(&m, BTN_APPROVE, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_SAVE, a.kind);
+    TEST_ASSERT_EQUAL(0, a.value);
+    char text[SETTINGS_VALUE_TEXT_SIZE];
+    settings_value_text(SETTINGS_ITEM_SCREEN_TIMEOUT, a.value, text);
+    TEST_ASSERT_EQUAL_STRING("Never", text);
+}
+
+static void test_editor_timeout_cancels(void)
+{
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_CLOCK, DEFAULTS, false, 1000);
+    click(&m, BTN_APPROVE, 1000);
+    click(&m, BTN_ACTION, 2000);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_tick(&m, 2000 + SETTINGS_EDITOR_IDLE_MS - 1).kind);
+    const settings_act_t a = settings_menu_tick(&m, 2000 + SETTINGS_EDITOR_IDLE_MS);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_CANCEL, a.kind);
+    TEST_ASSERT_EQUAL(SETTINGS_CLOCK_RESTING, a.value);
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_LIST, m.view);
+    /* The list's own minute starts again from the cancel. */
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, settings_menu_tick(&m, 2000 + SETTINGS_EDITOR_IDLE_MS +
+                                                                      SETTINGS_LIST_IDLE_MS).kind);
+}
+
+static void test_list_timeout_exits(void)
+{
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_QUICK, DEFAULTS, false, 500);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_tick(&m, 500 + SETTINGS_LIST_IDLE_MS - 1).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, settings_menu_tick(&m, 500 + SETTINGS_LIST_IDLE_MS).kind);
+}
+
+static void test_destructive_needs_commit_hold(void)
+{
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_NETWORK, DEFAULTS, false, 0);
+    go_to(&m, SETTINGS_ITEM_FACTORY_RESET);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, click(&m, BTN_APPROVE, 0).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_CONFIRM, m.view);
+    TEST_ASSERT_EQUAL(BTN_MODE_COMMIT_HOLD, settings_menu_btn_mode(&m, BTN_APPROVE));
+    TEST_ASSERT_EQUAL(BTN_MODE_NONE, settings_menu_btn_mode(&m, BTN_ACTION));
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, click(&m, BTN_ACTION, 0).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_PROGRESS, press(&m, BTN_APPROVE, BTN_PROGRESS, 0).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_NUDGE, press(&m, BTN_APPROVE, BTN_CANCELLED, 0).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_CONFIRM, m.view);
+    const settings_act_t a = press(&m, BTN_APPROVE, BTN_COMMIT, 0);
     TEST_ASSERT_EQUAL(SETTINGS_ACT_EXECUTE, a.kind);
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_ABOUT, a.row);
-    TEST_ASSERT_FALSE(settings_menu_needs_confirm(SETTINGS_ROW_ABOUT));
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_FACTORY_RESET, a.item);
 }
 
-static void test_confirm_twice(void)
-{
-    static const settings_row_t ROWS[] = {SETTINGS_ROW_WIFI_SETUP, SETTINGS_ROW_UNPAIR, SETTINGS_ROW_FACTORY_RESET};
-    for (size_t r = 0; r < 3; r++) {
-        settings_menu_t m;
-        settings_menu_open(&m, DEFAULTS);
-        go_to(&m, ROWS[r]);
-        TEST_ASSERT_TRUE(settings_menu_needs_confirm(ROWS[r]));
-        settings_act_t a = click(&m, BTN_ACTION, 1000);
-        TEST_ASSERT_EQUAL(SETTINGS_ACT_CONFIRM_ASK, a.kind);
-        TEST_ASSERT_TRUE(m.confirming);
-        TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_tick(&m, 1000 + SETTINGS_CONFIRM_MS - 1).kind);
-        a = click(&m, BTN_ACTION, 1000 + SETTINGS_CONFIRM_MS - 1);
-        TEST_ASSERT_EQUAL(SETTINGS_ACT_EXECUTE, a.kind);
-        TEST_ASSERT_EQUAL(ROWS[r], a.row);
-        TEST_ASSERT_FALSE(m.confirming);
-        /* Executing ends the confirmation: the next click asks again. */
-        TEST_ASSERT_EQUAL(SETTINGS_ACT_CONFIRM_ASK, click(&m, BTN_ACTION, 9000).kind);
-    }
-}
-
-static void test_confirm_timeout_and_cancel(void)
+static void test_confirm_cancel_and_timeout(void)
 {
     settings_menu_t m;
-    settings_menu_open(&m, DEFAULTS);
-    go_to(&m, SETTINGS_ROW_FACTORY_RESET);
-
-    /* Timeout. */
-    click(&m, BTN_ACTION, 100);
-    settings_act_t a = settings_menu_tick(&m, 100 + SETTINGS_CONFIRM_MS);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_CONFIRM_CANCELLED, a.kind);
-    TEST_ASSERT_FALSE(m.confirming);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_tick(&m, 200 + SETTINGS_CONFIRM_MS).kind);
-
-    /* A late second click without a tick in between asks again instead of executing. */
-    click(&m, BTN_ACTION, 20000);
-    a = click(&m, BTN_ACTION, 20000 + SETTINGS_CONFIRM_MS);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_CONFIRM_ASK, a.kind);
-    TEST_ASSERT_TRUE(m.confirming);
-
-    /* Moving the cursor cancels; coming back needs two clicks again. */
-    a = click(&m, BTN_REJECT, 20001 + SETTINGS_CONFIRM_MS);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_CONFIRM_CANCELLED, a.kind);
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_UNPAIR, m.cursor);
-    TEST_ASSERT_FALSE(m.confirming);
-    click(&m, BTN_APPROVE, 30000);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_CONFIRM_ASK, click(&m, BTN_ACTION, 30001).kind);
-    a = click(&m, BTN_APPROVE, 30002);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_CONFIRM_CANCELLED, a.kind);
-    TEST_ASSERT_EQUAL(SETTINGS_ROW_ABOUT, m.cursor);
-
-    /* Exit while confirming leaves without executing. */
-    click(&m, BTN_REJECT, 31000);
-    click(&m, BTN_ACTION, 31001);
-    a = hold(&m, BTN_ACTION, 31002);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, a.kind);
-    TEST_ASSERT_FALSE(m.confirming);
-
-    /* Across the 32-bit wrap. */
-    settings_menu_open(&m, DEFAULTS);
-    go_to(&m, SETTINGS_ROW_UNPAIR);
-    click(&m, BTN_ACTION, UINT32_MAX - 1000);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_tick(&m, 2000).kind);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXECUTE, click(&m, BTN_ACTION, 3000).kind);
+    settings_menu_open(&m, SETTINGS_LIST_NETWORK, DEFAULTS, false, 0);
+    go_to(&m, SETTINGS_ITEM_UNPAIR);
+    click(&m, BTN_APPROVE, 0);
+    click(&m, BTN_REJECT, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_LIST, m.view);
+    TEST_ASSERT_EQUAL(SETTINGS_LIST_NETWORK, m.list);
+    click(&m, BTN_APPROVE, 100);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_tick(&m, 100 + SETTINGS_CONFIRM_IDLE_MS - 1).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, settings_menu_tick(&m, 100 + SETTINGS_CONFIRM_IDLE_MS).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_LIST, m.view);
 }
 
-/* Drives the menu with what btn_fsm makes of raw driver events and ticks, in the modes the app asks for. */
-static settings_act_t feed(btn_fsm_t *f, settings_menu_t *m, btn_id_t id, btn_raw_t raw, uint32_t now, bool *emitted)
+static void test_wifi_setup_is_a_click(void)
 {
-    btn_fsm_out_t out;
-    if (raw == BTN_RAW_DOWN) {
-        *emitted = btn_fsm_down(f, id, id == BTN_ACTION ? BTN_MODE_NAV_HOLD : BTN_MODE_CLICK, now, &out);
-    } else {
-        *emitted = btn_fsm_up(f, id, now, &out);
-    }
-    if (!*emitted) {
-        return (settings_act_t){.kind = SETTINGS_ACT_NONE};
-    }
-    return settings_menu_button(m, &out, now);
-}
-
-static settings_act_t feed_tick(btn_fsm_t *f, settings_menu_t *m, uint32_t now, bool *emitted)
-{
-    btn_fsm_out_t out[BTN_COUNT];
-    *emitted = btn_fsm_tick(f, now, out) == 1;
-    if (!*emitted) {
-        return (settings_act_t){.kind = SETTINGS_ACT_NONE};
-    }
-    return settings_menu_button(m, &out[0], now);
-}
-
-static void test_holding_action_to_exit_never_activates(void)
-{
-    static const settings_row_t ROWS[] = {SETTINGS_ROW_BRIGHTNESS, SETTINGS_ROW_MODE, SETTINGS_ROW_UNPAIR,
-                                          SETTINGS_ROW_FACTORY_RESET, SETTINGS_ROW_ABOUT};
-    for (size_t r = 0; r < sizeof(ROWS) / sizeof(ROWS[0]); r++) {
-        for (int confirming = 0; confirming < 2; confirming++) {
-            btn_fsm_t f;
-            btn_fsm_init(&f);
-            settings_menu_t m;
-            settings_menu_open(&m, DEFAULTS);
-            go_to(&m, ROWS[r]);
-            bool emitted;
-            if (confirming && settings_menu_needs_confirm(ROWS[r])) {
-                feed(&f, &m, BTN_ACTION, BTN_RAW_DOWN, 0, &emitted);
-                TEST_ASSERT_EQUAL(SETTINGS_ACT_CONFIRM_ASK, feed(&f, &m, BTN_ACTION, BTN_RAW_UP, 80, &emitted).kind);
-            }
-            const settings_menu_t before = m;
-
-            settings_act_t a = feed(&f, &m, BTN_ACTION, BTN_RAW_DOWN, 1000, &emitted);
-            TEST_ASSERT_FALSE(emitted);
-            a = feed_tick(&f, &m, 1600, &emitted);
-            TEST_ASSERT_TRUE(emitted);
-            TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, a.kind);
-            /* The release after the long press produces no click. */
-            a = feed(&f, &m, BTN_ACTION, BTN_RAW_UP, 2600, &emitted);
-            TEST_ASSERT_FALSE(emitted);
-            TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, a.kind);
-            TEST_ASSERT_EQUAL_MEMORY(before.values, m.values, sizeof(m.values));
-            TEST_ASSERT_EQUAL(before.cursor, m.cursor);
-            TEST_ASSERT_FALSE(m.confirming);
-        }
-    }
-
-    /* A short press is a click on release and does activate. */
-    btn_fsm_t f;
-    btn_fsm_init(&f);
     settings_menu_t m;
-    settings_menu_open(&m, DEFAULTS);
-    bool emitted;
-    feed(&f, &m, BTN_ACTION, BTN_RAW_DOWN, 0, &emitted);
-    TEST_ASSERT_FALSE(emitted);
-    const settings_act_t a = feed(&f, &m, BTN_ACTION, BTN_RAW_UP, 120, &emitted);
-    TEST_ASSERT_TRUE(emitted);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_VALUE, a.kind);
-    TEST_ASSERT_EQUAL_UINT16(100, a.value);
-
-    /* The press that wakes the device is swallowed whole, long or short. */
-    btn_fsm_arm(&f, 5000, BTN_FSM_WAKE_GUARD_MS);
-    feed(&f, &m, BTN_ACTION, BTN_RAW_DOWN, 5000, &emitted);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, feed_tick(&f, &m, 6000, &emitted).kind);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, feed(&f, &m, BTN_ACTION, BTN_RAW_UP, 6100, &emitted).kind);
-    TEST_ASSERT_EQUAL_UINT16(100, m.values[SETTINGS_ROW_BRIGHTNESS]);
+    settings_menu_open(&m, SETTINGS_LIST_NETWORK, DEFAULTS, false, 0);
+    const settings_act_t a = click(&m, BTN_APPROVE, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXECUTE, a.kind);
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_WIFI_SETUP, a.item);
 }
 
-static void test_texts(void)
+static void test_quick_menu(void)
 {
-    char t[SETTINGS_VALUE_TEXT_SIZE];
-    settings_menu_value_text(SETTINGS_ROW_BRIGHTNESS, 75, t);
-    TEST_ASSERT_EQUAL_STRING("75 %", t);
-    settings_menu_value_text(SETTINGS_ROW_SCREEN_TIMEOUT, 120, t);
-    TEST_ASSERT_EQUAL_STRING("120 s", t);
-    settings_menu_value_text(SETTINGS_ROW_DEEP_SLEEP, 0, t);
-    TEST_ASSERT_EQUAL_STRING("Never", t);
-    settings_menu_value_text(SETTINGS_ROW_DEEP_SLEEP, 20, t);
-    TEST_ASSERT_EQUAL_STRING("20 min", t);
-    settings_menu_value_text(SETTINGS_ROW_HAPTICS, 1, t);
-    TEST_ASSERT_EQUAL_STRING("Gentle", t);
-    settings_menu_value_text(SETTINGS_ROW_HAPTICS, 9, t);
-    TEST_ASSERT_EQUAL_STRING("?", t);
-    settings_menu_value_text(SETTINGS_ROW_LED, 0, t);
-    TEST_ASSERT_EQUAL_STRING("Off", t);
-    settings_menu_value_text(SETTINGS_ROW_MODE, SETTINGS_MODE_DESK, t);
-    TEST_ASSERT_EQUAL_STRING("Desk", t);
-    settings_menu_value_text(SETTINGS_ROW_UNPAIR, 1, t);
-    TEST_ASSERT_EQUAL_STRING("", t);
-    settings_menu_value_text(SETTINGS_ROW_BRIGHTNESS, 65535, t);
-    TEST_ASSERT_EQUAL_STRING("65535 %", t);
-    for (int r = 0; r < SETTINGS_ROW_COUNT; r++) {
-        TEST_ASSERT_TRUE(settings_menu_label((settings_row_t)r)[0] != '\0');
-        TEST_ASSERT_TRUE(settings_menu_key((settings_row_t)r)[0] != '\0');
-        size_t n;
-        const uint16_t *c = settings_menu_choices((settings_row_t)r, &n);
-        TEST_ASSERT_EQUAL(r < SETTINGS_VALUE_ROWS, c != NULL);
-        TEST_ASSERT_EQUAL(r < SETTINGS_VALUE_ROWS, n > 0);
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_QUICK, DEFAULTS, true, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_SETTINGS, settings_menu_item(&m));
+    go_to(&m, SETTINGS_ITEM_DESK);
+    settings_act_t a = click(&m, BTN_APPROVE, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_DESK, a.kind);
+    TEST_ASSERT_EQUAL(0, a.value);
+    go_to(&m, SETTINGS_ITEM_SETTINGS);
+    click(&m, BTN_APPROVE, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_LIST_TOP, m.list);
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_PET, settings_menu_item(&m));
+    /* Back from the top list leaves the menu, not to the quick menu. */
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, click(&m, BTN_REJECT, 0).kind);
+}
+
+static void test_showcase_refused_while_blocked(void)
+{
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_QUICK, DEFAULTS, false, 0);
+    go_to(&m, SETTINGS_ITEM_SHOWCASE);
+    settings_menu_sync(&m, false, true);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_REFUSED, click(&m, BTN_APPROVE, 0).kind);
+    settings_menu_sync(&m, false, false);
+    const settings_act_t a = click(&m, BTN_APPROVE, 0);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXECUTE, a.kind);
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_SHOWCASE, a.item);
+}
+
+static void test_swallowed_press_does_nothing(void)
+{
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_TOP, DEFAULTS, false, 0);
+    const btn_fsm_out_t out = {.id = BTN_REJECT, .kind = BTN_CLICK, .swallowed = true};
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_button(&m, &out, 0).kind);
+}
+
+static void test_open_path(void)
+{
+    settings_menu_t m;
+    TEST_ASSERT_TRUE(settings_menu_open_path(&m, "clock/clock_brightness", DEFAULTS, false, 0));
+    TEST_ASSERT_EQUAL(SETTINGS_LIST_CLOCK, m.list);
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_EDITOR, m.view);
+    TEST_ASSERT_EQUAL(SETTINGS_ITEM_CLOCK_BRIGHTNESS, settings_menu_item(&m));
+    TEST_ASSERT_TRUE(settings_menu_open_path(&m, "network/factory_reset", DEFAULTS, false, 0));
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_CONFIRM, m.view);
+    TEST_ASSERT_TRUE(settings_menu_open_path(&m, "top", DEFAULTS, false, 0));
+    TEST_ASSERT_EQUAL(SETTINGS_VIEW_LIST, m.view);
+    TEST_ASSERT_FALSE(settings_menu_open_path(&m, "nope", DEFAULTS, false, 0));
+    TEST_ASSERT_FALSE(settings_menu_open_path(&m, "clock/brightness", DEFAULTS, false, 0));
+    TEST_ASSERT_EQUAL(SETTINGS_LIST_TOP, m.list);
+}
+
+static void test_value_texts(void)
+{
+    char num[SETTINGS_VALUE_TEXT_SIZE];
+    char unit[SETTINGS_VALUE_TEXT_SIZE];
+    char text[SETTINGS_VALUE_TEXT_SIZE];
+    settings_value_parts(SETTINGS_ITEM_BRIGHTNESS, 75, num, unit);
+    TEST_ASSERT_EQUAL_STRING("75", num);
+    TEST_ASSERT_EQUAL_STRING("%", unit);
+    settings_value_text(SETTINGS_ITEM_BRIGHTNESS, 75, text);
+    TEST_ASSERT_EQUAL_STRING("75 %", text);
+    settings_value_text(SETTINGS_ITEM_DEEP_SLEEP, 20, text);
+    TEST_ASSERT_EQUAL_STRING("20 min", text);
+    settings_value_text(SETTINGS_ITEM_SHOW_CLOCK, SETTINGS_CLOCK_ALWAYS_USB, text);
+    TEST_ASSERT_EQUAL_STRING("Always on USB", text);
+    settings_value_text(SETTINGS_ITEM_H24, 0, text);
+    TEST_ASSERT_EQUAL_STRING("12 h", text);
+    settings_value_text(SETTINGS_ITEM_HAPTICS, 1, text);
+    TEST_ASSERT_EQUAL_STRING("Gentle", text);
+    settings_value_text(SETTINGS_ITEM_DESK, 0, text);
+    TEST_ASSERT_EQUAL_STRING("Off", text);
+}
+
+static void test_choices_include_defaults(void)
+{
+    for (settings_item_t i = SETTINGS_VALUE_FIRST; i < SETTINGS_VALUE_FIRST + SETTINGS_VALUE_COUNT; i++) {
+        TEST_ASSERT_TRUE_MESSAGE(settings_item_allowed(i, DEFAULTS[V(i)]), settings_item_key(i));
     }
-    TEST_ASSERT_EQUAL_STRING("", settings_menu_label(SETTINGS_ROW_COUNT));
-    TEST_ASSERT_FALSE(settings_menu_allowed(SETTINGS_ROW_BRIGHTNESS, 30));
-    TEST_ASSERT_FALSE(settings_menu_allowed(SETTINGS_ROW_ABOUT, 0));
+    TEST_ASSERT_FALSE(settings_item_allowed(SETTINGS_ITEM_PET, 0));
+    TEST_ASSERT_FALSE(settings_item_allowed(SETTINGS_ITEM_CLOCK_BRIGHTNESS, 31));
+}
+
+static void test_unknown_stored_value_starts_cycle(void)
+{
+    uint16_t values[SETTINGS_VALUE_COUNT];
+    memcpy(values, DEFAULTS, sizeof(values));
+    values[V(SETTINGS_ITEM_BRIGHTNESS)] = 33;
+    settings_menu_t m;
+    settings_menu_open(&m, SETTINGS_LIST_DISPLAY, values, false, 0);
+    click(&m, BTN_APPROVE, 0);
+    TEST_ASSERT_EQUAL(25, click(&m, BTN_ACTION, 0).value);
+    TEST_ASSERT_EQUAL(33, click(&m, BTN_REJECT, 0).value);
 }
 
 int main(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_open_and_navigation);
-    RUN_TEST(test_value_cycling);
-    RUN_TEST(test_about_executes_at_once);
-    RUN_TEST(test_confirm_twice);
-    RUN_TEST(test_confirm_timeout_and_cancel);
-    RUN_TEST(test_holding_action_to_exit_never_activates);
-    RUN_TEST(test_texts);
+    RUN_TEST(test_top_list_order_and_wrap);
+    RUN_TEST(test_clock_sub_list);
+    RUN_TEST(test_sub_list_back_lands_on_its_row);
+    RUN_TEST(test_editor_preview_cancel_restores);
+    RUN_TEST(test_editor_save);
+    RUN_TEST(test_editor_timeout_cancels);
+    RUN_TEST(test_list_timeout_exits);
+    RUN_TEST(test_destructive_needs_commit_hold);
+    RUN_TEST(test_confirm_cancel_and_timeout);
+    RUN_TEST(test_wifi_setup_is_a_click);
+    RUN_TEST(test_quick_menu);
+    RUN_TEST(test_showcase_refused_while_blocked);
+    RUN_TEST(test_swallowed_press_does_nothing);
+    RUN_TEST(test_open_path);
+    RUN_TEST(test_value_texts);
+    RUN_TEST(test_choices_include_defaults);
+    RUN_TEST(test_unknown_stored_value_starts_cycle);
     return UNITY_END();
 }

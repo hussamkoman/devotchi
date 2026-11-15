@@ -3,6 +3,7 @@
 #include "text.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 typedef struct {
@@ -147,4 +148,31 @@ size_t pet_notify_text(char *dst, size_t cap, const proto_notify_t *msg)
         used += text_sanitize_ascii(dst + used, cap - used, msg->detail);
     }
     return used;
+}
+
+void pet_model_add_recent(pet_model_t *m, const char *text, uint32_t now_ms, int64_t epoch_ms)
+{
+    if (text == NULL || text[0] == '\0') {
+        return;
+    }
+    const pet_recent_t *newest = pet_model_recent(m, 0);
+    if (newest != NULL && strncmp(newest->text, text, sizeof(newest->text) - 1) == 0) {
+        return;
+    }
+    pet_recent_t *slot = &m->recent[m->recent_next];
+    slot->at_ms = now_ms;
+    slot->epoch_ms = epoch_ms;
+    snprintf(slot->text, sizeof(slot->text), "%s", text);
+    m->recent_next = (uint8_t)((m->recent_next + 1) % PET_RECENT_MAX);
+    if (m->recent_count < PET_RECENT_MAX) {
+        m->recent_count++;
+    }
+}
+
+const pet_recent_t *pet_model_recent(const pet_model_t *m, size_t i)
+{
+    if (i >= m->recent_count) {
+        return NULL;
+    }
+    return &m->recent[(m->recent_next + PET_RECENT_MAX - 1 - i) % PET_RECENT_MAX];
 }

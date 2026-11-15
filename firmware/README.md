@@ -144,7 +144,48 @@ Useful commands: `state`, `screen`, `ui ...`, `screenshot`, `tasks` (stack high-
 marks), `version`, `log <level> [tag]`, `server [<url>]`, `pair <CODE>`,
 `wifi [<ssid> <pass>]`, `wifi-setup`, `set [<key> <value>]`, `power ...`,
 `batt ...`, `fb ...`, `pet ...`, `preview <screen>`, `msg <json>` (handle a
-protocol message locally), `wake`, `reboot`.
+protocol message locally), `wake`, `reboot`, and for the screens below
+`clock set <epoch_s> <offset_min>`, `clock show day|night|off`,
+`showcase on|off|<page>` and `settings open <path>` / `settings close`.
+
+## Home, Settings, clock and showcase
+
+- **Home.** ACTION click opens the recent-activity page (the last five status
+  and notify lines with their time of day, or their age while the clock is not
+  set); ACTION hold opens the quick menu (16b: Settings, Showcase, Desk mode).
+  REJECT pokes, APPROVE pats. The About pages (70, 71) open from Settings.
+- **Settings** is a tree (`core/settings_menu`, host-tested): the top list
+  (Pet, Display, Clock, Haptics and LED, Desk mode, Network, Showcase, About),
+  sub-lists, a value editor (REJECT cancels and restores, ACTION steps with a
+  live preview of the brightness, APPROVE saves) and the destructive confirm
+  for Unpair and Factory reset (APPROVE commit hold, coral). Lists close after
+  60 s without a press, the editor cancels after 30 s, the confirm after 10 s.
+  Console paths: `top`, `quick`, a list (`display`, `clock`, `haptics_led`,
+  `network`) or `<list>/<row>` (`clock/clock_brightness` opens the editor,
+  `network/factory_reset` the confirm). New NVS keys (all optional):
+  `s_clock`, `s_clk_bri`, `s_24h`, `s_night`; `set clock|clock_bri|h24|night`
+  writes them.
+- **Time.** `register_ack` (`serverTime`, `utcOffsetMin`) and `time` set the
+  system clock and the offset; the offset lives in RTC memory, so time
+  survives deep sleep and a power-on shows none until the next registration.
+  The status bar shows the time on screens without a title.
+- **Clock face** (40-42): the face of the `dim` stage while the agent is idle
+  (room mood idle or sleeping, or no agent traffic for 5 minutes) and nothing
+  is pending; Show clock = Always on USB power keeps it lit instead of off on
+  external power. Without time it shows the sleeping pet only. The pet runs at
+  9/16 scale and 10 fps and the CPU lock is released. Any button wakes to home
+  (the press is swallowed); agent traffic turns a lit clock into home. Between
+  22:00 and 07:00 with Night dimming on it uses the night palette.
+- **Going to sleep** (91) shows for the last 10 s before an idle deep sleep;
+  any button cancels it. Low-battery toasts appear at 15 % and 8 %.
+- **Showcase** (80-85) is a local mode of `app_flow` with a violet frame and a
+  `DEMO` / `SAMPLE` tag. Sample cards are the real card screens with the id
+  `sample` and a per-card flag that turns every outcome into a receipt
+  ("Sample: allowed"); nothing is sent. It cannot start while a real request
+  is queued ("A request is waiting"). A real request ends it and is shown
+  under the cream `REAL REQUEST` bar with a 1.5 s arming delay and allow by
+  hold only, also for 10 s after the showcase ends. Telemetry reports
+  `screen: "showcase"`.
 
 ## Host tests
 
@@ -165,8 +206,9 @@ AddressSanitizer and UBSan are enabled when the host compiler has them.
 `tools/mock_server.py` is a protocol v2 server for tests (WebSocket, pairing,
 `/health`), controllable over stdin or `POST /_ctl` (send, send-fragmented,
 send-text, send-binary, send-continuation, flood, close, drop, stall,
-reject-token, confirm, tokens, status, and for pet packs pet-add, pet-cmd,
-pet-mode). It serves `pets/golden/*.pet` at `/api/pets/<id>/pack`
+reject-token, confirm, tokens, status, `time [offset]`, and for pet packs
+pet-add, pet-cmd, pet-mode). Its register_ack carries `utcOffsetMin`
+(`--utc-offset`, default: this machine's offset). It serves `pets/golden/*.pet` at `/api/pets/<id>/pack`
 (`--pets DIR`, `--pet-truncate`). It never logs tokens.
 
 ```bash
@@ -184,7 +226,8 @@ They use ports 18080..18099 only.
 | `e2e_flow.py` | Approval cards, answers, queue, dismiss, toasts, offline banner (`--tls` for wss) |
 | `e2e_pet.py` | Pet moods, status text, telemetry, settings page |
 | `e2e_pets.py` | Pet packs: install, select, replace, remove, every `pets` error, resets during an install, the picker |
-| `e2e_power.py` | Power stages, wake, swallowed wake press, battery decisions (dry run) |
+| `e2e_power.py` | Power stages, wake, swallowed wake press, battery decisions (dry run), clock face (`clock-*` steps) |
+| `e2e_showcase.py` | Showcase: entry, sample cards send nothing, real request and the 10 s guard, refusal while a request waits |
 | `e2e_soak.py` | Malformed frames, flood, stuck link, 30 min soak, stacks, heap, secrets (`--tls`) |
 | `e2e_server.py` | The whole approval path against the real server from `packages/server` |
 
@@ -221,7 +264,7 @@ commit a private key; keep test certificates under `/tmp`.
 ## First setup (for a person)
 
 1. **WiFi.** A board without WiFi credentials starts BLE provisioning
-   (Settings -> WiFi setup or the console `wifi-setup` start it again; the old
+   (Settings -> Network -> Wi-Fi setup or the console `wifi-setup` start it again; the old
    credentials stay until new ones work). The screen shows the device name
    `DEVOTCHI-xxxx` and a proof-of-possession code. In the Espressif
    **ESP BLE Provisioning** app (Android/iOS) choose BLE, pick the device,

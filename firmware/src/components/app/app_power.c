@@ -29,6 +29,9 @@ static const char *TAG = "pwr";
 #define CONSOLE_DRAIN_MS      100
 #define REQUEST_TIMEOUT_MS    1000
 #define WAKE_S_MAX            86400
+/* Ux-flows 5: no agent traffic for this long counts as an idle agent. */
+#define AGENT_QUIET_MS        300000u
+#define LOW_TOAST_MS          4000
 
 #if CONFIG_DEVOTCHI_PWR_TEST_SECONDS
 #define DEEP_UNIT_MS 1000u
@@ -109,6 +112,11 @@ static void build_input(uint32_t now, power_fsm_input_t *in)
         .dry_run = dry_run(),
         .brightness_pct = s_brightness,
         .dim_pct = CONFIG_DEVOTCHI_DIM_BRIGHTNESS_PCT,
+        .clock_mode = (power_clock_mode_t)app_clock_mode(),
+        .agent_idle = app_flow_mood_idle() || now - act.last_agent_ms >= AGENT_QUIET_MS,
+        .night = app_clock_night(),
+        .clock_brightness_pct = app_clock_brightness(),
+        .batt_pct = b.pct > 100 ? 100 : (uint8_t)(b.pct > 0 ? b.pct : 0),
     };
 }
 
@@ -206,12 +214,25 @@ static void apply(uint32_t now, const power_fsm_output_t *out)
     if (!out->hold_cpu_lock) {
         power_pm_set(out->hold_cpu_lock, out->allow_light_sleep);
     }
-    if (first || out->show_lowbatt != prev.show_lowbatt) {
+    if (first || out->show_lowbatt != prev.show_lowbatt || out->show_clock != prev.show_clock ||
+        out->sleep_warning != prev.sleep_warning) {
         app_link_render(now);
     }
-    if (out->low_toast) {
-        app_toast_kind(UI_TOAST_BATTERY, "Battery low");
+    /* Leaving the resting face: the pet wakes up on home (ux-flows 5). */
+    if (!first && prev.show_clock && !out->show_clock && out->stage == POWER_STAGE_ACTIVE) {
+        ui_pet_react(PET_REACT_WAKE);
     }
+}
+
+bool app_power_clock_shown(void)
+{
+    return s_applied && s_out.show_clock;
+}
+
+bool app_power_sleep_warning(uint32_t *ms_left)
+{
+    *ms_left = s_out.sleep_in_ms;
+    return s_applied && s_out.sleep_warning;
 }
 
 void app_power_update(uint32_t now)
@@ -228,6 +249,12 @@ void app_power_update(uint32_t now)
     power_fsm_update(&s_fsm, &in, &out);
     publish(&in, &out);
     apply(now, &out);
+    /* The toast (90) names the charge it was read at, which can be below the threshold it crossed. */
+    if (out.low_toast_pct != 0) {
+        char title[32];
+        snprintf(title, sizeof(title), "Battery low \xC2\xB7 %u %%", in.batt_pct);
+        app_toast_show(UI_TOAST_BATTERY, title, "Plug in USB-C soon", LOW_TOAST_MS);
+    }
 
     if (!out.enter_deep_sleep) {
         s_dry_run_reported = false;

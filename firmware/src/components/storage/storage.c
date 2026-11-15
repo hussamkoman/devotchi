@@ -45,6 +45,10 @@ static const setting_def_t SETTINGS[STORAGE_SETTING_COUNT] = {
     [STORAGE_SETTING_HAPTIC] = {"s_haptic", "haptic", false, 2},
     [STORAGE_SETTING_LED] = {"s_led", "led", false, 1},
     [STORAGE_SETTING_BATT] = {"s_batt", "batt", false, 0},
+    [STORAGE_SETTING_CLOCK] = {"s_clock", "clock", false, 0},
+    [STORAGE_SETTING_CLOCK_BRI] = {"s_clk_bri", "clockBri", false, 30},
+    [STORAGE_SETTING_H24] = {"s_24h", "h24", false, 1},
+    [STORAGE_SETTING_NIGHT] = {"s_night", "night", false, 1},
 };
 
 static SemaphoreHandle_t s_lock;

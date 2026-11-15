@@ -28,6 +28,11 @@ typedef enum {
     STORAGE_SETTING_HAPTIC,
     STORAGE_SETTING_LED,
     STORAGE_SETTING_BATT,
+    /** Architecture 7.3: Show clock, Clock brightness, 12/24 h, Night dimming. */
+    STORAGE_SETTING_CLOCK,
+    STORAGE_SETTING_CLOCK_BRI,
+    STORAGE_SETTING_H24,
+    STORAGE_SETTING_NIGHT,
     STORAGE_SETTING_COUNT,
 } storage_setting_t;
 

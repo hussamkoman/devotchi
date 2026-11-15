@@ -37,6 +37,11 @@ static lv_obj_t *s_nub;
 static lv_obj_t *s_fill;
 static lv_obj_t *s_bolt;
 static lv_obj_t *s_plug;
+static lv_obj_t *s_frame;
+static lv_obj_t *s_tag;
+static lv_obj_t *s_real;
+static ui_mark_t s_mark;
+static ui_mark_t s_app_mark;
 
 /* Guarded by the ui lock. */
 static ui_status_t s_status;
@@ -74,16 +79,61 @@ const char *ui_link_name(ui_link_t l)
     return "";
 }
 
+const char *ui_mark_name(ui_mark_t mark)
+{
+    switch (mark) {
+    case UI_MARK_DEMO:
+        return "demo";
+    case UI_MARK_SAMPLE:
+        return "sample";
+    case UI_MARK_REAL:
+        return "real";
+    case UI_MARK_NONE:
+        break;
+    }
+    return "none";
+}
+
+/* The cream bar of a real request during or just after the showcase (85). */
+static void create_real_bar(void)
+{
+    s_real = ui_rect(s_bar, 0, 0, LV_HOR_RES, UI_STATUS_BAR_H, UI_C_CREAM, 0);
+    ui_icon(s_real, UI_ICON_BELL, UI_C_INK, LEFT_X, 3);
+    lv_obj_t *title = ui_text(s_real, UI_FONT_SMALL, UI_C_INK, LEFT_X + 20, 1, 0, true);
+    lv_obj_add_style(title, &ui_style_caps, 0);
+    lv_obj_set_style_text_color(title, UI_C_INK, 0);
+    lv_label_set_text_static(title, "REAL REQUEST");
+    lv_obj_t *note = ui_text(s_real, UI_FONT_SMALL, UI_C_SUB_ON_CREAM, 0, 1, LV_HOR_RES - LEFT_X, true);
+    lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_text_static(note, "not a sample");
+    lv_obj_add_flag(s_real, LV_OBJ_FLAG_HIDDEN);
+}
+
 void w_status_create(void)
 {
+    /* The showcase frame lies under the bar and the tabs, around the whole screen. */
+    s_frame = ui_box(lv_layer_top(), 0, 0, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_border_width(s_frame, 2, 0);
+    lv_obj_set_style_border_color(s_frame, UI_C_VIOLET, 0);
+    lv_obj_add_flag(s_frame, LV_OBJ_FLAG_HIDDEN);
     s_bar = ui_box(lv_layer_top(), 0, 0, LV_HOR_RES, UI_STATUS_BAR_H);
     /* The screen command reports these values in statusBar; its texts list stays the screen's own. */
     lv_obj_add_flag(s_bar, UI_FLAG_NO_TEXT);
 
-    s_left = ui_box(s_bar, LEFT_X, 1, LV_SIZE_CONTENT, TAG_H);
+    /* A fixed width up to the link dot: a content-sized flex row cut the last glyph of a title after a tag. */
+    s_left = ui_box(s_bar, LEFT_X, 1, DOT_X - LEFT_X - LEFT_GAP, TAG_H);
     lv_obj_set_flex_flow(s_left, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(s_left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(s_left, LEFT_GAP, 0);
+    s_tag = lv_label_create(s_left);
+    lv_obj_add_style(s_tag, &ui_style_caps, 0);
+    lv_obj_set_height(s_tag, TAG_H);
+    lv_obj_set_style_pad_hor(s_tag, 5, 0);
+    lv_obj_set_style_bg_opa(s_tag, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(s_tag, UI_C_VIOLET, 0);
+    lv_obj_set_style_text_color(s_tag, UI_C_INK, 0);
+    lv_obj_set_style_radius(s_tag, UI_R_TAG, 0);
+    lv_obj_add_flag(s_tag, LV_OBJ_FLAG_HIDDEN);
     s_time = ui_text(s_left, UI_FONT_SMALL, UI_C_FOG, 0, 0, 0, true);
     s_title = ui_text(s_left, UI_FONT_SMALL, UI_C_FOG, 0, 0, 0, true);
     lv_obj_add_style(s_title, &ui_style_caps, 0);
@@ -117,6 +167,7 @@ void w_status_create(void)
     s_plug = ui_icon(s_bar, UI_ICON_PLUG, UI_C_FOG, BATT_X + 3, 2);
     lv_label_set_text_static(s_time, "");
     lv_obj_add_flag(s_title, LV_OBJ_FLAG_HIDDEN);
+    create_real_bar();
     s_valid = false;
 }
 
@@ -186,6 +237,9 @@ static void draw(const ui_status_t *s)
     if (!s_valid || s->link != s_drawn.link) {
         draw_link(s->link);
     }
+    if (!s_valid || strcmp(s->time, s_drawn.time) != 0) {
+        ui_label_set(s_time, s->time);
+    }
     s_drawn = *s;
     s_valid = true;
 }
@@ -215,4 +269,44 @@ void ui_status_get(ui_status_t *out)
         *out = s_demo ? s_drawn : s_status;
         ui_unlock();
     }
+}
+
+void w_status_set_mark(ui_mark_t mark)
+{
+    if (mark == s_mark) {
+        return;
+    }
+    s_mark = mark;
+    const bool framed = mark == UI_MARK_DEMO || mark == UI_MARK_SAMPLE;
+    ui_set_hidden(s_frame, !framed);
+    ui_set_hidden(s_tag, !framed);
+    lv_label_set_text_static(s_tag, mark == UI_MARK_SAMPLE ? "SAMPLE" : "DEMO");
+    ui_set_hidden(s_real, mark != UI_MARK_REAL);
+}
+
+ui_mark_t w_status_app_mark(void)
+{
+    return s_app_mark;
+}
+
+void ui_mark_set(ui_mark_t mark)
+{
+    if (!ui_lock()) {
+        return;
+    }
+    s_app_mark = mark;
+    if (!ui_demo_active()) {
+        w_status_set_mark(mark);
+    }
+    ui_unlock();
+}
+
+ui_mark_t ui_mark_get(void)
+{
+    ui_mark_t mark = UI_MARK_NONE;
+    if (ui_lock()) {
+        mark = s_mark;
+        ui_unlock();
+    }
+    return mark;
 }

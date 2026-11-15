@@ -44,6 +44,26 @@ static void test_register_ack(void)
     TEST_ASSERT_EQUAL_UINT16(1, m.u.register_ack.peers.devices);
 }
 
+static void test_time(void)
+{
+    TEST_ASSERT_TRUE(parse("{\"type\":\"register_ack\",\"proto\":2,\"serverTime\":1794668400000,\"utcOffsetMin\":60}"));
+    TEST_ASSERT_TRUE(m.u.register_ack.has_offset);
+    TEST_ASSERT_EQUAL_INT16(60, m.u.register_ack.utc_offset_min);
+    TEST_ASSERT_TRUE(parse("{\"type\":\"register_ack\",\"proto\":2,\"utcOffsetMin\":900}"));
+    TEST_ASSERT_FALSE(m.u.register_ack.has_offset);
+    TEST_ASSERT_TRUE(parse("{\"type\":\"register_ack\",\"proto\":2}"));
+    TEST_ASSERT_FALSE(m.u.register_ack.has_offset);
+
+    TEST_ASSERT_TRUE(parse("{\"type\":\"time\",\"serverTime\":1794668400000,\"utcOffsetMin\":-720}"));
+    TEST_ASSERT_EQUAL(PROTO_TIME, m.type);
+    TEST_ASSERT_EQUAL_INT64(1794668400000LL, m.u.time.server_time_ms);
+    TEST_ASSERT_EQUAL_INT16(-720, m.u.time.utc_offset_min);
+    TEST_ASSERT_FALSE(parse("{\"type\":\"time\",\"serverTime\":1794668400000}"));
+    TEST_ASSERT_FALSE(parse("{\"type\":\"time\",\"serverTime\":1794668400000,\"utcOffsetMin\":841}"));
+    TEST_ASSERT_FALSE(parse("{\"type\":\"time\",\"serverTime\":\"x\",\"utcOffsetMin\":0}"));
+    TEST_ASSERT_FALSE(parse("{\"type\":\"time\",\"serverTime\":0,\"utcOffsetMin\":0}"));
+}
+
 static void test_register_ack_variants(void)
 {
     TEST_ASSERT_TRUE(parse("{\"type\":\"register_ack\",\"proto\":2,\"mode\":\"desk\"}"));
@@ -1060,6 +1080,7 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_register_ack);
     RUN_TEST(test_register_ack_variants);
+    RUN_TEST(test_time);
     RUN_TEST(test_ping_pong);
     RUN_TEST(test_error_without_and_with_id);
     RUN_TEST(test_peers);

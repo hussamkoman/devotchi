@@ -163,6 +163,8 @@ typedef struct {
     uint8_t n_steps;
     uint16_t more;
     /* `extend`: the server lists the cap, and when the last one went out. */
+    /** Allow and plan approve need the commit hold whatever the risk (a real request in or after the showcase). */
+    bool hold_only;
     bool can_extend;
     bool extended;
     uint32_t extend_ms;
@@ -224,6 +226,9 @@ card_out_t card_fsm_tick(card_fsm_t *c, uint32_t now_ms);
  * every page was shown.
  */
 bool card_fsm_may_send(const card_fsm_t *c, card_decision_t d, uint32_t now_ms);
+
+/** Sets hold_only; call after opening. */
+void card_fsm_set_hold_only(card_fsm_t *c, bool on);
 
 /** The decision went out: the card shows its sent state; false brings the buttons back (error from the server). */
 void card_fsm_set_sent(card_fsm_t *c, bool sent);

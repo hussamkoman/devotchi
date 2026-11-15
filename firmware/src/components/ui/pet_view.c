@@ -118,6 +118,8 @@ struct pet_view {
     uint32_t lift_at;
 
     bool visible, powered, frozen, outline, follow, slow;
+    /* Frame period when frames are cheap (the clock face runs slower than home). */
+    uint32_t frame_ms;
 
     uint16_t n_items;
     uint16_t dirty_count;
@@ -1174,12 +1176,12 @@ static void on_frame(lv_timer_t *t)
 {
     pet_view_t *v = lv_timer_get_user_data(t);
     const uint32_t recent = ui_frame_recent_x10();
-    if (!v->slow && recent > SLOW_ABOVE_X10) {
+    if (!v->slow && recent > SLOW_ABOVE_X10 && v->frame_ms < FRAME_SLOW_MS) {
         v->slow = true;
         lv_timer_set_period(t, FRAME_SLOW_MS);
     } else if (v->slow && recent < FAST_BELOW_X10) {
         v->slow = false;
-        lv_timer_set_period(t, FRAME_MS);
+        lv_timer_set_period(t, v->frame_ms);
     }
     render(v, lv_tick_get());
 }
@@ -1262,6 +1264,7 @@ pet_view_t *pet_view_create(lv_obj_t *parent, int32_t cx, int32_t cy, uint8_t sc
             break;
         }
     }
+    v->frame_ms = FRAME_MS;
     v->timer = lv_timer_create(on_frame, FRAME_MS, v);
     lv_timer_pause(v->timer);
     pet_glance_init(&v->glance, rand_cb, NULL, lv_tick_get());
@@ -1333,6 +1336,16 @@ void pet_view_set_powered(pet_view_t *v, bool powered)
         v->powered = powered;
         update_timer(v);
     }
+}
+
+void pet_view_set_frame_ms(pet_view_t *v, uint32_t ms)
+{
+    if (v == NULL || ms == v->frame_ms) {
+        return;
+    }
+    v->frame_ms = ms;
+    v->slow = false;
+    lv_timer_set_period(v->timer, ms);
 }
 
 void pet_view_set_frozen(pet_view_t *v, bool frozen)

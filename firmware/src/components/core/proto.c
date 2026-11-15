@@ -29,6 +29,7 @@ static const char *const TYPE_NAMES[] = {
     [PROTO_PLAN] = "plan",
     [PROTO_DEADLINE] = "deadline",
     [PROTO_PET_CMD] = "pet_cmd",
+    [PROTO_TIME] = "time",
 };
 
 static const char *const PET_OP_NAMES[] = {
@@ -257,6 +258,21 @@ static bool parse_peers(const cJSON *obj, proto_peers_t *out)
     return true;
 }
 
+/* A time without a usable offset or epoch says nothing a device can show. */
+static bool parse_time(const cJSON *obj, proto_time_t *out)
+{
+    double server_time;
+    double offset;
+    if (!get_num(obj, "serverTime", FIELD_REQUIRED, 0, &server_time) ||
+        !get_num(obj, "utcOffsetMin", FIELD_REQUIRED, 0, &offset) || server_time <= 0 || server_time > 9.0e15 ||
+        offset < PROTO_UTC_OFFSET_MIN || offset > PROTO_UTC_OFFSET_MAX) {
+        return false;
+    }
+    out->server_time_ms = (int64_t)server_time;
+    out->utc_offset_min = (int16_t)offset;
+    return true;
+}
+
 static bool parse_register_ack(const cJSON *obj, proto_register_ack_t *out)
 {
     double proto;
@@ -270,6 +286,12 @@ static bool parse_register_ack(const cJSON *obj, proto_register_ack_t *out)
     }
     out->proto = (int32_t)clamp(proto, INT32_MIN, INT32_MAX);
     out->server_time_ms = (int64_t)clamp(server_time, 0, 9.0e15);
+    double offset;
+    if (get_num(obj, "utcOffsetMin", FIELD_REQUIRED, 0, &offset) && offset >= PROTO_UTC_OFFSET_MIN &&
+        offset <= PROTO_UTC_OFFSET_MAX) {
+        out->has_offset = true;
+        out->utc_offset_min = (int16_t)offset;
+    }
     out->mode = PROTO_MODE_ASK;
     parse_mode_name(mode, &out->mode);
 
@@ -648,6 +670,8 @@ static bool parse_body(const cJSON *root, proto_msg_t *out)
         return parse_deadline(root, &out->u.deadline);
     case PROTO_PET_CMD:
         return parse_pet_cmd(root, &out->u.pet_cmd);
+    case PROTO_TIME:
+        return parse_time(root, &out->u.time);
     }
     return false;
 }

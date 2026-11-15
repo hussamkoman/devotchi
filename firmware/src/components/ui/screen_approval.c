@@ -401,6 +401,9 @@ void screen_approval_demo(int demo)
     switch ((ui_approval_demo_t)demo) {
     case APPROVAL_DEMO_OFF:
         return;
+    case APPROVAL_DEMO_REAL:
+        a.allow = CARD_ALLOW_HOLD;
+        break;
     case APPROVAL_DEMO_LOW:
     case APPROVAL_DEMO_HIGH:
     case APPROVAL_DEMO_CLICKED:
@@ -511,6 +514,7 @@ void screen_approval_demo(int demo)
     case APPROVAL_DEMO_MENU_SESSION:
     case APPROVAL_DEMO_MENU_HIGH:
     case APPROVAL_DEMO_MENU_LOCKED:
+    case APPROVAL_DEMO_REAL:
         break;
     }
 }

@@ -1,14 +1,18 @@
 #pragma once
 
 #include "app.h"
+#include "clock.h"
 #include "net_worker.h"
 #include "power_fsm.h"
+#include "settings_menu.h"
 #include "storage.h"
 #include "ui.h"
 
 #include "esp_err.h"
 
 #include <stdbool.h>
+
+typedef struct app_request app_request_t;
 
 esp_err_t app_cmds_register(void);
 
@@ -198,6 +202,18 @@ btn_mode_t app_flow_btn_mode(btn_id_t id, uint32_t now);
 /** App task: a request card or its menu is on screen (power_fsm holds the active stage). */
 bool app_flow_card_visible(void);
 
+/** The resting face is on screen: a press there only wakes. */
+bool app_flow_clock_visible(void);
+
+/** The room mood is idle or sleeping (power_fsm agent_idle). */
+bool app_flow_mood_idle(void);
+
+/* Showcase (protocol 14.7, ux-flows 8). */
+bool app_flow_showcase_active(void);
+/** False, and nothing changes, while a real request is queued. */
+bool app_flow_showcase_enter(uint32_t now);
+void app_flow_showcase_on_request(app_request_t *req, uint32_t now);
+
 /** App task: switches the pet screen to its About page. */
 void app_flow_show_about(uint32_t now);
 
@@ -209,6 +225,8 @@ bool app_flow_takes_over(uint32_t now);
 
 /** App task: a toast, also reported as `@@EVT {"evt":"toast",...}`. */
 void app_toast(const char *text);
+/** A toast with a detail line for ms milliseconds; the console sees its title. */
+void app_toast_show(ui_toast_kind_t kind, const char *text, const char *detail, uint32_t ms);
 /** app_toast() with the icon and colour of kind. */
 void app_toast_kind(ui_toast_kind_t kind, const char *text);
 
@@ -238,17 +256,29 @@ uint8_t app_flow_pending_count(void);
 
 bool app_settings_active(void);
 
-/** App task: opens Settings on its first row with the stored values. */
-void app_settings_open(uint32_t now);
+/** App task: opens list (the quick menu from home, the top list from start-up screens) with the stored values. */
+void app_settings_open(uint32_t now, settings_list_t list);
+
+/** App task: a request covers Settings; when it is answered the top list comes back (ux-flows 1). */
+void app_settings_to_top(uint32_t now);
+
+/** App task: closes Settings and the picker (a request or the showcase takes the screen). */
+void app_settings_close(void);
 
 /** App task: a button while Settings is on screen. */
 void app_settings_on_button(const btn_fsm_out_t *out, uint32_t now);
 
-/** App task: drops a confirmation prompt whose time ran out. */
+/** App task: the mode a press gets on the Settings screen (the destructive confirm wants the commit hold). */
+btn_mode_t app_settings_btn_mode(btn_id_t id);
+
+/** App task: the view timeouts (ux-flows 6). */
 void app_settings_run_deadlines(uint32_t now);
 
-/** The confirmation timeout, 0 when none runs. */
+/** The next view timeout, 0 when Settings is closed. */
 uint32_t app_settings_deadline(void);
+
+/** App task: APP_REQUEST_SETTINGS. */
+void app_settings_on_request(app_request_t *req, uint32_t now);
 
 /** App task: pushes the rows to the screen (the mode row follows the room mode); preview shows them closed too. */
 void app_settings_render(bool preview);
@@ -260,7 +290,9 @@ void app_factory_reset(void);
 typedef struct {
     bool active;
     uint8_t cursor;
-    bool confirming;
+    settings_list_t list;
+    settings_item_t item;
+    settings_view_t view;
     /** The pet picker is open on page (0 = the first built-in; the last page is "More pets"). */
     bool picker;
     uint8_t page;
@@ -305,15 +337,21 @@ typedef enum {
     APP_REQUEST_POWER,
     /** text: `use` or `rm`; arg: the pet id. A person's choice, like the picker's Use. */
     APP_REQUEST_PET,
+    /** text: `set` (arg: "<epoch_s> <offset_min>") or `show` (arg: day, night or off). */
+    APP_REQUEST_CLOCK,
+    /** text: `on`, `off` or a page name. */
+    APP_REQUEST_SHOWCASE,
+    /** text: a settings path (settings_menu_open_path) or `close`. */
+    APP_REQUEST_SETTINGS,
 } app_request_kind_t;
 
-typedef struct {
+struct app_request {
     app_request_kind_t kind;
     char text[APP_REQUEST_TEXT_SIZE];
     char arg[APP_REQUEST_ARG_SIZE];
     bool ok;
     char message[APP_REQUEST_MESSAGE_SIZE];
-} app_request_t;
+};
 
 typedef enum {
     APP_REQUEST_DONE,
@@ -337,6 +375,41 @@ void app_request_complete(bool ok, const char *message);
 
 /** App task: APP_REQUEST_POWER. text: `stage`, `dry-run` or `sleep`; arg: its value. */
 void app_power_on_request(app_request_t *req);
+
+/** The resting face replaces home (power_fsm show_clock). */
+bool app_power_clock_shown(void);
+
+/** The going-to-sleep warning (91) is up; ms_left until the deep sleep. */
+bool app_power_sleep_warning(uint32_t *ms_left);
+
+/* ---- app_clock.c: time and the clock settings (protocol 14.9, architecture 7.6) ---- */
+
+/** Console `clock show`: the clock face forced on in its day or night look. */
+typedef enum {
+    APP_CLOCK_SHOW_AUTO,
+    APP_CLOCK_SHOW_DAY,
+    APP_CLOCK_SHOW_NIGHT,
+} app_clock_show_t;
+
+void app_clock_init(void);
+void app_clock_reload_settings(void);
+/** register_ack or `time`: sets the system clock and, with has_offset, the offset kept through deep sleep. */
+void app_clock_on_time(int64_t epoch_ms, bool has_offset, int16_t offset_min);
+/** The time came from a server (after 2026-01-01, with an offset). */
+bool app_clock_valid(void);
+/** Epoch milliseconds, 0 while the time is not valid. */
+int64_t app_clock_epoch_ms(void);
+int16_t app_clock_offset_min(void);
+/** Local time and date of epoch_ms in the 12/24 h setting; false and "" while there is no offset or epoch_ms is 0. */
+bool app_clock_format(int64_t epoch_ms, char time[CLOCK_TIME_SIZE], char date[CLOCK_DATE_SIZE]);
+/** 22:00 to 07:00 local with Night dimming on, or the `clock show` override. */
+bool app_clock_night(void);
+/** Show clock (SETTINGS_CLOCK_*) and Clock brightness. */
+uint8_t app_clock_mode(void);
+uint8_t app_clock_brightness(void);
+void app_clock_set_show(app_clock_show_t show);
+app_clock_show_t app_clock_show(void);
+void app_clock_on_request(app_request_t *req);
 
 /* ---- pets (app_pets.c): pet_cmd, the `pets` message, the selected pet ---- */
 

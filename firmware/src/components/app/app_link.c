@@ -26,7 +26,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
 
 static const char *TAG = "link";
 
@@ -732,14 +731,7 @@ static void on_register_ack(const proto_register_ack_t *ack, uint32_t now)
         strlcpy(s_info.name, ack->name, sizeof(s_info.name));
         storage_set_dev_name(ack->name);
     }
-    if (ack->server_time_ms > 0) {
-        /* Display only: the device has no trusted clock (protocol 3.3). */
-        const struct timeval tv = {
-            .tv_sec = (time_t)(ack->server_time_ms / 1000),
-            .tv_usec = (suseconds_t)(ack->server_time_ms % 1000) * 1000,
-        };
-        settimeofday(&tv, NULL);
-    }
+    app_clock_on_time(ack->server_time_ms, ack->has_offset, ack->utc_offset_min);
     set_state(APP_STATE_ONLINE);
     ESP_LOGI(TAG, "registered");
     app_telemetry_on_registered(now);
@@ -790,6 +782,9 @@ static void handle_message(const char *json, size_t len, uint32_t now)
         break;
     case PROTO_PET_CMD:
         app_pets_on_cmd(&s_msg.u.pet_cmd, now);
+        break;
+    case PROTO_TIME:
+        app_clock_on_time(s_msg.u.time.server_time_ms, true, s_msg.u.time.utc_offset_min);
         break;
     case PROTO_UNKNOWN:
     case PROTO_PONG:
@@ -1129,6 +1124,17 @@ static void handle_request(app_request_t *req, uint32_t now)
     case APP_REQUEST_POWER:
         app_power_on_request(req);
         return;
+    case APP_REQUEST_CLOCK:
+        app_clock_on_request(req);
+        return;
+    case APP_REQUEST_SHOWCASE:
+        app_flow_showcase_on_request(req, now);
+        s_screen_valid = false;
+        return;
+    case APP_REQUEST_SETTINGS:
+        app_settings_on_request(req, now);
+        s_screen_valid = false;
+        return;
     case APP_REQUEST_PET: {
         const pet_result_t r =
             strcmp(req->text, "use") == 0 ? app_pets_select(req->arg, now) : app_pets_remove(req->arg, now);
@@ -1398,6 +1404,8 @@ static void render_status_bar(void)
     } else if (s_info.ws_phase == APP_WS_PHASE_RUNNING) {
         st.link = UI_LINK_CONNECTING;
     }
+    char date[CLOCK_DATE_SIZE];
+    app_clock_format(app_clock_epoch_ms(), st.time, date);
     ui_status_set(&st);
 }
 
@@ -1422,6 +1430,15 @@ static void render(uint32_t now)
         return;
     }
     render_status_bar();
+    uint32_t sleep_ms;
+    /* A request, a question or identify outranks the warning (ux-flows 1), and none can be queued during it. */
+    if (app_power_sleep_warning(&sleep_ms) && !app_flow_takes_over(now)) {
+        s_flow_shown = false;
+        app_flow_hide_banner();
+        ui_sleep_set((uint8_t)((sleep_ms + 999) / 1000), (uint16_t)(sleep_ms * 1000 / POWER_FSM_SLEEP_WARN_MS));
+        show(UI_SCREEN_SLEEP);
+        return;
+    }
     s_flow_shown = false;
     switch (s_preview) {
     case PREVIEW_PAIRING:
@@ -1447,6 +1464,11 @@ static void render(uint32_t now)
         return;
     case PREVIEW_OFF:
         break;
+    }
+    /* The showcase is local: it shows whatever the link is doing. */
+    if (app_flow_showcase_active() && !app_settings_active()) {
+        render_flow(now, APP_FLOW_PREVIEW_OFF);
+        return;
     }
     if (app_settings_active()) {
         if (app_flow_takes_over(now)) {
@@ -1505,7 +1527,7 @@ btn_mode_t app_link_btn_mode(btn_id_t id, uint32_t now)
         return BTN_MODE_CLICK;
     }
     if (app_settings_active() && s_screen_valid && s_screen == UI_SCREEN_SETTINGS) {
-        return id == BTN_ACTION ? BTN_MODE_NAV_HOLD : BTN_MODE_CLICK;
+        return app_settings_btn_mode(id);
     }
     if (s_flow_shown) {
         return app_flow_btn_mode(id, now);
@@ -1533,10 +1555,10 @@ void app_link_on_button(const btn_fsm_out_t *out)
         app_settings_on_button(out, now);
     } else if (s_flow_shown) {
         if (!app_flow_on_button(out, now) && settings_long && s_screen == UI_SCREEN_PET) {
-            app_settings_open(now);
+            app_settings_open(now, SETTINGS_LIST_QUICK);
         }
     } else if (settings_long && startup_screen()) {
-        app_settings_open(now);
+        app_settings_open(now, SETTINGS_LIST_TOP);
     } else if (out->kind != BTN_CLICK) {
         return;
     } else if (s_state == APP_STATE_PROVISIONING && out->id == BTN_ACTION) {

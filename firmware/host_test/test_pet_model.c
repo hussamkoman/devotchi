@@ -156,6 +156,26 @@ static void test_notify_text(void)
     TEST_ASSERT_EQUAL_STRING("tests f", small);
 }
 
+static void test_recent_ring(void)
+{
+    pet_model_t m;
+    pet_model_init(&m);
+    TEST_ASSERT_NULL(pet_model_recent(&m, 0));
+    pet_model_add_recent(&m, "", 1, 0);
+    TEST_ASSERT_NULL(pet_model_recent(&m, 0));
+    char text[16];
+    for (int i = 0; i < 7; i++) {
+        snprintf(text, sizeof(text), "line %d", i);
+        pet_model_add_recent(&m, text, (uint32_t)i * 10, i);
+    }
+    pet_model_add_recent(&m, "line 6", 99, 99);
+    TEST_ASSERT_EQUAL(PET_RECENT_MAX, m.recent_count);
+    TEST_ASSERT_EQUAL_STRING("line 6", pet_model_recent(&m, 0)->text);
+    TEST_ASSERT_EQUAL_UINT32(60, pet_model_recent(&m, 0)->at_ms);
+    TEST_ASSERT_EQUAL_STRING("line 2", pet_model_recent(&m, 4)->text);
+    TEST_ASSERT_NULL(pet_model_recent(&m, 5));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -165,5 +185,6 @@ int main(void)
     RUN_TEST(test_text_is_sanitised);
     RUN_TEST(test_event_class_table);
     RUN_TEST(test_notify_text);
+    RUN_TEST(test_recent_ring);
     return UNITY_END();
 }

@@ -391,10 +391,11 @@ bool app_btn_arm_end(uint32_t *out)
     return btn_fsm_swallowing(&s_btn, app_now_ms()) && btn_fsm_armed_until(&s_btn, out);
 }
 
-/* A press while the screen is dim or off only wakes it (architecture 4.8). */
+/* A press while the screen is dim, off or resting on the clock only wakes it (architecture 4.8). */
 static void wake_press(uint32_t now)
 {
-    if (app_power_stage() != POWER_STAGE_ACTIVE) {
+    /* The clock face is a resting screen even in the active stage (Screen timeout = Never). */
+    if (app_power_stage() != POWER_STAGE_ACTIVE || app_flow_clock_visible()) {
         btn_fsm_arm(&s_btn, now, BTN_FSM_WAKE_GUARD_MS);
     }
     app_user_activity(now);
@@ -506,6 +507,12 @@ void app_apply_setting(storage_setting_t id)
         break;
     case STORAGE_SETTING_BATT:
         power_reload_settings();
+        break;
+    case STORAGE_SETTING_CLOCK:
+    case STORAGE_SETTING_CLOCK_BRI:
+    case STORAGE_SETTING_H24:
+    case STORAGE_SETTING_NIGHT:
+        app_clock_reload_settings();
         break;
     case STORAGE_SETTING_COUNT:
         break;
@@ -654,6 +661,7 @@ esp_err_t app_init(void)
     ESP_RETURN_ON_ERROR(feedback_init(on_feedback_step), TAG, "feedback");
     ESP_RETURN_ON_ERROR(power_init(on_power), TAG, "power");
     app_pets_init();
+    app_clock_init();
     ESP_RETURN_ON_ERROR(app_flow_init(), TAG, "flow");
     ESP_RETURN_ON_ERROR(app_link_init(), TAG, "link");
     ESP_RETURN_ON_ERROR(app_power_init(), TAG, "power stages");

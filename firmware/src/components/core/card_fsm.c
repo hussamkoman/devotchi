@@ -143,7 +143,10 @@ static card_allow_t plan_approve(const card_fsm_t *c)
     if (c->more > 0 || c->pages > CARD_PLAN_MAX_PAGES) {
         return CARD_ALLOW_NONE;
     }
-    return c->seen >= c->pages ? CARD_ALLOW_CLICK : CARD_ALLOW_INACTIVE;
+    if (c->seen < c->pages) {
+        return CARD_ALLOW_INACTIVE;
+    }
+    return c->hold_only ? CARD_ALLOW_HOLD : CARD_ALLOW_CLICK;
 }
 
 /* "Approve, accept all edits" needs the whole plan on screen: only where Approve is offered and the frame is not cut. */
@@ -153,7 +156,7 @@ static card_session_t plan_edits(const card_fsm_t *c)
     if (approve == CARD_ALLOW_NONE || c->cut) {
         return CARD_SESSION_ABSENT;
     }
-    return approve == CARD_ALLOW_CLICK ? CARD_SESSION_READY : CARD_SESSION_LOCKED;
+    return approve == CARD_ALLOW_INACTIVE ? CARD_SESSION_LOCKED : CARD_SESSION_READY;
 }
 
 card_allow_t card_fsm_allow(const card_fsm_t *c)
@@ -170,7 +173,7 @@ card_allow_t card_fsm_allow(const card_fsm_t *c)
     if (!card_fsm_reading_done(c)) {
         return CARD_ALLOW_INACTIVE;
     }
-    return c->risk == PROTO_RISK_HIGH ? CARD_ALLOW_HOLD : CARD_ALLOW_CLICK;
+    return c->risk == PROTO_RISK_HIGH || c->hold_only ? CARD_ALLOW_HOLD : CARD_ALLOW_CLICK;
 }
 
 card_session_t card_fsm_session(const card_fsm_t *c)
@@ -246,7 +249,16 @@ static btn_mode_t plan_mode(const card_fsm_t *c, btn_id_t btn)
     case BTN_ACTION:
         return BTN_MODE_NAV_HOLD;
     case BTN_APPROVE:
-        return plan_approve(c) == CARD_ALLOW_NONE ? BTN_MODE_NONE : BTN_MODE_CLICK;
+        switch (plan_approve(c)) {
+        case CARD_ALLOW_NONE:
+            return BTN_MODE_NONE;
+        case CARD_ALLOW_HOLD:
+            return BTN_MODE_COMMIT_HOLD;
+        case CARD_ALLOW_INACTIVE:
+        case CARD_ALLOW_CLICK:
+            break;
+        }
+        return BTN_MODE_CLICK;
     case BTN_COUNT:
         break;
     }
@@ -610,6 +622,9 @@ static card_out_t on_plan(card_fsm_t *c, const btn_fsm_out_t *out, uint32_t now_
     if (out->id == BTN_ACTION && out->kind == BTN_HOLD) {
         return open_menu(c);
     }
+    if (out->id == BTN_APPROVE && out->kind != BTN_CLICK) {
+        return hold(c, out, plan_approve(c) == CARD_ALLOW_HOLD, CARD_DECISION_APPROVE, now_ms);
+    }
     if (out->kind != BTN_CLICK) {
         return NONE;
     }
@@ -631,6 +646,8 @@ static card_out_t on_plan(card_fsm_t *c, const btn_fsm_out_t *out, uint32_t now_
             return decide(c, CARD_DECISION_APPROVE, now_ms);
         case CARD_ALLOW_INACTIVE:
             return out_of(CARD_OUT_SHAKE, BTN_APPROVE);
+        case CARD_ALLOW_HOLD:
+            return out_of(CARD_OUT_NUDGE, BTN_APPROVE);
         default:
             return NONE;
         }
@@ -716,7 +733,7 @@ static bool plan_may_send(const card_fsm_t *c, card_decision_t d)
     case CARD_DECISION_DENY_STOP:
         return true;
     case CARD_DECISION_APPROVE:
-        return plan_approve(c) == CARD_ALLOW_CLICK;
+        return plan_approve(c) == CARD_ALLOW_CLICK || plan_approve(c) == CARD_ALLOW_HOLD;
     case CARD_DECISION_APPROVE_EDITS:
         return !c->cut && plan_edits(c) == CARD_SESSION_READY;
     default:
@@ -752,6 +769,11 @@ bool card_fsm_may_send(const card_fsm_t *c, card_decision_t d, uint32_t now_ms)
         break;
     }
     return false;
+}
+
+void card_fsm_set_hold_only(card_fsm_t *c, bool on)
+{
+    c->hold_only = on;
 }
 
 void card_fsm_set_sent(card_fsm_t *c, bool sent)

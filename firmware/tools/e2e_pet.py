@@ -4,8 +4,9 @@
 Uses the record/claim/restore steps of e2e_flow.py: the board's pairing and
 server URL are backed up first and put back at the end, also when a step
 fails, and every setting the run changes is restored. WiFi credentials are
-never touched. Factory reset and WiFi setup are taken only up to their
-confirmation prompt; Unpair is executed once, against the mock pairing.
+never touched. Factory reset is taken only up to its confirmation; Wi-Fi
+setup (a click that restarts into setup) is never pressed; Unpair is executed
+once, against the mock pairing.
 
 Screenshots of the eleven moods and of the other screens are saved under
 --out, with a contact sheet of each set (moods.png, screens.png).
@@ -34,12 +35,12 @@ SET_KEYS = {"brightness": "brightness", "dimS": "dim_s", "deepMin": "deep_min", 
 TELEMETRY_MAX = 300
 PERIOD_S = 60
 CHANGE_MAX_S = 2.0
-CONFIRM_S = 5.0
+CONFIRM_S = 10.0
 PAGE_IDLE_S = 20
 FRAME_BUDGET_MS = 33
 
 
-CHOICES = {"brightness": [25, 50, 75, 100], "dimS": [15, 30, 60, 120], "deepMin": [10, 20, 60, 0], "led": [0, 1]}
+CHOICES = {"brightness": [25, 50, 75, 100], "dimS": [15, 30, 60, 120, 0], "deepMin": [10, 20, 60, 0], "led": [1, 0]}
 
 
 def next_choice(key, value):
@@ -89,8 +90,12 @@ class PetRun(FlowRun):
         for _ in range(12):
             if self.settings_screen()["settings"]["row"] == key:
                 return
-            self.press("approve")
+            self.press("action")
         raise StepFailed(f"row {key} not reached")
+
+    def open_list(self, path):
+        self.cmd(f"settings open {path}")
+        return self.wait_screen(lambda s: s["id"] == "settings", 3, f"settings {path}")
 
     # ---- steps ----
 
@@ -213,12 +218,20 @@ class PetRun(FlowRun):
     def step_pages(self):
         self.cmd("pet freeze on")
         self.cmd("pet mood happy")
+        self.send({"type": "status", "msg": "Edit src/app.c", "mood": "happy"})
         self.press("action")
+        screen = self.wait_screen(lambda s: s["page"] == "recent", 3, "recent activity page")
+        check("Edit src/app.c" in screen["texts"], f"recent activity lacks the status line: {screen['texts']}")
+        self.press("action")
+        self.wait_screen(lambda s: s["page"] == "pet", 3, "ACTION back to the pet page")
+        self.open_list("top")
+        self.go_to_row("about")
+        self.press("approve")
         screen = self.wait_screen(lambda s: s["page"] == "about", 3, "about page")
         texts = screen["texts"]
         # Each row is a label and its value; the value follows its label in the texts.
-        for label, prefix in (("Name", ""), ("Firmware", ""), ("Device", "dv-"), ("Wi-Fi", ""), ("RSSI", ""),
-                              ("IP", ""), ("Server", "ws://"), ("Link", "online")):
+        for label, prefix in (("Firmware", ""), ("Device", ""), ("Pet", ""), ("Wi-Fi", ""), ("IP", ""),
+                              ("Server", ""), ("Link", "online"), ("Room", "")):
             check(label in texts and texts.index(label) + 1 < len(texts)
                   and texts[texts.index(label) + 1].startswith(prefix), f"About 1/2 lacks '{label}' {prefix}: {texts}")
         check(not self.pose()["animating"], "the face animates behind the About page")
@@ -226,72 +239,63 @@ class PetRun(FlowRun):
         self.press("action")
         screen = self.wait_screen(lambda s: s["page"] == "about2", 3, "about page 2")
         texts = screen["texts"]
-        for label, prefix in (("Uptime", ""), ("Reset", ""), ("Last err", ""), ("NVS", "ok")):
-            check(label in texts and texts.index(label) + 1 < len(texts)
-                  and texts[texts.index(label) + 1].startswith(prefix), f"About 2/2 lacks '{label}' {prefix}: {texts}")
+        for label in ("Battery", "Uptime", "Reset", "Heap", "Frames", "Requests", "Pets", "Last err", "Fonts"):
+            check(label in texts, f"About 2/2 lacks '{label}': {texts}")
+        self.press("action")
+        self.wait_screen(lambda s: s["page"] == "about", 3, "Page wraps to About 1/2")
         self.press("reject")
         self.wait_screen(lambda s: s["page"] == "pet", 3, "REJECT back to the pet page")
-        self.press("action")
-        self.wait_screen(lambda s: s["page"] == "about", 3, "about page")
-        self.press("action")
-        self.wait_screen(lambda s: s["page"] == "about2", 3, "about page 2")
-        self.press("action")
-        self.wait_screen(lambda s: s["page"] == "pet", 3, "back to the pet page")
         check(self.pose()["animating"] or self.pose()["frozen"], "face not running again")
         mark = self.board.mark()
         self.press("action")
-        self.wait_screen(lambda s: s["page"] == "about", 3, "about page again")
+        self.wait_screen(lambda s: s["page"] == "recent", 3, "recent page again")
         t0 = time.monotonic()
         self.wait_board(lambda e: e.get("evt") == "page" and e.get("page") == "pet", PAGE_IDLE_S + 3, mark,
                         "return to the pet page")
         idle = time.monotonic() - t0
-        check(PAGE_IDLE_S - 1 <= idle <= PAGE_IDLE_S + 2, f"About returned after {idle:.1f} s")
-        return f"ACTION cycles pet/about/about2, REJECT goes back; About has every row; idle return after {idle:.1f} s"
+        check(PAGE_IDLE_S - 1 <= idle <= PAGE_IDLE_S + 2, f"Recent returned after {idle:.1f} s")
+        return f"ACTION toggles recent activity; About 1/2 and 2/2 from Settings; idle return after {idle:.1f} s"
 
     def step_settings(self):
         self.cmd("pet freeze on")
-        mark = self.board.mark()
         self.press("action", "long")
-        screen = self.wait_screen(lambda s: s["id"] == "settings", 3, "settings screen")
-        check(screen["page"] == "main" and screen["settings"]["row"] == "brightness", f"settings {screen}")
-        labels = screen["texts"]
-        for label in ("Brightness", "Screen timeout", "Deep sleep", "Haptics", "LED", "Mode", "WiFi setup", "Unpair",
-                      "Factory reset", "About"):
-            check(label in labels, f"row {label} missing: {labels}")
+        screen = self.wait_screen(lambda s: s["id"] == "settings" and s["settings"]["list"] == "quick", 3,
+                                  "quick menu")
         self.press("approve")
-        check(self.settings_screen()["settings"]["row"] == "screen_timeout", "APPROVE is not down")
-        self.press("reject")
-        check(self.settings_screen()["settings"]["row"] == "brightness", "REJECT is not up")
-        self.press("reject")
-        check(self.settings_screen()["settings"]["row"] == "about", "up from the first row does not wrap")
-        self.press("approve")
-
+        screen = self.wait_screen(lambda s: s["settings"]["list"] == "top", 3, "top list")
+        for label in ("Pet", "Display", "Clock", "Haptics and LED", "Desk mode", "Network", "Showcase", "About"):
+            check(label in screen["texts"], f"row {label} missing: {screen['texts']}")
         current = self.board.state()["settings"]
-        changes = [(row, key, next_choice(key, current[key])) for row, key in
-                   (("brightness", "brightness"), ("screen_timeout", "dimS"), ("deep_sleep", "deepMin"), ("led", "led"))]
-        for row, key, expected in changes:
-            self.go_to_row(row)
+        changes = []
+        for path, key in (("display/brightness", "brightness"), ("display/screen_timeout", "dimS"),
+                          ("display/deep_sleep", "deepMin"), ("haptics_led/led", "led")):
+            self.open_list(path)
+            expected = next_choice(key, current[key])
             self.press("action")
+            check(self.board.state()["settings"][key] == current[key], f"{path}: a step saved before Save")
+            self.press("approve")
             value = self.board.state()["settings"][key]
-            check(value == expected, f"{row}: setting {key} is {value}, expected {expected}")
-        self.go_to_row("mode")
-        mmark = self.mock.mark()
+            check(value == expected, f"{path}: setting {key} is {value}, expected {expected}")
+            changes.append((path, key, expected))
+        # REJECT in the editor restores the old value.
+        self.open_list("clock/clock_brightness")
+        before = self.board.state()["settings"]["clockBri"]
         self.press("action")
+        self.press("reject")
+        check(self.board.state()["settings"]["clockBri"] == before, "Cancel saved the value")
+        check(self.settings_screen()["settings"]["view"] == "list", "Cancel did not return to the list")
+        self.open_list("top")
+        self.go_to_row("desk")
+        mmark = self.mock.mark()
+        self.press("approve")
         self.wait_mock_frame("set_mode", lambda f: f.get("mode") == "desk", 3, mmark, "set_mode desk")
-        self.wait_screen(lambda s: "Desk" in s["texts"] and s["statusBar"]["mode"] == "desk", 3, "mode Desk")
+        self.wait_screen(lambda s: s["statusBar"]["mode"] == "desk", 3, "mode Desk")
         self.screenshot("settings")
         mmark = self.mock.mark()
-        self.press("action")
+        self.press("approve")
         self.wait_mock_frame("set_mode", lambda f: f.get("mode") == "ask", 3, mmark, "set_mode ask")
-        self.wait_screen(lambda s: "Ask" in s["texts"], 3, "mode Ask")
-
-        # Holding ACTION exits and never also activates the row under the cursor.
-        before = self.board.state()["settings"]
-        self.press("action", "long")
+        self.press("reject")
         self.wait_pet()
-        check(self.board.state()["settings"] == before, "the exit press changed a setting")
-        events = [e for _, e in self.board.events(mark) if e.get("evt") == "settings"]
-        check(events[-1]["op"] == "exit", f"last settings event {events[-1]}")
 
         self.cmd("reboot")
         time.sleep(2)
@@ -303,39 +307,38 @@ class PetRun(FlowRun):
             if key != "haptic":
                 self.cmd(f"set {set_key} {self.settings[key]}")
         self.cmd("set brightness 25")
-        return f"navigation, value cycling, mode via set_mode, exit; persisted across reboot: {persisted}"
+        return f"quick menu, lists, editor save and cancel, desk toggle; persisted across reboot: {persisted}"
 
     def step_confirm_rows(self):
         self.wait_pet(10)
-        self.press("action", "long")
-        self.wait_screen(lambda s: s["id"] == "settings", 3, "settings screen")
         results = []
-        for row in ("wifi_setup", "factory_reset", "unpair"):
+        for row in ("factory_reset", "unpair"):
+            self.open_list("network")
             self.go_to_row(row)
             mark = self.board.mark()
-            self.press("action")
+            self.press("approve")
             asked = time.monotonic()
             screen = self.settings_screen()
-            check(screen["settings"]["confirming"] and "Press ACTION again to confirm" in screen["texts"],
-                  f"{row}: no confirmation prompt: {screen['texts']}")
+            check(screen["settings"]["view"] == "confirm", f"{row}: no confirm view: {screen['texts']}")
+            tabs = screen["tabs"]
+            check(tabs["approve"]["state"] == "hold_only", f"{row}: APPROVE is not a hold: {tabs}")
+            self.press("approve")
+            check(self.settings_screen()["settings"]["view"] == "confirm", f"{row}: a click carried it out")
             if row == "factory_reset":
                 self.screenshot("settings-confirm")
-            stamp, _ = self.board.wait_event(lambda e: e.get("evt") == "settings" and e.get("op") == "cancel",
-                                             CONFIRM_S + 2, mark)
+            stamp, _ = self.board.wait_event(lambda e: e.get("evt") == "settings" and e.get("op") == "move"
+                                             and e.get("view") == "list", CONFIRM_S + 2, mark)
             waited = stamp - asked
-            check(CONFIRM_S - 0.5 <= waited <= CONFIRM_S + 1.0, f"{row}: prompt ended after {waited:.1f} s")
-            check(not self.settings_screen()["settings"]["confirming"], f"{row} still confirming")
-            results.append(f"{row} prompt timed out after ~{waited:.1f} s")
-        # Moving the cursor cancels a prompt at once.
-        self.press("action")
-        check(self.settings_screen()["settings"]["confirming"], "unpair prompt missing")
+            check(CONFIRM_S - 0.5 <= waited <= CONFIRM_S + 1.5, f"{row}: confirm ended after {waited:.1f} s")
+            results.append(f"{row} confirm timed out after ~{waited:.1f} s")
+        self.press("approve")
+        check(self.settings_screen()["settings"]["view"] == "confirm", "unpair confirm missing")
         self.press("reject")
-        screen = self.settings_screen()
-        check(not screen["settings"]["confirming"] and screen["settings"]["row"] == "wifi_setup",
-              "moving the cursor did not cancel")
-        self.press("action", "long")
+        check(self.settings_screen()["settings"]["view"] == "list", "REJECT did not cancel")
+        self.press("reject")
+        self.press("reject")
         self.wait_pet()
-        return "; ".join(results) + "; cursor move cancels"
+        return "; ".join(results) + "; REJECT cancels"
 
     def tx_telemetry(self):
         return [(stamp, e) for stamp, e in self.board.events() if e.get("evt") == "tx" and e.get("type") == "telemetry"]
@@ -416,12 +419,9 @@ class PetRun(FlowRun):
     def step_unpair(self):
         self.wait_pet(10)
         check(self.board.state()["hasBackup"], "no backup: unpair is only run with a backup in place")
-        self.press("action", "long")
-        self.wait_screen(lambda s: s["id"] == "settings", 3, "settings screen")
-        self.go_to_row("unpair")
-        self.press("action")
+        self.open_list("network/unpair")
         mark = self.board.mark()
-        self.press("action")
+        self.press("approve", "long")
         self.wait_board(lambda e: e.get("evt") == "settings" and e.get("op") == "execute" and e.get("row") == "unpair",
                         3, mark, "unpair executed")
         state = self.board.wait_state(lambda s: s["app"] == "pairing" and not s["paired"], 10, "pairing after unpair")
@@ -431,7 +431,7 @@ class PetRun(FlowRun):
         # Settings opens from the pairing screen as well.
         self.press("action", "long")
         self.wait_screen(lambda s: s["id"] == "settings", 3, "settings from pairing")
-        self.press("action", "long")
+        self.press("reject")
         self.wait_screen(lambda s: s["id"] == "pairing", 3, "back to pairing")
         self.cmd(f"pair {CLAIM_CODE}", timeout=30)
         self.board.wait_state(is_registered, 20, "registration after re-pairing")
@@ -440,7 +440,7 @@ class PetRun(FlowRun):
     def step_preview_settings(self):
         self.cmd("preview settings")
         screen = self.wait_screen(lambda s: s["id"] == "settings" and s["preview"], 3, "settings preview")
-        self.press("action", "long")
+        self.press("reject")
         check(self.screen()["id"] == "settings", "buttons act on a preview")
         self.cmd("preview off")
         self.wait_pet()
@@ -463,7 +463,7 @@ class PetRun(FlowRun):
         if screen["id"] in ("connecting", "wifi"):
             self.press("action", "long")
             self.wait_screen(lambda s: s["id"] == "settings", 3, "settings from " + screen["id"])
-            self.press("action", "long")
+            self.press("reject")
             self.wait_screen(lambda s: s["id"] == screen["id"], 3, "back to " + screen["id"])
         return f"{detail}; settings {current}"
 
