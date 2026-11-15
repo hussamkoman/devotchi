@@ -54,6 +54,8 @@ class Run:
         self.mock = Mock(args.mock_port, os.path.join(args.out, "mock.log"))
         self.results = []
         self.measurements = {"holding": {}, "screenshots": {}}
+        # Certificate and key for a wss mock; the firmware must be built to trust the CA that signed them.
+        self.tls = getattr(args, "tls", None)
         self.original = None
         self.brightness = None
         self.haptic = None
@@ -65,6 +67,9 @@ class Run:
         self.closed = {}
 
     # ---- helpers ----
+
+    def mock_options(self):
+        return MOCK_OPTIONS + (("--tls", *self.tls) if self.tls else ())
 
     def cmd(self, line, timeout=10.0):
         return self.board.command(line, timeout)
@@ -185,7 +190,7 @@ class Run:
         self.haptic = state["settings"]["haptic"]
         self.device_id = state["deviceId"]
         host = self.args.host or host_address_for(state["link"]["ip"])
-        self.url = f"ws://{host}:{self.args.mock_port}"
+        self.url = f"{'wss' if self.tls else 'ws'}://{host}:{self.args.mock_port}"
         self.measurements["original"] = self.original
         self.cmd("pair-backup")
         check(self.board.state()["hasBackup"] or not self.original["paired"], "pair-backup left no backup")
@@ -194,7 +199,7 @@ class Run:
         return f"server={self.original['server']} source={self.original['serverSource']} paired={self.original['paired']}"
 
     def step_claim(self):
-        self.mock.start(*MOCK_OPTIONS)
+        self.mock.start(*self.mock_options())
         self.cmd(f"server {self.url}")
         self.cmd(f"pair {CLAIM_CODE}", timeout=30)
         self.board.wait_state(is_registered, 20, "registration after claim")
@@ -410,7 +415,7 @@ class Run:
                                   10, "pet with the offline banner")
         check(screen["statusBar"]["link"] in ("offline", "connecting"), f"link dot {screen['statusBar']['link']}")
         self.screenshot("banner")
-        self.mock.start(*MOCK_OPTIONS)
+        self.mock.start(*self.mock_options())
         self.board.wait_state(is_registered, 30, "re-registration")
         self.wait_screen(lambda s: s["id"] == "pet" and s.get("banner") is None, 5, "banner cleared")
         self.permission(rid=rid, timeout=12000)
@@ -594,6 +599,8 @@ def main(argv=None):
     parser.add_argument("--host", help="address of this machine as the board sees it (default: derived)")
     parser.add_argument("--out", default="/tmp/devotchi-e2e-flow", help="directory for logs, screenshots, result.json")
     parser.add_argument("--steps", help="comma-separated subset of steps (record, claim and restore always run)")
+    parser.add_argument("--tls", nargs=2, metavar=("CERT", "KEY"), help="serve wss/https; needs a firmware build "
+                        "with CONFIG_DEVOTCHI_TLS_EXTRA_CA trusting the certificate's CA")
     args = parser.parse_args(argv)
     if args.mock_port in FORBIDDEN_PORTS:
         parser.error(f"port {args.mock_port} belongs to the real server and dashboard")

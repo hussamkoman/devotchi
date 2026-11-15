@@ -57,6 +57,7 @@ static char s_line[CONSOLE_LINE_MAX + 1];
 static char s_args[CONSOLE_LINE_MAX + 1];
 static char s_err_msg[ERR_MSG_MAX];
 static bool s_payload_failed;
+static atomic_uint s_evt_dropped;
 static bool s_reboot_requested;
 
 /*
@@ -191,7 +192,14 @@ console_rc_t console_fail(console_rc_t rc, const char *fmt, ...)
 
 void console_evt(const char *json)
 {
-    write_prefixed("@@EVT ", json, EVT_TIMEOUT_MS);
+    if (!write_prefixed("@@EVT ", json, EVT_TIMEOUT_MS)) {
+        atomic_fetch_add(&s_evt_dropped, 1);
+    }
+}
+
+uint32_t console_evt_dropped(void)
+{
+    return atomic_load(&s_evt_dropped);
 }
 
 esp_err_t console_register(const console_cmd_t *cmd)

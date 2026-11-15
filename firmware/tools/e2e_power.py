@@ -28,7 +28,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from devotchi_serial import DEFAULT_PORT, ConsoleError, ConsoleTimeout, save_png  # noqa: E402
-from e2e_flow import FIRST_ACK_MAX_S, Run as FlowRun  # noqa: E402
+from e2e_flow import FIRST_ACK_MAX_S, TEST_BRIGHTNESS, Run as FlowRun  # noqa: E402
 from e2e_link import FORBIDDEN_PORTS, StepFailed, check, is_registered  # noqa: E402
 
 DIM_S = 15
@@ -161,13 +161,15 @@ class PowerRun(FlowRun):
         self.measurements["stages"]["usb"] = {"dimIdleS": dim["idleS"], "offIdleS": off["idleS"],
                                               "offCpuMhz": p["cpuMhz"]}
         _, during = self.shot("during-off")
-        check(self.power()["panelAsleep"], "the screenshot woke the panel")
+        p = self.power()
+        check(p["panelAsleep"] and p["backlightPct"] == 0, f"the screenshot woke the panel: {p}")
         mark = self.board.mark()
         self.cmd("wake")
         self.wait_power_evt(power_evt(stage="active"), 3, mark, "stage active after wake")
         time.sleep(0.3)
         p = self.power()
         check(not p["panelAsleep"] and not p["uiParked"] and p["cpuLock"] and p["cpuMhz"] == 160, f"after wake: {p}")
+        check(p["backlightPct"] == TEST_BRIGHTNESS, f"backlight {p['backlightPct']} % after the wake redraw")
         _, after = self.shot("after-wake")
         box_off = self.diff_box(width, before, during)
         box_wake = self.diff_box(width, before, after)

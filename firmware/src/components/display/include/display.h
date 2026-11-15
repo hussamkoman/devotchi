@@ -24,16 +24,20 @@ void display_set_brightness(uint8_t percent);
 
 /**
  * Puts the panel into or out of sleep (SLPIN/SLPOUT) and switches the
- * backlight with it. Waking redraws the whole screen before the backlight
- * comes on.
+ * backlight with it. After a wake the backlight comes on when the ui task
+ * has drawn the whole screen again.
  */
 esp_err_t display_sleep(bool sleep);
 
 bool display_is_asleep(void);
 
+/** Backlight duty the PWM channel runs at right now, in percent; 0 while the panel is dark. */
+uint8_t display_backlight_pct(void);
+
 /**
- * Renders pending changes and copies the panel content (RGB565 little-endian,
- * row-major) into the snapshot buffer. The buffer stays valid and unchanged
+ * Waits up to 150 ms for the ui task to draw pending changes, then copies
+ * the panel content (RGB565 little-endian, row-major) into the snapshot
+ * buffer. The buffer stays valid and unchanged
  * until the next call; one caller at a time (the console task).
  */
 esp_err_t display_snapshot(const uint8_t **buf, size_t *len, uint32_t *crc32);

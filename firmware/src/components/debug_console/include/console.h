@@ -63,3 +63,6 @@ void console_reboot_after_command(void);
 
 /** Writes "@@EVT <json>" from any task; dropped when the host is not reading. */
 void console_evt(const char *json);
+
+/** EVT lines dropped since boot because the host did not read them in time. */
+uint32_t console_evt_dropped(void);

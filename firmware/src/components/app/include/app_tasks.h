@@ -14,7 +14,7 @@ typedef struct {
  */
 #define APP_TASK_APP      ((app_task_cfg_t){"app", 6144, 5})
 #define APP_TASK_UI       ((app_task_cfg_t){"ui", 8192, 4})
-#define APP_TASK_NET      ((app_task_cfg_t){"net", 8192, 4})
-#define APP_TASK_WS       ((app_task_cfg_t){"ws", 8192, 5})
+#define APP_TASK_NET      ((app_task_cfg_t){"net", 6144, 4})
+#define APP_TASK_WS       ((app_task_cfg_t){"ws", 6144, 5})
 #define APP_TASK_PWR      ((app_task_cfg_t){"pwr", 3072, 2})
 #define APP_TASK_CONSOLE  ((app_task_cfg_t){"console", 4096, 3})

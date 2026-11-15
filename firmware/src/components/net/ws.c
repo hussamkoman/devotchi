@@ -201,6 +201,7 @@ esp_err_t ws_start(const char *uri, const char *token)
     }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "start failed: %s", esp_err_to_name(err));
+        /* No client task exists, so this destroy has nothing to wait for. */
         esp_websocket_client_destroy(client);
         return err;
     }

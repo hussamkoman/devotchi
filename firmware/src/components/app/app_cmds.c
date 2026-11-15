@@ -126,6 +126,7 @@ static console_rc_t cmd_state(int argc, char **argv, const char *raw_args)
     cJSON_AddNumberToObject(link, "rxInvalid", snap.link.rx_invalid);
     cJSON_AddNumberToObject(link, "rejected401", snap.link.rejected_401);
     cJSON_AddNumberToObject(root, "eventsDropped", snap.events_dropped);
+    cJSON_AddNumberToObject(root, "evtDropped", console_evt_dropped());
 
     cJSON *settings = cJSON_AddObjectToObject(root, "settings");
     for (storage_setting_t s = 0; s < STORAGE_SETTING_COUNT; s++) {

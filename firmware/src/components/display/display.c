@@ -13,6 +13,7 @@
 #include "esp_rom_crc.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "lvgl.h"
 #include "sdkconfig.h"
 
@@ -28,6 +29,8 @@ static const char *TAG = "display";
 #define FLUSH_TIMEOUT_MS         100
 #define PANEL_LOCK_TIMEOUT_MS    500
 #define SNAPSHOT_LOCK_TIMEOUT_MS 1000
+#define SNAPSHOT_SETTLE_MS       150
+#define SNAPSHOT_POLL_MS         10
 
 static SemaphoreHandle_t s_lock;
 static SemaphoreHandle_t s_trans_done;
@@ -39,7 +42,7 @@ static atomic_uint s_flush_count;
 
 /* Backlight state; guarded by s_lock. */
 static uint8_t s_brightness = 75;
-static bool s_first_frame_shown;
+static bool s_frame_shown;
 static bool s_asleep;
 
 #if CONFIG_DEVOTCHI_SHADOW_FB
@@ -57,7 +60,7 @@ static void set_backlight(uint8_t percent)
 /* Caller holds s_lock. */
 static void apply_backlight(void)
 {
-    set_backlight(s_first_frame_shown && !s_asleep ? s_brightness : 0);
+    set_backlight(s_frame_shown && !s_asleep ? s_brightness : 0);
 }
 
 static bool on_color_trans_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *edata,
@@ -71,7 +74,7 @@ static bool on_color_trans_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_e
     return woken == pdTRUE;
 }
 
-/* Runs inside lv_timer_handler() or lv_refr_now(), so s_lock is held. */
+/* Runs inside lv_timer_handler(), so s_lock is held. */
 static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
 #if CONFIG_DEVOTCHI_SHADOW_FB
@@ -96,8 +99,8 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
     }
     atomic_fetch_add(&s_flush_count, 1);
 
-    if (!s_first_frame_shown && lv_display_flush_is_last(disp)) {
-        s_first_frame_shown = true;
+    if (!s_frame_shown && lv_display_flush_is_last(disp)) {
+        s_frame_shown = true;
         apply_backlight();
     }
     lv_display_flush_ready(disp);
@@ -247,14 +250,24 @@ esp_err_t display_sleep(bool sleep)
             ESP_LOGE(TAG, "panel sleep(%d) failed: %s", sleep, esp_err_to_name(err));
         }
         if (!sleep) {
-            /* One full frame reaches the panel before the backlight shows it. */
+            /*
+             * The ui task draws the frame and flush_cb turns the backlight on
+             * behind it. Drawing here would run LVGL's renderer, which needs
+             * about 5 KB, on the caller's stack.
+             */
+            s_frame_shown = false;
             lv_obj_invalidate(lv_display_get_screen_active(s_disp));
-            lv_refr_now(s_disp);
         }
         apply_backlight();
     }
     display_unlock();
     return err;
+}
+
+uint8_t display_backlight_pct(void)
+{
+    const uint32_t duty = ledc_get_duty(BOARD_LEDC_MODE, BOARD_LEDC_CH_BACKLIGHT);
+    return (uint8_t)((duty * 100U + BOARD_LEDC_DUTY_MAX / 2U) / BOARD_LEDC_DUTY_MAX);
 }
 
 bool display_is_asleep(void)
@@ -270,9 +283,23 @@ bool display_is_asleep(void)
 esp_err_t display_snapshot(const uint8_t **buf, size_t *len, uint32_t *crc32)
 {
 #if CONFIG_DEVOTCHI_SHADOW_FB
-    ESP_RETURN_ON_FALSE(display_lock(SNAPSHOT_LOCK_TIMEOUT_MS), ESP_ERR_TIMEOUT, TAG,
-                        "snapshot: lock timeout");
-    lv_refr_now(s_disp);
+    /*
+     * Pending changes are left to the ui task: rendering them here would run
+     * LVGL's renderer on the console stack. LVGL pauses the refresh timer
+     * while nothing is invalidated. A parked ui task never catches up, and
+     * the copy is then the frame the panel last received.
+     */
+    const TickType_t start = xTaskGetTickCount();
+    for (;;) {
+        ESP_RETURN_ON_FALSE(display_lock(SNAPSHOT_LOCK_TIMEOUT_MS), ESP_ERR_TIMEOUT, TAG,
+                            "snapshot: lock timeout");
+        if (lv_timer_get_paused(lv_display_get_refr_timer(s_disp)) ||
+            xTaskGetTickCount() - start >= pdMS_TO_TICKS(SNAPSHOT_SETTLE_MS)) {
+            break;
+        }
+        display_unlock();
+        vTaskDelay(pdMS_TO_TICKS(SNAPSHOT_POLL_MS));
+    }
     memcpy(s_snapshot, s_shadow, FRAME_SIZE);
     display_unlock();
 

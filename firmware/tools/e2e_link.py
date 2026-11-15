@@ -21,6 +21,7 @@ import os
 import re
 import signal
 import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -127,11 +128,13 @@ class Mock:
         self.port = port
         self.log_path = log_path
         self.proc = None
+        self.tls = False
         self.events = []
         self._lock = threading.Lock()
 
     def start(self, *options):
         check(self.proc is None, "mock server already running")
+        self.tls = "--tls" in options
         mark = self.mark()
         self.proc = subprocess.Popen(
             [sys.executable, "-I", MOCK, "--host", "0.0.0.0", "--port", str(self.port), *options],
@@ -180,9 +183,12 @@ class Mock:
         return [e for e in self.snapshot()[mark:] if kind is None or e.get("ev") == kind]
 
     def ctl(self, command):
-        request = urllib.request.Request(f"http://127.0.0.1:{self.port}/_ctl", data=command.encode(), method="POST")
+        scheme = "https" if self.tls else "http"
+        request = urllib.request.Request(f"{scheme}://127.0.0.1:{self.port}/_ctl", data=command.encode(), method="POST")
+        # The control channel is this script talking to its own child over loopback with a throwaway certificate.
+        context = ssl._create_unverified_context() if self.tls else None
         try:
-            with urllib.request.urlopen(request, timeout=5) as reply:
+            with urllib.request.urlopen(request, timeout=5, context=context) as reply:
                 return json.load(reply)
         except urllib.error.HTTPError as e:
             raise StepFailed(f"mock control '{command.split()[0]}' failed: {e.read().decode()}")
