@@ -1251,6 +1251,11 @@ static bool showcase_button_press(const btn_fsm_out_t *out, uint32_t now)
     return true;
 }
 
+bool app_flow_about_open(void)
+{
+    return s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_ABOUT2;
+}
+
 bool app_flow_showcase_active(void)
 {
     return s_sc.active;
