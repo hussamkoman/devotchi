@@ -322,6 +322,17 @@ static void test_wrap_counts_code_points(void)
     TEST_ASSERT_EQUAL_STRING("a\xe2\x82", page);
 }
 
+static void test_wrap_lines_first(void)
+{
+    TEST_ASSERT_EQUAL_size_t(0, text_wrap_lines_first("", 10));
+    TEST_ASSERT_EQUAL_size_t(1, text_wrap_lines_first("short\nsecond\nthird", 10));
+    TEST_ASSERT_EQUAL_size_t(1, text_wrap_lines_first("exactly10c\nnext", 10));
+    TEST_ASSERT_EQUAL_size_t(2, text_wrap_lines_first("one two three\nnext", 10));
+    TEST_ASSERT_EQUAL_size_t(3, text_wrap_lines_first("aaaaaaaaaabbbbbbbbbbcc", 10));
+    TEST_ASSERT_EQUAL_size_t(1, text_wrap_lines_first("\nsecond", 10));
+    TEST_ASSERT_EQUAL_size_t(0, text_wrap_lines_first("abc", 0));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -339,5 +350,6 @@ int main(void)
     RUN_TEST(test_utf8_len_and_upper);
     RUN_TEST(test_truncate_middle);
     RUN_TEST(test_wrap_counts_code_points);
+    RUN_TEST(test_wrap_lines_first);
     return UNITY_END();
 }

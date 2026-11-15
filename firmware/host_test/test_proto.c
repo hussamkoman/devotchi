@@ -511,7 +511,7 @@ static double num_of(const cJSON *obj, const char *key)
 
 static void test_write_register(void)
 {
-    const int n = proto_write_register(out, sizeof(out), "dv-e356e4", "devotchi-v1", "0.2.0");
+    const int n = proto_write_register(out, sizeof(out), "dv-e356e4", "devotchi-v1", "0.2.0", 0);
     TEST_ASSERT_EQUAL_STRING("{\"type\":\"register\",\"role\":\"consumer\",\"proto\":2,\"client\":{\"kind\":\"device\","
                              "\"deviceId\":\"dv-e356e4\",\"model\":\"devotchi-v1\",\"version\":\"0.2.0\"}}",
                              out);
@@ -525,7 +525,7 @@ static void test_write_register(void)
 
 static void test_write_escapes_strings(void)
 {
-    const int n = proto_write_register(out, sizeof(out), "dv-e356e4", "mo\"del\\", "1.0\n\t\x01");
+    const int n = proto_write_register(out, sizeof(out), "dv-e356e4", "mo\"del\\", "1.0\n\t\x01", 0);
     cJSON *root = reparse(n);
     const cJSON *client = cJSON_GetObjectItemCaseSensitive(root, "client");
     TEST_ASSERT_EQUAL_STRING("mo\"del\\", str_of(client, "model"));
@@ -589,7 +589,7 @@ static void test_write_into_small_buffers(void)
     TEST_ASSERT_EQUAL_STRING("", small);
     TEST_ASSERT_EQUAL_INT(-1, proto_write_pong(small, 0));
     TEST_ASSERT_EQUAL_INT(-1, proto_write_pong(NULL, 16));
-    TEST_ASSERT_EQUAL_INT(-1, proto_write_register(small, sizeof(small), "dv-e356e4", "devotchi-v1", "0.2.0"));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_register(small, sizeof(small), "dv-e356e4", "devotchi-v1", "0.2.0", PROTO_CAP_DECIDE));
     TEST_ASSERT_EQUAL_INT(-1, proto_write_permission_response(small, sizeof(small), ID, true));
 }
 
@@ -690,6 +690,188 @@ static void test_names(void)
     TEST_ASSERT_FALSE(proto_id_is_valid(NULL));
 }
 
+/* ---- caps, card fields and decide (protocol 14) ---- */
+
+#define CARD_HEAD  "{\"type\":\"permission\",\"id\":\"" ID "\",\"tool\":\"Bash\",\"summary\":\"s\",\"risk\":\"low\",\"timeout\":30000"
+
+static void test_permission_card_fields(void)
+{
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"cmd\":\"pnpm test --filter server\\nline 2\",\"desc\":\"Run the tests\","
+                                     "\"reason\":\"Force push\",\"grant\":{\"rule\":\"pnpm test\",\"match\":\"prefix\"}}"));
+    const proto_permission_t *p = &m.u.permission;
+    TEST_ASSERT_TRUE(p->has_cmd);
+    TEST_ASSERT_EQUAL_STRING("pnpm test --filter server\nline 2", p->cmd);
+    TEST_ASSERT_FALSE(p->cut);
+    TEST_ASSERT_EQUAL_STRING("Run the tests", p->desc);
+    TEST_ASSERT_EQUAL_STRING("Force push", p->reason);
+    TEST_ASSERT_TRUE(p->has_grant);
+    TEST_ASSERT_TRUE(p->grant_prefix);
+    TEST_ASSERT_EQUAL_STRING("pnpm test", p->grant_rule);
+
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"cmd\":\"git status\",\"grant\":{\"rule\":\"git status\",\"match\":\"exact\"}}"));
+    TEST_ASSERT_TRUE(m.u.permission.has_grant);
+    TEST_ASSERT_FALSE(m.u.permission.grant_prefix);
+}
+
+static void test_permission_phase1_fallback(void)
+{
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"details\":\"$ ls\"}"));
+    TEST_ASSERT_FALSE(m.u.permission.has_cmd);
+    TEST_ASSERT_EQUAL_STRING("", m.u.permission.cmd);
+    TEST_ASSERT_EQUAL_STRING("$ ls", m.u.permission.details);
+    TEST_ASSERT_FALSE(m.u.permission.cut);
+    TEST_ASSERT_FALSE(m.u.permission.has_grant);
+    TEST_ASSERT_EQUAL_STRING("", m.u.permission.desc);
+    TEST_ASSERT_EQUAL_STRING("", m.u.permission.reason);
+}
+
+static void test_permission_cut_drops_grant(void)
+{
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"cmd\":\"a\",\"cut\":true,\"grant\":{\"rule\":\"a\",\"match\":\"exact\"}}"));
+    TEST_ASSERT_TRUE(m.u.permission.cut);
+    TEST_ASSERT_FALSE(m.u.permission.has_grant);
+    TEST_ASSERT_EQUAL_STRING("", m.u.permission.grant_rule);
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"cmd\":\"a\",\"cut\":false}"));
+    TEST_ASSERT_FALSE(m.u.permission.cut);
+}
+
+static void test_permission_oversized_cmd_is_cut(void)
+{
+    static char json[2048];
+    char cmd[PROTO_CMD_SIZE + 1];
+    memset(cmd, 'x', sizeof(cmd) - 1);
+    cmd[sizeof(cmd) - 1] = '\0';
+    snprintf(json, sizeof(json), CARD_HEAD ",\"cmd\":\"%s\",\"grant\":{\"rule\":\"x\",\"match\":\"exact\"}}", cmd);
+    TEST_ASSERT_TRUE(parse(json));
+    TEST_ASSERT_EQUAL_size_t(PROTO_CMD_SIZE - 1, strlen(m.u.permission.cmd));
+    TEST_ASSERT_TRUE(m.u.permission.cut);
+    TEST_ASSERT_FALSE(m.u.permission.has_grant);
+
+    /* Exactly 600 bytes still fits. */
+    cmd[PROTO_CMD_SIZE - 1] = '\0';
+    snprintf(json, sizeof(json), CARD_HEAD ",\"cmd\":\"%s\"}", cmd);
+    TEST_ASSERT_TRUE(parse(json));
+    TEST_ASSERT_FALSE(m.u.permission.cut);
+}
+
+static void test_permission_grant_not_shown_word_for_word(void)
+{
+    static char json[1024];
+    char rule[PROTO_RULE_SIZE + 1];
+    memset(rule, 'r', sizeof(rule) - 1);
+    rule[sizeof(rule) - 1] = '\0';
+    snprintf(json, sizeof(json), CARD_HEAD ",\"cmd\":\"r\",\"grant\":{\"rule\":\"%s\",\"match\":\"exact\"}}", rule);
+    TEST_ASSERT_TRUE(parse(json));
+    TEST_ASSERT_FALSE(m.u.permission.has_grant);
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"cmd\":\"r\",\"grant\":{\"rule\":\"caf\\u00e9\",\"match\":\"exact\"}}"));
+    TEST_ASSERT_FALSE(m.u.permission.has_grant);
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"cmd\":\"r\",\"grant\":{\"rule\":\"r\",\"match\":\"glob\"}}"));
+    TEST_ASSERT_FALSE(m.u.permission.has_grant);
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"cmd\":\"r\",\"grant\":{\"rule\":\"\",\"match\":\"exact\"}}"));
+    TEST_ASSERT_FALSE(m.u.permission.has_grant);
+    TEST_ASSERT_TRUE(parse(CARD_HEAD ",\"cmd\":\"r\",\"grant\":{\"rule\":\"a\\nb\",\"match\":\"exact\"}}"));
+    TEST_ASSERT_FALSE(m.u.permission.has_grant);
+}
+
+static void test_permission_card_wrong_types(void)
+{
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"cmd\":5}"));
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"cut\":\"true\"}"));
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"cut\":1}"));
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"desc\":[]}"));
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"reason\":null}"));
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"grant\":\"pnpm test\"}"));
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"grant\":{\"rule\":1,\"match\":\"exact\"}}"));
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"grant\":{\"match\":\"exact\"}}"));
+    TEST_ASSERT_FALSE(parse(CARD_HEAD ",\"grant\":{\"rule\":\"a\"}}"));
+}
+
+static void test_permission_oversized_desc_and_reason_truncated(void)
+{
+    static char json[2048];
+    char desc[PROTO_DESC_SIZE + 10];
+    char reason[PROTO_RISK_REASON_SIZE + 10];
+    memset(desc, 'd', sizeof(desc) - 1);
+    desc[sizeof(desc) - 1] = '\0';
+    memset(reason, 'w', sizeof(reason) - 1);
+    reason[sizeof(reason) - 1] = '\0';
+    snprintf(json, sizeof(json), CARD_HEAD ",\"cmd\":\"a\",\"desc\":\"%s\",\"reason\":\"%s\"}", desc, reason);
+    TEST_ASSERT_TRUE(parse(json));
+    TEST_ASSERT_EQUAL_size_t(PROTO_DESC_SIZE - 1, strlen(m.u.permission.desc));
+    TEST_ASSERT_EQUAL_size_t(PROTO_RISK_REASON_SIZE - 1, strlen(m.u.permission.reason));
+    TEST_ASSERT_FALSE(m.u.permission.cut);
+}
+
+static void test_register_ack_caps(void)
+{
+    TEST_ASSERT_TRUE(parse("{\"type\":\"register_ack\",\"proto\":2,\"caps\":[\"decide\",\"ask\",\"future\",7,\"pets\"]}"));
+    TEST_ASSERT_EQUAL_UINT32(PROTO_CAP_DECIDE | PROTO_CAP_ASK | PROTO_CAP_PETS, m.u.register_ack.caps);
+    TEST_ASSERT_TRUE(parse("{\"type\":\"register_ack\",\"proto\":2}"));
+    TEST_ASSERT_EQUAL_UINT32(0, m.u.register_ack.caps);
+    TEST_ASSERT_TRUE(parse("{\"type\":\"register_ack\",\"proto\":2,\"caps\":[]}"));
+    TEST_ASSERT_EQUAL_UINT32(0, m.u.register_ack.caps);
+    TEST_ASSERT_FALSE(parse("{\"type\":\"register_ack\",\"proto\":2,\"caps\":\"decide\"}"));
+}
+
+static void test_dismiss_choice(void)
+{
+    TEST_ASSERT_TRUE(parse("{\"type\":\"dismiss\",\"id\":\"" ID "\",\"reason\":\"answered\",\"outcome\":\"allow\","
+                           "\"by\":\"dashboard\",\"choice\":\"allow_session\"}"));
+    TEST_ASSERT_EQUAL(PROTO_CHOICE_ALLOW_SESSION, m.u.dismiss.choice);
+    TEST_ASSERT_TRUE(parse("{\"type\":\"dismiss\",\"id\":\"" ID "\",\"reason\":\"answered\",\"choice\":\"deny_stop\"}"));
+    TEST_ASSERT_EQUAL(PROTO_CHOICE_DENY_STOP, m.u.dismiss.choice);
+    TEST_ASSERT_TRUE(parse("{\"type\":\"dismiss\",\"id\":\"" ID "\",\"reason\":\"answered\",\"choice\":\"later\"}"));
+    TEST_ASSERT_EQUAL(PROTO_CHOICE_NONE, m.u.dismiss.choice);
+    TEST_ASSERT_TRUE(parse("{\"type\":\"dismiss\",\"id\":\"" ID "\",\"reason\":\"answered\"}"));
+    TEST_ASSERT_EQUAL(PROTO_CHOICE_NONE, m.u.dismiss.choice);
+    TEST_ASSERT_FALSE(parse("{\"type\":\"dismiss\",\"id\":\"" ID "\",\"reason\":\"answered\",\"choice\":1}"));
+}
+
+static void test_error_not_allowed_with_id(void)
+{
+    TEST_ASSERT_TRUE(parse("{\"type\":\"error\",\"code\":\"NOT_ALLOWED\",\"message\":\"cut\",\"id\":\"" ID "\"}"));
+    TEST_ASSERT_EQUAL_STRING("NOT_ALLOWED", m.u.error.code);
+    TEST_ASSERT_TRUE(m.u.error.has_id);
+    TEST_ASSERT_EQUAL_STRING(ID, m.u.error.id);
+    TEST_ASSERT_FALSE(parse("{\"type\":\"error\",\"code\":\"NOT_ALLOWED\",\"id\":\"XYZ\"}"));
+}
+
+static char wout[256];
+
+static void test_write_decide(void)
+{
+    TEST_ASSERT_GREATER_THAN(0, proto_write_decide(wout, sizeof(wout), ID, PROTO_CHOICE_DENY_ASK_WHY));
+    TEST_ASSERT_EQUAL_STRING("{\"type\":\"decide\",\"id\":\"" ID "\",\"choice\":\"deny_ask_why\"}", wout);
+    TEST_ASSERT_GREATER_THAN(0, proto_write_decide(wout, sizeof(wout), ID, PROTO_CHOICE_ALLOW_SESSION));
+    TEST_ASSERT_EQUAL_STRING("{\"type\":\"decide\",\"id\":\"" ID "\",\"choice\":\"allow_session\"}", wout);
+    TEST_ASSERT_GREATER_THAN(0, proto_write_decide(wout, sizeof(wout), ID, PROTO_CHOICE_DENY_STOP));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_decide(wout, sizeof(wout), ID, PROTO_CHOICE_NONE));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_decide(wout, sizeof(wout), ID, PROTO_CHOICE_ANSWERED));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_decide(wout, sizeof(wout), ID, PROTO_CHOICE_COUNT));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_decide(wout, sizeof(wout), "9F2C4E6A8B0D1F3A5C7E9B1D3F5A7C9E", PROTO_CHOICE_DENY_STOP));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_decide(wout, sizeof(wout), "9f2c", PROTO_CHOICE_DENY_STOP));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_decide(wout, sizeof(wout), NULL, PROTO_CHOICE_DENY_STOP));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_decide(wout, 20, ID, PROTO_CHOICE_DENY_STOP));
+}
+
+static void test_write_register_caps(void)
+{
+    TEST_ASSERT_GREATER_THAN(0, proto_write_register(wout, sizeof(wout), "dv-e356e4", "m", "1", PROTO_CAP_DECIDE));
+    TEST_ASSERT_EQUAL_STRING("{\"type\":\"register\",\"role\":\"consumer\",\"proto\":2,\"client\":{\"kind\":\"device\","
+                             "\"deviceId\":\"dv-e356e4\",\"model\":\"m\",\"version\":\"1\",\"caps\":[\"decide\"]}}",
+                             wout);
+    TEST_ASSERT_GREATER_THAN(0, proto_write_register(wout, sizeof(wout), "d", "m", "1",
+                                                     PROTO_CAP_DECIDE | PROTO_CAP_PLAN | PROTO_CAP_PETS));
+    TEST_ASSERT_NOT_NULL(strstr(wout, "\"caps\":[\"decide\",\"plan\",\"pets\"]"));
+}
+
+static void test_choice_names(void)
+{
+    TEST_ASSERT_EQUAL_STRING("deny_ask_why", proto_choice_name(PROTO_CHOICE_DENY_ASK_WHY));
+    TEST_ASSERT_EQUAL_STRING("", proto_choice_name(PROTO_CHOICE_NONE));
+    TEST_ASSERT_EQUAL_STRING("", proto_choice_name(PROTO_CHOICE_COUNT));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -729,5 +911,18 @@ int main(void)
     RUN_TEST(test_write_telemetry_absent_battery);
     RUN_TEST(test_write_telemetry_limits);
     RUN_TEST(test_names);
+    RUN_TEST(test_permission_card_fields);
+    RUN_TEST(test_permission_phase1_fallback);
+    RUN_TEST(test_permission_cut_drops_grant);
+    RUN_TEST(test_permission_oversized_cmd_is_cut);
+    RUN_TEST(test_permission_grant_not_shown_word_for_word);
+    RUN_TEST(test_permission_card_wrong_types);
+    RUN_TEST(test_permission_oversized_desc_and_reason_truncated);
+    RUN_TEST(test_register_ack_caps);
+    RUN_TEST(test_dismiss_choice);
+    RUN_TEST(test_error_not_allowed_with_id);
+    RUN_TEST(test_write_decide);
+    RUN_TEST(test_write_register_caps);
+    RUN_TEST(test_choice_names);
     return UNITY_END();
 }

@@ -318,6 +318,16 @@ static bool link_send(uint32_t now, const char *type, int len, const char *extra
     return app_link_send(now, type, s_tx, len, extra);
 }
 
+bool app_link_flow_shown(void)
+{
+    return s_flow_shown;
+}
+
+uint32_t app_link_server_caps(void)
+{
+    return s_info.server_caps;
+}
+
 proto_mode_t app_link_mode(void)
 {
     return s_info.mode;
@@ -695,6 +705,7 @@ static void on_register_ack(const proto_register_ack_t *ack, uint32_t now)
     }
     s_info.ws = APP_WS_REGISTERED;
     s_info.mode = ack->mode;
+    s_info.server_caps = ack->caps;
     s_info.rejected_401 = 0;
     s_info.retry_at_ms = 0;
     s_info.last_error[0] = '\0';
@@ -773,7 +784,9 @@ static void on_ws_up(uint32_t now)
     s_ws_connected = true;
     s_info.ws = APP_WS_CONNECTED;
     s_last_rx_ms = now;
-    const int len = proto_write_register(s_tx, sizeof(s_tx), s_device_id, APP_MODEL, esp_app_get_description()->version);
+    s_info.server_caps = 0;
+    const int len = proto_write_register(s_tx, sizeof(s_tx), s_device_id, APP_MODEL,
+                                         esp_app_get_description()->version, PROTO_CAP_DECIDE);
     link_send(now, "register", len, NULL);
 }
 
@@ -1443,22 +1456,48 @@ static void render(uint32_t now)
 
 /* ---- entry points ---- */
 
+static bool startup_screen(void)
+{
+    return s_screen_valid && (s_screen == UI_SCREEN_WIFI || s_screen == UI_SCREEN_CONNECTING ||
+                              s_screen == UI_SCREEN_PAIRING || s_screen == UI_SCREEN_PROVISIONING);
+}
+
+btn_mode_t app_link_btn_mode(btn_id_t id, uint32_t now)
+{
+    if (s_preview != PREVIEW_OFF) {
+        return BTN_MODE_NONE;
+    }
+    if (app_settings_active() && s_screen_valid && s_screen == UI_SCREEN_SETTINGS) {
+        return id == BTN_ACTION ? BTN_MODE_NAV_HOLD : BTN_MODE_CLICK;
+    }
+    if (s_flow_shown) {
+        return app_flow_btn_mode(id, now);
+    }
+    /* ACTION hold opens Settings from every start-up screen (ux-flows 2). */
+    return id == BTN_ACTION && startup_screen() ? BTN_MODE_NAV_HOLD : BTN_MODE_CLICK;
+}
+
 void app_link_on_button(const btn_fsm_out_t *out)
 {
     if (s_preview != PREVIEW_OFF) {
         return;
     }
     const uint32_t now = app_now_ms();
-    const bool settings_long = out->id == BTN_ACTION && out->kind == BTN_LONG;
+    /* A hold's fill moves the tab only; the screen is redrawn when the hold ends. */
+    if (out->kind == BTN_PROGRESS) {
+        if (s_flow_shown) {
+            app_flow_on_button(out, now);
+        }
+        return;
+    }
+    const bool settings_long = out->id == BTN_ACTION && out->kind == BTN_HOLD;
     if (app_settings_active() && s_screen_valid && s_screen == UI_SCREEN_SETTINGS) {
         app_settings_on_button(out, now);
     } else if (s_flow_shown) {
         if (!app_flow_on_button(out, now) && settings_long && s_screen == UI_SCREEN_PET) {
             app_settings_open(now);
         }
-    } else if (settings_long && s_screen_valid &&
-               (s_screen == UI_SCREEN_WIFI || s_screen == UI_SCREEN_CONNECTING || s_screen == UI_SCREEN_PAIRING ||
-                s_screen == UI_SCREEN_PROVISIONING)) {
+    } else if (settings_long && startup_screen()) {
         app_settings_open(now);
     } else if (out->kind != BTN_CLICK) {
         return;
@@ -1563,7 +1602,7 @@ bool app_link_handle_event(const app_event_t *ev)
         break;
     }
     case APP_EV_BTN_RAW:
-    case APP_EV_BTN_INJECT:
+    case APP_EV_BTN_TICK:
     case APP_EV_USER_ACTIVITY:
     case APP_EV_FB_STEP:
     case APP_EV_POWER:

@@ -43,6 +43,21 @@ static const char *const MOOD_NAMES[MOOD_COUNT] = {
     [MOOD_THINKING] = "thinking",
 };
 
+static const char *const CHOICE_NAMES[PROTO_CHOICE_COUNT] = {
+    [PROTO_CHOICE_NONE] = "",
+    [PROTO_CHOICE_ALLOW_SESSION] = "allow_session",
+    [PROTO_CHOICE_DENY_ASK_WHY] = "deny_ask_why",
+    [PROTO_CHOICE_DENY_STOP] = "deny_stop",
+    [PROTO_CHOICE_APPROVE] = "approve",
+    [PROTO_CHOICE_APPROVE_ACCEPT_EDITS] = "approve_accept_edits",
+    [PROTO_CHOICE_REVISE] = "revise",
+    [PROTO_CHOICE_DECLINE] = "decline",
+    [PROTO_CHOICE_ANSWERED] = "answered",
+};
+
+/* Indexed by bit position of PROTO_CAP_*. */
+static const char *const CAP_NAMES[PROTO_CAP_COUNT] = {"decide", "ask", "plan", "pets"};
+
 const char *proto_type_name(proto_type_t type)
 {
     return (size_t)type < TYPE_COUNT ? TYPE_NAMES[type] : "unknown";
@@ -56,6 +71,11 @@ const char *proto_mood_name(proto_mood_t mood)
 const char *proto_mode_name(proto_mode_t mode)
 {
     return mode == PROTO_MODE_DESK ? "desk" : "ask";
+}
+
+const char *proto_choice_name(proto_choice_t choice)
+{
+    return (size_t)choice < PROTO_CHOICE_COUNT ? CHOICE_NAMES[choice] : "";
 }
 
 proto_mood_t proto_mood_from_name(const char *name)
@@ -103,6 +123,42 @@ static bool get_str(const cJSON *obj, const char *key, field_rule_t rule, char *
         return false;
     }
     text_utf8_truncate(dst, cap, item->valuestring);
+    return true;
+}
+
+/* get_str() that also reports a value longer than the buffer. */
+static bool get_str_whole(const cJSON *obj, const char *key, char *dst, size_t cap, bool *present, bool *whole)
+{
+    *present = cJSON_GetObjectItemCaseSensitive(obj, key) != NULL;
+    if (!get_str(obj, key, FIELD_OPTIONAL, dst, cap)) {
+        return false;
+    }
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
+    *whole = item == NULL || strlen(item->valuestring) < cap;
+    return true;
+}
+
+static bool get_bool(const cJSON *obj, const char *key, bool *out)
+{
+    *out = false;
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
+    if (item == NULL) {
+        return true;
+    }
+    if (!cJSON_IsBool(item)) {
+        return false;
+    }
+    *out = cJSON_IsTrue(item);
+    return true;
+}
+
+static bool printable_ascii(const char *s)
+{
+    for (; *s != '\0'; s++) {
+        if (*s < 0x20 || *s > 0x7E) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -210,6 +266,21 @@ static bool parse_register_ack(const cJSON *obj, proto_register_ack_t *out)
     if (peers != NULL && (!cJSON_IsObject(peers) || !parse_peers(peers, &out->peers))) {
         return false;
     }
+    const cJSON *caps = cJSON_GetObjectItemCaseSensitive(obj, "caps");
+    if (caps != NULL) {
+        if (!cJSON_IsArray(caps)) {
+            return false;
+        }
+        const cJSON *cap;
+        cJSON_ArrayForEach(cap, caps)
+        {
+            for (size_t i = 0; cJSON_IsString(cap) && i < PROTO_CAP_COUNT; i++) {
+                if (strcmp(cap->valuestring, CAP_NAMES[i]) == 0) {
+                    out->caps |= 1u << i;
+                }
+            }
+        }
+    }
     const cJSON *device = cJSON_GetObjectItemCaseSensitive(obj, "device");
     if (device != NULL) {
         if (!cJSON_IsObject(device) ||
@@ -260,6 +331,42 @@ static bool parse_mood(const cJSON *obj, proto_mood_msg_t *out)
            get_str(obj, "reason", FIELD_OPTIONAL, out->reason, sizeof(out->reason));
 }
 
+/* Protocol 14.2. A wrong type fails the frame; a grant that cannot be shown word for word is dropped. */
+static bool parse_card_fields(const cJSON *obj, proto_permission_t *out)
+{
+    bool whole = true;
+    bool present;
+    if (!get_str_whole(obj, "cmd", out->cmd, sizeof(out->cmd), &out->has_cmd, &whole) ||
+        !get_bool(obj, "cut", &out->cut) ||
+        !get_str(obj, "desc", FIELD_OPTIONAL, out->desc, sizeof(out->desc)) ||
+        !get_str(obj, "reason", FIELD_OPTIONAL, out->reason, sizeof(out->reason))) {
+        return false;
+    }
+    if (!whole) {
+        out->cut = true;
+    }
+    const cJSON *grant = cJSON_GetObjectItemCaseSensitive(obj, "grant");
+    if (grant == NULL) {
+        return true;
+    }
+    char match[8];
+    bool rule_whole = true;
+    bool match_whole = true;
+    if (!cJSON_IsObject(grant) ||
+        !get_str_whole(grant, "rule", out->grant_rule, sizeof(out->grant_rule), &present, &rule_whole) || !present ||
+        !get_str_whole(grant, "match", match, sizeof(match), &present, &match_whole) || !present) {
+        return false;
+    }
+    const bool prefix = strcmp(match, "prefix") == 0;
+    out->has_grant = !out->cut && rule_whole && match_whole && (prefix || strcmp(match, "exact") == 0) &&
+                     out->grant_rule[0] != '\0' && printable_ascii(out->grant_rule);
+    out->grant_prefix = out->has_grant && prefix;
+    if (!out->has_grant) {
+        out->grant_rule[0] = '\0';
+    }
+    return true;
+}
+
 static bool parse_permission(const cJSON *obj, proto_permission_t *out)
 {
     bool has_id;
@@ -279,6 +386,9 @@ static bool parse_permission(const cJSON *obj, proto_permission_t *out)
         return false;
     }
     out->timeout_ms = (uint32_t)clamp(timeout, 1, UINT32_MAX);
+    if (!parse_card_fields(obj, out)) {
+        return false;
+    }
     if (strcmp(risk, "low") == 0) {
         out->risk = PROTO_RISK_LOW;
     } else if (strcmp(risk, "high") == 0) {
@@ -294,11 +404,19 @@ static bool parse_dismiss(const cJSON *obj, proto_dismiss_t *out)
     bool has_id;
     char reason[12];
     char outcome[8];
+    char choice[24];
     if (!get_id(obj, FIELD_REQUIRED, &has_id, out->id) ||
         !get_str(obj, "reason", FIELD_REQUIRED, reason, sizeof(reason)) ||
         !get_str(obj, "outcome", FIELD_OPTIONAL, outcome, sizeof(outcome)) ||
-        !get_str(obj, "by", FIELD_OPTIONAL, out->by, sizeof(out->by))) {
+        !get_str(obj, "by", FIELD_OPTIONAL, out->by, sizeof(out->by)) ||
+        !get_str(obj, "choice", FIELD_OPTIONAL, choice, sizeof(choice))) {
         return false;
+    }
+    out->choice = PROTO_CHOICE_NONE;
+    for (size_t i = PROTO_CHOICE_NONE + 1; choice[0] != '\0' && i < PROTO_CHOICE_COUNT; i++) {
+        if (strcmp(choice, CHOICE_NAMES[i]) == 0) {
+            out->choice = (proto_choice_t)i;
+        }
     }
     if (strcmp(reason, "answered") == 0) {
         out->reason = PROTO_DISMISS_ANSWERED;
@@ -464,7 +582,8 @@ static int finish(writer_t *w)
     return (int)w->len;
 }
 
-int proto_write_register(char *buf, size_t cap, const char *device_id, const char *model, const char *version)
+int proto_write_register(char *buf, size_t cap, const char *device_id, const char *model, const char *version,
+                         uint32_t caps)
 {
     writer_t w = begin(buf, cap);
     put(&w, "{\"type\":\"register\",\"role\":\"consumer\",\"proto\":");
@@ -475,6 +594,18 @@ int proto_write_register(char *buf, size_t cap, const char *device_id, const cha
     put_str(&w, model);
     put(&w, ",\"version\":");
     put_str(&w, version);
+    if (caps != 0) {
+        put(&w, ",\"caps\":[");
+        bool first = true;
+        for (size_t i = 0; i < PROTO_CAP_COUNT; i++) {
+            if ((caps & (1u << i)) != 0) {
+                put(&w, first ? "" : ",");
+                put_str(&w, CAP_NAMES[i]);
+                first = false;
+            }
+        }
+        put(&w, "]");
+    }
     put(&w, "}}");
     return finish(&w);
 }
@@ -526,6 +657,20 @@ int proto_write_permission_defer(char *buf, size_t cap, const char *id)
     writer_t w = begin(buf, cap);
     put(&w, "{\"type\":\"permission_defer\",\"id\":");
     put_str(&w, id);
+    put(&w, "}");
+    return finish(&w);
+}
+
+int proto_write_decide(char *buf, size_t cap, const char *id, proto_choice_t choice)
+{
+    if (!proto_id_is_valid(id) || choice <= PROTO_CHOICE_NONE || choice >= PROTO_CHOICE_ANSWERED) {
+        return -1;
+    }
+    writer_t w = begin(buf, cap);
+    put(&w, "{\"type\":\"decide\",\"id\":");
+    put_str(&w, id);
+    put(&w, ",\"choice\":");
+    put_str(&w, CHOICE_NAMES[choice]);
     put(&w, "}");
     return finish(&w);
 }

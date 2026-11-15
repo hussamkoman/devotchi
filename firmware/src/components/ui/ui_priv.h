@@ -45,14 +45,23 @@ typedef enum {
     PET_DEMO_ABOUT2,
 } ui_pet_demo_t;
 
+/* `approval` variants (20-24, 28b), then `menu` (25-27 and the locked session row), then `tabs`. */
 typedef enum {
     APPROVAL_DEMO_OFF = -1,
     APPROVAL_DEMO_LOW,
     APPROVAL_DEMO_MED,
     APPROVAL_DEMO_DETAILS,
+    APPROVAL_DEMO_LONG,
     APPROVAL_DEMO_HIGH,
+    APPROVAL_DEMO_CLICKED,
+    APPROVAL_DEMO_HOLDING,
     APPROVAL_DEMO_SENT,
-    /** High-risk card with its tabs holding, nudged, as one "any" tab, inactive. */
+    APPROVAL_DEMO_NEXT,
+    APPROVAL_DEMO_MENU,
+    APPROVAL_DEMO_MENU_SESSION,
+    APPROVAL_DEMO_MENU_HIGH,
+    APPROVAL_DEMO_MENU_LOCKED,
+    /** High-risk card with its tabs holding, nudged, as one "any" tab, inactive; these stay last. */
     APPROVAL_DEMO_HOLD,
     APPROVAL_DEMO_NUDGE,
     APPROVAL_DEMO_ANY,
@@ -66,6 +75,8 @@ typedef enum {
     W_TOAST_DEMO_DESK,
     W_TOAST_DEMO_BATTERY,
     W_TOAST_DEMO_STRIP,
+    /** Receipt toast on home (28). */
+    W_TOAST_DEMO_RECEIPT,
 } w_toast_demo_t;
 
 /** Variant 0: QR step, 1: code step; -1 returns to the QR step. */
@@ -179,8 +190,12 @@ typedef struct {
     const char *label;
     /** Right-aligned value; NULL for none. */
     const char *value;
+    /** One mono line above the description, shown only while the row is focused; NULL for none. */
+    const char *code;
     /** Up to three lines of description, shown only while the row is focused; NULL for none. */
     const char *desc;
+    /** Drawn in slate: the row exists but cannot be chosen yet. */
+    bool muted;
 } w_list_row_t;
 
 typedef enum {
@@ -189,6 +204,8 @@ typedef enum {
     W_LIST_FOCUS_AMBER,
     /** A row that destroys something. */
     W_LIST_FOCUS_CORAL,
+    /** A muted row: a dark bar, the text stays light. */
+    W_LIST_FOCUS_MUTED,
 } w_list_focus_t;
 
 #define W_LIST_MAX_ROWS  12
@@ -210,6 +227,8 @@ w_well_t *w_well_create(lv_obj_t *parent, int32_t y);
 int32_t w_well_set(w_well_t *w, const char *text, uint8_t lines, const char *foot_left, const char *foot_right,
                    bool edge, lv_color_t edge_color);
 lv_obj_t *w_well_obj(w_well_t *w);
+/** A slate "$" over the first two columns of the first line (the text leaves them blank). */
+void w_well_set_prompt(w_well_t *w, bool on);
 
 typedef struct w_countdown w_countdown_t;
 

@@ -42,7 +42,7 @@ private to the component.
 | Enum constants | `<MODULE>_<NAME>` | `MOOD_HAPPY`, `APP_EV_BUTTON` |
 | Macros, constants | `UPPER_SNAKE` with module prefix | `PROTO_MAX_FRAME` |
 | File-scope variables | `s_` prefix | `s_queue`, `s_state` |
-| Kconfig symbols | `DEVOTCHI_<AREA>_<NAME>` | `CONFIG_DEVOTCHI_LONG_PRESS_MS` |
+| Kconfig symbols | `DEVOTCHI_<AREA>_<NAME>` | `CONFIG_DEVOTCHI_DISPLAY_SPI_HZ` |
 | Log tag | the module name, one per `.c` | `static const char *TAG = "ws";` |
 
 The module prefix is the file or component name (`wifi_`, `ws_`, `proto_`,

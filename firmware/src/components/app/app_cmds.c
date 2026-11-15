@@ -33,6 +33,7 @@ static const char *TAG = "app_cmds";
 static char s_texts[UI_MAX_TEXTS][UI_TEXT_SIZE];
 static char s_toast[UI_TEXT_SIZE];
 static char s_banner[UI_TEXT_SIZE];
+static char s_strip[UI_TEXT_SIZE];
 static app_flow_view_t s_view;
 static app_snapshot_t s_snap;
 
@@ -229,7 +230,7 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
     const size_t count = ui_get_texts(s_texts, UI_MAX_TEXTS);
     ui_status_t bar;
     ui_status_get(&bar);
-    ui_overlay_get(s_toast, s_banner);
+    ui_overlay_get(s_toast, s_banner, s_strip);
     app_flow_get_view(&s_view);
     app_get_snapshot(&s_snap);
 
@@ -278,6 +279,20 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
         const int32_t left = (int32_t)(s_view.request.deadline_ms - app_now_ms());
         cJSON_AddNumberToObject(req, "remainingMs", left > 0 ? left : 0);
         cJSON_AddBoolToObject(req, "sent", s_view.request.answered);
+        cJSON_AddNumberToObject(req, "seen", s_view.request.seen);
+        cJSON_AddBoolToObject(req, "armed", s_view.request.armed);
+        cJSON_AddBoolToObject(req, "cut", s_view.request.cut);
+        cJSON_AddBoolToObject(req, "decide", s_view.request.decide);
+        static const char *const ALLOW[] = {[CARD_ALLOW_NONE] = "none", [CARD_ALLOW_INACTIVE] = "inactive",
+                                            [CARD_ALLOW_CLICK] = "click", [CARD_ALLOW_HOLD] = "hold"};
+        cJSON_AddStringToObject(req, "allow", ALLOW[s_view.request.allow]);
+        cJSON_AddStringToObject(req, "session", card_session_name(s_view.request.session));
+        cJSON_AddStringToObject(req, "view", s_view.request.menu ? "menu" : "card");
+        cJSON *rows = cJSON_AddArrayToObject(req, "rows");
+        for (uint8_t i = 0; i < s_view.request.rows && i < CARD_MENU_ROWS; i++) {
+            cJSON_AddItemToArray(rows, cJSON_CreateString(card_row_name(s_view.request.row[i])));
+        }
+        cJSON_AddNumberToObject(req, "cursor", s_view.request.cursor);
     } else {
         cJSON_AddNullToObject(root, "request");
     }
@@ -299,6 +314,11 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
         cJSON_AddStringToObject(root, "banner", s_banner);
     } else {
         cJSON_AddNullToObject(root, "banner");
+    }
+    if (s_strip[0] != '\0') {
+        cJSON_AddStringToObject(root, "strip", s_strip);
+    } else {
+        cJSON_AddNullToObject(root, "strip");
     }
     return send(root);
 }

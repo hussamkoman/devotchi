@@ -197,6 +197,20 @@ void ui_toast_show(ui_toast_kind_t kind, const char *title, const char *detail, 
     ui_unlock();
 }
 
+void ui_receipt_strip(ui_toast_kind_t kind, const char *text, uint32_t ms)
+{
+    if (!ui_lock()) {
+        return;
+    }
+    if (!ui_demo_active()) {
+        const char *icon;
+        lv_color_t color;
+        kind_style(kind, &icon, &color);
+        w_toast_strip(icon, color, text, "", ms);
+    }
+    ui_unlock();
+}
+
 void ui_toast(const char *text, uint32_t ms)
 {
     ui_toast_show(UI_TOAST_INFO, text, NULL, ms);
@@ -308,13 +322,18 @@ void w_toast_demo(w_toast_demo_t demo)
     case W_TOAST_DEMO_STRIP:
         w_toast_strip(UI_ICON_X, UI_C_CORAL, "Denied \xC2\xB7 next request", "", 0);
         return;
+    case W_TOAST_DEMO_RECEIPT:
+        fill(&s_toast, UI_TOAST_NEGATIVE, "Denied", "Claude was told to try another way");
+        lv_obj_remove_flag(s_toast.box, LV_OBJ_FLAG_HIDDEN);
+        return;
     }
 }
 
-void ui_overlay_get(char toast[UI_TEXT_SIZE], char banner[UI_TEXT_SIZE])
+void ui_overlay_get(char toast[UI_TEXT_SIZE], char banner[UI_TEXT_SIZE], char strip[UI_TEXT_SIZE])
 {
     toast[0] = '\0';
     banner[0] = '\0';
+    strip[0] = '\0';
     if (!ui_lock()) {
         return;
     }
@@ -323,6 +342,9 @@ void ui_overlay_get(char toast[UI_TEXT_SIZE], char banner[UI_TEXT_SIZE])
     }
     if (!lv_obj_has_flag(s_banner.box, LV_OBJ_FLAG_HIDDEN)) {
         strlcpy(banner, lv_label_get_text(s_banner.title), UI_TEXT_SIZE);
+    }
+    if (!lv_obj_has_flag(s_strip, LV_OBJ_FLAG_HIDDEN)) {
+        strlcpy(strip, lv_label_get_text(s_strip_text), UI_TEXT_SIZE);
     }
     ui_unlock();
 }

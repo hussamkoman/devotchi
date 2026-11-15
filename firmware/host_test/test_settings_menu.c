@@ -22,7 +22,7 @@ static settings_act_t click(settings_menu_t *m, btn_id_t id, uint32_t now)
 
 static settings_act_t hold(settings_menu_t *m, btn_id_t id, uint32_t now)
 {
-    const btn_fsm_out_t out = {.id = id, .kind = BTN_LONG};
+    const btn_fsm_out_t out = {.id = id, .kind = BTN_HOLD};
     return settings_menu_button(m, &out, now);
 }
 
@@ -61,7 +61,7 @@ static void test_open_and_navigation(void)
     TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, hold(&m, BTN_REJECT, 0).kind);
     const btn_fsm_out_t swallowed = {.id = BTN_ACTION, .kind = BTN_CLICK, .swallowed = true};
     TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_button(&m, &swallowed, 0).kind);
-    const btn_fsm_out_t swallowed_long = {.id = BTN_ACTION, .kind = BTN_LONG, .swallowed = true};
+    const btn_fsm_out_t swallowed_long = {.id = BTN_ACTION, .kind = BTN_HOLD, .swallowed = true};
     TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, settings_menu_button(&m, &swallowed_long, 0).kind);
     TEST_ASSERT_EQUAL_UINT16(75, m.values[SETTINGS_ROW_BRIGHTNESS]);
 
@@ -190,15 +190,29 @@ static void test_confirm_timeout_and_cancel(void)
     TEST_ASSERT_EQUAL(SETTINGS_ACT_EXECUTE, click(&m, BTN_ACTION, 3000).kind);
 }
 
-/* Drives the menu with what btn_fsm makes of raw driver events, as on the device. */
+/* Drives the menu with what btn_fsm makes of raw driver events and ticks, in the modes the app asks for. */
 static settings_act_t feed(btn_fsm_t *f, settings_menu_t *m, btn_id_t id, btn_raw_t raw, uint32_t now, bool *emitted)
 {
     btn_fsm_out_t out;
-    *emitted = btn_fsm_raw(f, id, raw, now, &out);
+    if (raw == BTN_RAW_DOWN) {
+        *emitted = btn_fsm_down(f, id, id == BTN_ACTION ? BTN_MODE_NAV_HOLD : BTN_MODE_CLICK, now, &out);
+    } else {
+        *emitted = btn_fsm_up(f, id, now, &out);
+    }
     if (!*emitted) {
         return (settings_act_t){.kind = SETTINGS_ACT_NONE};
     }
     return settings_menu_button(m, &out, now);
+}
+
+static settings_act_t feed_tick(btn_fsm_t *f, settings_menu_t *m, uint32_t now, bool *emitted)
+{
+    btn_fsm_out_t out[BTN_COUNT];
+    *emitted = btn_fsm_tick(f, now, out) == 1;
+    if (!*emitted) {
+        return (settings_act_t){.kind = SETTINGS_ACT_NONE};
+    }
+    return settings_menu_button(m, &out[0], now);
 }
 
 static void test_holding_action_to_exit_never_activates(void)
@@ -221,7 +235,7 @@ static void test_holding_action_to_exit_never_activates(void)
 
             settings_act_t a = feed(&f, &m, BTN_ACTION, BTN_RAW_DOWN, 1000, &emitted);
             TEST_ASSERT_FALSE(emitted);
-            a = feed(&f, &m, BTN_ACTION, BTN_RAW_LONG_START, 2000, &emitted);
+            a = feed_tick(&f, &m, 1600, &emitted);
             TEST_ASSERT_TRUE(emitted);
             TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, a.kind);
             /* The release after the long press produces no click. */
@@ -248,9 +262,9 @@ static void test_holding_action_to_exit_never_activates(void)
     TEST_ASSERT_EQUAL_UINT16(100, a.value);
 
     /* The press that wakes the device is swallowed whole, long or short. */
-    btn_fsm_arm_swallow(&f, 5000);
+    btn_fsm_arm(&f, 5000, BTN_FSM_WAKE_GUARD_MS);
     feed(&f, &m, BTN_ACTION, BTN_RAW_DOWN, 5000, &emitted);
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, feed(&f, &m, BTN_ACTION, BTN_RAW_LONG_START, 6000, &emitted).kind);
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, feed_tick(&f, &m, 6000, &emitted).kind);
     TEST_ASSERT_EQUAL(SETTINGS_ACT_NONE, feed(&f, &m, BTN_ACTION, BTN_RAW_UP, 6100, &emitted).kind);
     TEST_ASSERT_EQUAL_UINT16(100, m.values[SETTINGS_ROW_BRIGHTNESS]);
 }

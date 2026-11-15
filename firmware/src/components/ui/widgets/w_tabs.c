@@ -422,6 +422,17 @@ void ui_tabs_nudge(ui_tab_btn_t btn, const char *label)
     ui_unlock();
 }
 
+void ui_tabs_shake(ui_tab_btn_t btn)
+{
+    if (btn >= UI_TAB_COUNT || !ui_lock()) {
+        return;
+    }
+    if (!lv_obj_has_flag(s_tab[btn].box, LV_OBJ_FLAG_HIDDEN)) {
+        shake(s_tab[btn].box);
+    }
+    ui_unlock();
+}
+
 bool ui_tabs_get(ui_tab_info_t out[UI_TAB_COUNT])
 {
     memset(out, 0, sizeof(ui_tab_info_t) * UI_TAB_COUNT);

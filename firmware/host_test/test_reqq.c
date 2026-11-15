@@ -43,7 +43,8 @@ static void test_add_copies_fields_and_sets_deadline(void)
     TEST_ASSERT_EQUAL_STRING(id_of(1), e->id);
     TEST_ASSERT_EQUAL_STRING("Bash", e->tool);
     TEST_ASSERT_EQUAL_STRING("summary 1", e->summary);
-    TEST_ASSERT_EQUAL_STRING("line one\nline two", e->details);
+    TEST_ASSERT_EQUAL_STRING("line one\nline two", e->cmd);
+    TEST_ASSERT_FALSE(e->has_cmd);
     TEST_ASSERT_EQUAL_STRING("devotchi", e->project);
     TEST_ASSERT_EQUAL_STRING("3fa9c1", e->sid);
     TEST_ASSERT_EQUAL(PROTO_RISK_MED, e->risk);
@@ -51,7 +52,41 @@ static void test_add_copies_fields_and_sets_deadline(void)
     TEST_ASSERT_EQUAL_UINT32(30000, e->timeout_ms);
     TEST_ASSERT_FALSE(e->acked);
     TEST_ASSERT_FALSE(e->answered);
-    TEST_ASSERT_EQUAL(0, e->page);
+}
+
+static void test_add_copies_card_fields(void)
+{
+    reqq_init(&q);
+    proto_permission_t p = perm(1, 30000);
+    p.has_cmd = true;
+    snprintf(p.cmd, sizeof(p.cmd), "pnpm test --filter server");
+    snprintf(p.desc, sizeof(p.desc), "Run the tests");
+    snprintf(p.reason, sizeof(p.reason), "Force push");
+    p.has_grant = true;
+    p.grant_prefix = true;
+    snprintf(p.grant_rule, sizeof(p.grant_rule), "pnpm test");
+    TEST_ASSERT_EQUAL(REQQ_ADDED, reqq_add(&q, &p, 0));
+    const reqq_entry_t *e = reqq_head(&q);
+    TEST_ASSERT_TRUE(e->has_cmd);
+    TEST_ASSERT_EQUAL_STRING("pnpm test --filter server", e->cmd);
+    TEST_ASSERT_EQUAL_STRING("Run the tests", e->desc);
+    TEST_ASSERT_EQUAL_STRING("Force push", e->reason);
+    TEST_ASSERT_TRUE(e->has_grant);
+    TEST_ASSERT_TRUE(e->grant_prefix);
+    TEST_ASSERT_EQUAL_STRING("pnpm test", e->grant_rule);
+    TEST_ASSERT_FALSE(e->cut);
+
+    /* A cut entry never carries a grant, whatever the message said. */
+    proto_permission_t c = perm(2, 30000);
+    c.has_cmd = true;
+    c.cut = true;
+    c.has_grant = true;
+    snprintf(c.grant_rule, sizeof(c.grant_rule), "x");
+    TEST_ASSERT_EQUAL(REQQ_ADDED, reqq_add(&q, &c, 0));
+    e = reqq_find(&q, id_of(2));
+    TEST_ASSERT_TRUE(e->cut);
+    TEST_ASSERT_FALSE(e->has_grant);
+    TEST_ASSERT_EQUAL_STRING("", e->grant_rule);
 }
 
 static void test_text_is_sanitised(void)
@@ -181,6 +216,7 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_add_copies_fields_and_sets_deadline);
+    RUN_TEST(test_add_copies_card_fields);
     RUN_TEST(test_text_is_sanitised);
     RUN_TEST(test_duplicate_keeps_deadline);
     RUN_TEST(test_full_rejects_fifth);

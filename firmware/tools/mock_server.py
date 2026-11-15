@@ -4,7 +4,10 @@
 Python standard library only. Speaks the parts of docs/protocol.md the firmware
 uses: GET /health, the pairing REST calls, and a WebSocket on /ws with a
 hand-written RFC 6455 codec so that fragmentation, interleaved pings and close
-codes can be produced on purpose.
+codes can be produced on purpose. The register_ack lists the phase-2
+capabilities of --caps (protocol 14.1); `decide`, `permission_response` and
+`permission_defer` from the board are logged like every frame, and the test
+that drives the mock answers them with `send` (dismiss with `choice`, error).
 
 Every event is printed to stdout as one JSON object per line with a timestamp
 ("t", seconds since the epoch): received frames, upgrades, HTTP requests,
@@ -25,6 +28,7 @@ Control, as lines on stdin or as the body of POST /_ctl:
   expire                           expire every flow A code
   reject-token / accept-token      answer 401 to every upgrade / stop doing so
   stall / unstall                  accept connections but never answer / answer again
+  caps <list|none>                 capabilities named in the next register_ack (comma-separated; default decide)
   status                           counters and connection state as JSON
   tokens                           the tokens this server accepts (test tokens, for leak checks)
 """
@@ -200,13 +204,19 @@ class Connection:
             return
         self.registered = True
         self.state.count("registered")
-        self.send_json({
+        ack = {
             "type": "register_ack", "role": "consumer", "roomId": ROOM_ID, "proto": 2,
             "serverVersion": SERVER_VERSION, "serverTime": int(time.time() * 1000), "mode": self.state.mode,
             "peers": {"producers": 0, "consumers": 1, "devices": 1},
             "device": {"id": client["deviceId"], "name": self.state.device_name},
-        })
-        log("registered", conn=self.number, deviceId=client["deviceId"], version=client["version"])
+        }
+        with self.state.lock:
+            caps = list(self.state.caps)
+        if caps:
+            ack["caps"] = caps
+        self.send_json(ack)
+        log("registered", conn=self.number, deviceId=client["deviceId"], version=client["version"],
+            caps=client.get("caps"))
 
     def serve(self):
         message, message_op = b"", None
@@ -256,6 +266,7 @@ class State:
         self.next_conn = 1
         self.pairings = {}
         self.counters = {}
+        self.caps = [c for c in args.caps.split(",") if c] if args.caps != "none" else []
 
     def count(self, name):
         with self.lock:
@@ -363,6 +374,10 @@ class State:
                 with self.lock:
                     self.stalled = command == "stall"
                 return {"ok": True}
+            if command == "caps":
+                with self.lock:
+                    self.caps = [] if rest == "none" else [c for c in rest.split(",") if c]
+                return {"ok": True, "caps": self.caps}
             if command == "status":
                 return self.status()
             if command == "tokens":
@@ -598,6 +613,8 @@ def parse_args(argv):
     parser.add_argument("--tls", nargs=2, metavar=("CERT", "KEY"), help="serve wss/https with this certificate")
     parser.add_argument("--proto", type=int, default=2, choices=(1, 2),
                         help="1 answers like a v1 server: no /health, no pairing routes")
+    parser.add_argument("--caps", default="decide",
+                        help="capabilities in register_ack, comma-separated, or 'none' for a phase-1 server")
     parser.add_argument("--code", default="K7M2QX", help="flow B code accepted by POST /api/pair/claim")
     parser.add_argument("--token", default=DEFAULT_TOKEN, help="token handed out by a claim and accepted on /ws")
     parser.add_argument("--confirm-after", type=float, default=None, metavar="SECONDS",

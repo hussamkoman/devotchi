@@ -15,10 +15,10 @@
 
 typedef enum {
     APP_EV_TICK,
-    /** arg.u8: btn_id_t, btn_raw_t. */
+    /** arg.u8: btn_id_t, btn_raw_t (from the driver or the console `btn` command). */
     APP_EV_BTN_RAW,
-    /** arg.u8: btn_id_t, btn_kind_t (console injection). */
-    APP_EV_BTN_INJECT,
+    /** The button tick: posted every BTN_FSM_TICK_MS while a button is down. */
+    APP_EV_BTN_TICK,
     /** Console `wake`. */
     APP_EV_USER_ACTIVITY,
     /** arg.u8: fb_seq_id_t, step (FEEDBACK_STEP_END at the end), LED percent, motor percent. */
@@ -118,6 +118,8 @@ typedef struct {
     uint8_t rejected_401;
     uint32_t rx_invalid;
     proto_mode_t mode;
+    /** PROTO_CAP_* of the server's register_ack; 0 before it and for a phase-1 server. */
+    uint32_t server_caps;
     char name[PROTO_NAME_SIZE];
     /** A `preview` screen with sample data is up. */
     bool preview;

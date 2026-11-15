@@ -218,26 +218,27 @@ class ServerRun(Run):
 
     def step_high_risk(self):
         hook, _, screen = self.held_hook("rm -rf /tmp/devotchi-e2e-scratch")
-        check(screen["request"]["risk"] == "high" and "HOLD TO APPROVE" in screen["texts"], f"card: {screen}")
+        check(screen["request"]["risk"] == "high", f"card: {screen}")
         bmark = self.board.mark()
         self.press("approve")
-        self.wait_toast("Hold to approve", bmark)
+        self.wait_board(lambda e: e.get("evt") == "nudge" and e.get("text") == "Hold to allow", 5, bmark, "nudge")
         time.sleep(1.5)
         check(hook.is_alive(), f"a short press answered a high-risk request: {hook.reply}")
         self.press("approve", "long")
         reply = hook.result(5)
         check(reply == ALLOW, f"hook reply {reply}")
         self.wait_pet()
-        return "risk high: short press -> 'Hold to approve' and the hook stayed held; long press -> allow"
+        return "risk high: short press -> 'Hold to allow' and the hook stayed held; hold -> allow"
 
     def step_defer(self):
         hook, _, _ = self.held_hook()
-        self.press("action", "long")
+        self.open_menu()
+        self.press("approve")
         reply = hook.result(5)
         check(reply == {}, f"hook reply {reply}")
         last = self.wait_last_request("neutral", "deferred")
         self.wait_pet()
-        return f"action long -> {{}}; {last}"
+        return f"menu 'Send to terminal' -> {{}}; {last}"
 
     def step_hold_timeout(self):
         self.api("PUT", "/api/room/settings", {"holdMs": 10000})
@@ -247,7 +248,7 @@ class ServerRun(Run):
             reply = hook.result(15)
             check(reply == {}, f"hook reply {reply}")
             check(9 <= hook.seconds <= 12, f"the hook was held {hook.seconds:.1f} s with holdMs 10000")
-            self.wait_toast("Timed out - use terminal", bmark)
+            self.wait_receipt("Time ran out \u00b7 Sent to terminal", bmark, timeout=15)
             last = self.wait_last_request("neutral", "timeout")
         finally:
             self.api("PUT", "/api/room/settings", {"holdMs": 30000})

@@ -2,9 +2,11 @@
 """End-to-end test of the permission flow and the pet on a real board against mock_server.py.
 
 The mock only delivers frames and logs what the board sends; this script plays
-the server's part of protocol v2 (it sends permission, dismiss, error, status,
-notify, mood and identify and checks every frame the board sends back, with the
-holding timing taken from the mock's log).
+the server's part of protocol v2 with the phase-2 card fields of section 14.2
+(it sends permission, dismiss, error, status, notify, mood and identify and
+checks every frame the board sends back, with the holding timing taken from the
+mock's log). The button grammar (arming, holds, the decision menu) is driven
+through the console `btn` command in real time.
 
 The board's pairing and server URL are backed up first (`pair-backup`, which
 keeps an existing backup) and put back at the end (`pair-restore`), also when
@@ -19,6 +21,7 @@ import json
 import os
 import secrets
 import sys
+import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -40,6 +43,9 @@ FIRST_ACK_MAX_S = 0.6
 HEARTBEAT_S = 4.0
 HEARTBEAT_TOL_S = 1.0
 CONFIRM_WINDOW_S = 1.5
+ARM_S = 0.5
+ARM_NEXT_S = 1.0
+ELLIPSIS = "\u2026"
 
 
 def frame_of(event, kind):
@@ -65,6 +71,7 @@ class Run:
         self.counter = 0
         # id -> mock-log time after which the board must never answer it (dismissed or expired).
         self.closed = {}
+        self.sent_ids = []
 
     # ---- helpers ----
 
@@ -100,20 +107,35 @@ class Run:
         event = self.mock.wait_for(lambda e: e.get("ev") == "ctl" and e.get("command") == "send", 2, "send log", mark)
         return event["t"]
 
-    def permission(self, rid=None, risk="low", timeout=30000, summary=None, details=None):
+    def permission(self, rid=None, risk="low", timeout=30000, summary=None, details=None, cmd=None, desc=None,
+                   reason=None, grant=None, cut=False, tool="Bash"):
+        """A phase-2 permission (cmd, desc, reason, grant, cut); details= sends the phase-1 field instead of cmd."""
         rid = rid or self.new_id()
-        frame = {"type": "permission", "id": rid, "tool": "Bash", "summary": summary or f"echo {rid[-4:]}",
-                 "details": details if details is not None else "Run a harmless command\n$ echo ok",
+        frame = {"type": "permission", "id": rid, "tool": tool, "summary": summary or f"echo {rid[-4:]}",
                  "risk": risk, "sid": "3fa9c1", "project": "devotchi", "timeout": timeout}
+        if details is not None:
+            frame["details"] = details
+        else:
+            frame["cmd"] = cmd if cmd is not None else f"echo {rid[-4:]}"
+            frame["desc"] = desc if desc is not None else "Run a harmless command"
+        if reason:
+            frame["reason"] = reason
+        if grant:
+            frame["grant"] = grant
+        if cut:
+            frame["cut"] = True
         mark = self.mock.mark()
         self.send(frame)
+        self.sent_ids.append(rid)
         return rid, self.last_ctl_time(mark)
 
-    def dismiss(self, rid, reason, by=None):
+    def dismiss(self, rid, reason, by=None, outcome="allow", choice=None):
         frame = {"type": "dismiss", "id": rid, "reason": reason}
         if reason == "answered":
-            frame["outcome"] = "allow"
+            frame["outcome"] = outcome
             frame["by"] = by or self.device_id
+        if choice:
+            frame["choice"] = choice
         mark = self.mock.mark()
         self.send(frame)
         self.closed[rid] = self.last_ctl_time(mark)
@@ -144,7 +166,23 @@ class Run:
                                f"toast '{text}'")
 
     def toasts(self, mark):
+        self.board.drain()
         return [e["text"] for _, e in self.board.events(mark) if e.get("evt") == "toast"]
+
+    def receipts(self, mark):
+        self.board.drain()
+        return [e["text"] for _, e in self.board.events(mark) if e.get("evt") == "receipt"]
+
+    def wait_receipt(self, text, mark, timeout=5):
+        return self.wait_board(lambda e: e.get("evt") == "receipt" and e.get("text") == text, timeout, mark,
+                               f"receipt '{text}'")
+
+    def wait_armed(self, timeout=3):
+        return self.wait_screen(lambda s: (s.get("request") or {}).get("armed") is True, timeout, "card armed")
+
+    def frames(self, mark, kinds, rid):
+        return [frame_of(e, k) for e in self.mock.snapshot()[mark:] for k in kinds
+                if frame_of(e, k) is not None and frame_of(e, k).get("id") == rid]
 
     def wait_approval(self, rid, timeout=5):
         return self.wait_screen(lambda s: s["id"] == "approval" and (s.get("request") or {}).get("id") == rid,
@@ -153,8 +191,27 @@ class Run:
     def wait_pet(self, timeout=5):
         return self.wait_screen(lambda s: s["id"] == "pet", timeout, "pet screen")
 
-    def press(self, button, kind="press"):
-        self.cmd(f"btn {button} {kind}")
+    def press(self, button, kind="press", armed=True):
+        """armed: on a request card, wait for the arming delay first (every press during it is swallowed)."""
+        if armed:
+            screen = self.screen()
+            if screen["id"] == "approval" and screen.get("request") and not screen["request"].get("armed"):
+                self.wait_armed()
+        self.cmd(f"btn {button} {kind}", timeout=15.0)
+
+    def open_menu(self):
+        self.press("action", "long")
+        return self.wait_screen(lambda s: (s.get("request") or {}).get("view") == "menu", 3, "decision menu")
+
+    def menu_to(self, row):
+        screen = self.wait_armed()
+        for _ in range(4):
+            req = screen["request"]
+            if req["rows"][req["cursor"]] == row:
+                return screen
+            self.press("action")
+            screen = self.screen()
+        raise StepFailed(f"row {row} not in the menu: {screen['request']}")
 
     def screenshot(self, name):
         width, height, raw = self.board.screenshot()
@@ -173,11 +230,14 @@ class Run:
         check((screen.get("request") or {}).get("sent") is True and "Sent\u2026" in screen["texts"],
               f"card does not show Sent\u2026: {screen.get('texts')}")
         bmark = self.board.mark()
-        self.dismiss(rid, "answered")
+        self.dismiss(rid, "answered", outcome="allow" if granted else "deny")
         self.wait_board(lambda e: e.get("evt") == "request" and e.get("op") == "remove" and e.get("id") == rid, 5,
                         bmark, "request removed")
         time.sleep(0.3)
-        check(not any(t in ("Answered elsewhere", "Not delivered") for t in self.toasts(bmark)),
+        receipts = self.receipts(bmark)
+        expected = "Allowed" if granted else "Denied"
+        check(receipts and receipts[0].startswith(expected), f"receipts {receipts}, expected {expected}")
+        check(not any(t in ("Not delivered",) for t in self.toasts(bmark)),
               f"own answer produced toasts {self.toasts(bmark)}")
 
     # ---- steps ----
@@ -209,7 +269,8 @@ class Run:
     def step_allow(self):
         bmark = self.board.mark()
         mark = self.mock.mark()
-        rid, t0 = self.permission(risk="low", summary="Run the unit tests", details="$ pnpm test --filter server")
+        rid, t0 = self.permission(risk="low", summary="pnpm test --filter server", cmd="pnpm test --filter server",
+                                  desc="Run the unit tests")
         self.wait_board(lambda e: e.get("evt") == "screen" and e.get("id") == "approval", 5, bmark, "approval EVT")
         screen = self.wait_approval(rid)
         req = screen["request"]
@@ -218,6 +279,11 @@ class Run:
         check(screen["statusBar"]["visible"] and screen["statusBar"]["link"] == "registered",
               f"statusBar: {screen['statusBar']}")
         self.screenshot("approval-low")
+        # A visible card holds the active stage, even against a forced stage (ux-flows 7).
+        self.cmd("power stage off")
+        time.sleep(0.3)
+        power = self.board.json_command("power")
+        check(power["cardVisible"] is True and power["stage"] == "active", f"power with a card: {power}")
         deadline = time.monotonic() + 3 * HEARTBEAT_S + 2
         while time.monotonic() < deadline and len([h for h in self.holdings(mark) if rid in h[1]]) < 3:
             time.sleep(0.2)
@@ -231,7 +297,9 @@ class Run:
             check(abs(gap - HEARTBEAT_S) <= HEARTBEAT_TOL_S, f"heartbeat gap {gap} s")
         self.answer_and_confirm(rid, "approve", "press", True)
         self.wait_pet()
-        return f"first holding {first * 1000:.0f} ms, heartbeats {gaps} s, approve -> granted true -> pet"
+        power = self.board.json_command("power")
+        check(power["cardVisible"] is False and power["stage"] == "active", f"power after the card: {power}")
+        return f"card held the stage active; first holding {first * 1000:.0f} ms, heartbeats {gaps} s, approve -> granted true -> pet"
 
     def step_deny(self):
         rid, _ = self.permission(risk="med")
@@ -242,14 +310,18 @@ class Run:
 
     def step_high_risk(self):
         # Five lines that fit the well's 34 columns: two pages of three lines.
-        details = "\n".join(f"line {i:02d} " + "x" * 20 for i in range(5))
-        rid, _ = self.permission(risk="high", summary="rm -rf dist build node_modules/.cache", details=details)
+        cmd = "\n".join(f"line {i:02d} " + "x" * 20 for i in range(5))
+        rid, _ = self.permission(risk="high", summary="rm -rf dist build node_modules/.cache", cmd=cmd,
+                                 reason="Deletes files recursively", desc="Clean the build output")
         screen = self.wait_approval(rid)
         check(screen["request"]["pages"] == 2 and screen["request"]["page"] == 1, f"paging: {screen['request']}")
+        screen = self.wait_armed()
         approve_tab = (screen.get("tabs") or {}).get("approve") or {}
-        check(approve_tab.get("text") == "Hold: Allow", f"approve tab: {screen.get('tabs')}")
+        check(approve_tab == {"state": "inactive", "text": "Allow"}, f"approve tab before page 2: {screen.get('tabs')}")
         self.press("action")
         screen = self.wait_screen(lambda s: (s.get("request") or {}).get("page") == 2, 3, "details page 2")
+        approve_tab = (screen.get("tabs") or {}).get("approve") or {}
+        check(approve_tab.get("text") == "Hold: Allow", f"approve tab after page 2: {screen.get('tabs')}")
         self.press("action")
         self.wait_screen(lambda s: (s.get("request") or {}).get("page") == 1, 3, "details page wraps to 1")
         mark = self.mock.mark()
@@ -259,22 +331,26 @@ class Run:
                         "nudge 'Hold to allow'")
         self.screenshot("approval-high")
         self.no_mock_frame(["permission_response"], rid, CONFIRM_WINDOW_S, mark)
+        check("Deletes files recursively" in screen["texts"], f"reason not shown: {screen['texts']}")
         self.answer_and_confirm(rid, "approve", "long", True)
         self.wait_pet()
-        return "click -> nudge 'Hold to allow' and nothing sent; long -> granted true; details paged 1 -> 2 -> 1"
+        return "click -> nudge 'Hold to allow' and nothing sent; hold -> granted true; pages 1 -> 2 -> 1"
 
     def step_defer(self):
         rid, _ = self.permission(risk="med")
         self.wait_approval(rid)
+        screen = self.open_menu()
+        req = screen["request"]
+        check(req["rows"] == ["terminal", "deny_ask_why", "deny_stop"] and req["cursor"] == 0,
+              f"menu without a grant: {req}")
         mark = self.mock.mark()
-        self.press("action", "long")
+        self.press("approve")
         self.wait_mock_frame("permission_defer", lambda f: f.get("id") == rid, 5, mark, "permission_defer")
         bmark = self.board.mark()
         self.dismiss(rid, "released")
+        self.wait_receipt("Moved to terminal", bmark)
         self.wait_pet()
-        time.sleep(0.3)
-        check(not self.toasts(bmark), f"released produced toasts {self.toasts(bmark)}")
-        return "action long -> permission_defer -> dismiss released -> pet, no toast"
+        return "action hold -> menu on 'Send to terminal' -> approve -> permission_defer -> 'Moved to terminal'"
 
     def step_burst(self):
         mark = self.mock.mark()
@@ -327,12 +403,12 @@ class Run:
             self.dismiss(rid, "cancelled")
         self.dismiss(fifth, "cancelled")
         self.wait_pet()
-        check(self.toasts(bmark).count("Handled in terminal") >= 1, f"toasts {self.toasts(bmark)}")
+        check("Answered in terminal" in self.receipts(bmark), f"receipts {self.receipts(bmark)}")
         return "fifth request refused (full) and not named; the heartbeat lists the four queued ids"
 
     def step_dismiss_reasons(self):
-        expected = {"answered": "Answered elsewhere", "cancelled": "Handled in terminal",
-                    "timeout": "Timed out - use terminal", "released": None}
+        expected = {"answered": "Answered on dashboard", "cancelled": "Answered in terminal",
+                    "timeout": "Time ran out \u00b7 Sent to terminal", "released": "Moved to terminal"}
         seen = []
         for reason, toast in expected.items():
             rid, _ = self.permission()
@@ -343,11 +419,8 @@ class Run:
             self.dismiss(rid, reason, by="dashboard")
             self.wait_pet()
             time.sleep(0.4)
-            toasts = self.toasts(bmark)
-            if toast is None:
-                check(not toasts, f"{reason}: toasts {toasts}")
-            else:
-                check(toast in toasts, f"{reason}: toasts {toasts}")
+            toasts = self.receipts(bmark)
+            check(toast in toasts, f"{reason}: receipts {toasts}")
             if reason == "answered":
                 self.wait_board(lambda e: e.get("evt") == "fb" and e.get("pattern") == "tick", 2, bmark, "tick")
             self.no_mock_frame(["permission_response", "permission_defer"], rid, 0.2, mark)
@@ -396,12 +469,12 @@ class Run:
                                 e.get("reason") == "expired", 8, bmark, "local expiry")
         self.closed[rid] = time.time()
         check(event["count"] == 0, f"queue count {event['count']} after expiry")
-        self.wait_toast("Timed out - use terminal", bmark)
+        self.wait_receipt("Time ran out \u00b7 Sent to terminal", bmark)
         self.wait_pet()
-        self.no_mock_frame(["permission_response", "permission_defer"], rid, 1.0, mark)
+        self.no_mock_frame(["permission_response", "permission_defer", "decide"], rid, 1.0, mark)
         late = [t for t, ids in self.holdings(mark) if rid in ids and t > self.closed[rid] + 0.5]
         check(not late, "holding names the expired id")
-        return "card removed after 5 s with 'Timed out - use terminal'; nothing sent for it"
+        return "card removed after 5 s with 'Time ran out \u00b7 Sent to terminal'; nothing sent for it"
 
     def step_link_loss(self):
         """MOCK-ONLY: the real server resolves a request whose sole holder vanished as holder_lost and never replays it."""
@@ -512,10 +585,267 @@ class Run:
         took = time.monotonic() - started
         return f"identify showed {screen['texts']} and returned to pet after about {took + 0.5:.1f} s"
 
+    # ---- phase 2: buttons, decision menu, receipts ----
+
+    def decide_frame(self, rid, choice, mark, what):
+        _, frame = self.wait_mock_frame("decide", lambda f: f.get("id") == rid, 5, mark, what)
+        check(frame.get("choice") == choice, f"decide choice {frame.get('choice')!r}, expected {choice}")
+        return frame
+
+    def step_menu_rows(self):
+        cases = (("deny_ask_why", "Denied \u00b7 Claude will explain why"),
+                 ("deny_stop", "Denied \u00b7 Claude stopped"))
+        seen = []
+        for row, receipt in cases:
+            rid, _ = self.permission(risk="med", cmd="pnpm run build", desc="Build the packages")
+            self.wait_approval(rid)
+            self.open_menu()
+            self.menu_to(row)
+            mark = self.mock.mark()
+            self.press("approve")
+            self.decide_frame(rid, row, mark, f"decide {row}")
+            screen = self.wait_screen(lambda s: (s.get("request") or {}).get("sent") is True, 3, "sent state")
+            check(screen["request"]["view"] == "card", f"after a menu choice: {screen['request']}")
+            bmark = self.board.mark()
+            self.dismiss(rid, "answered", outcome="deny", choice=row)
+            self.wait_receipt(receipt, bmark)
+            self.wait_pet()
+            seen.append(f"{row} -> decide -> '{receipt}'")
+        return "; ".join(seen)
+
+    def step_session_grant(self):
+        grant = {"rule": "pnpm test", "match": "prefix"}
+        rid, _ = self.permission(risk="low", cmd="pnpm test --filter server", desc="Run the server tests", grant=grant)
+        self.wait_approval(rid)
+        screen = self.open_menu()
+        req = screen["request"]
+        check(req["rows"] == ["terminal", "session", "deny_ask_why", "deny_stop"], f"rows {req['rows']}")
+        check(req["cursor"] == 0 and req["session"] == "ready", f"menu opens on {req}")
+        screen = self.menu_to("session")
+        check(f"pnpm test {ELLIPSIS}" in screen["texts"] and "Starts like this, until Claude exits." in screen["texts"],
+              f"session row texts {screen['texts']}")
+        check(((screen.get("tabs") or {}).get("approve") or {}).get("text") == "Hold: Allow", f"tabs {screen['tabs']}")
+        self.screenshot("menu-session")
+        mark = self.mock.mark()
+        bmark = self.board.mark()
+        self.press("approve")
+        self.wait_board(lambda e: e.get("evt") == "nudge" and e.get("btn") == "approve", 3, bmark, "nudge")
+        self.no_mock_frame(["decide", "permission_response"], rid, 0.8, mark)
+        self.press("approve", "long")
+        self.decide_frame(rid, "allow_session", mark, "decide allow_session")
+        bmark = self.board.mark()
+        self.dismiss(rid, "answered", outcome="allow", choice="allow_session")
+        self.wait_receipt(f"Allowed \u00b7 pnpm test {ELLIPSIS} for this session", bmark)
+        self.wait_pet()
+        return "menu opens on terminal; session row amber with the rule; click nudges; hold -> decide allow_session"
+
+    def step_session_locked(self):
+        cmd = "\n".join(f"pnpm test step {i:02d}" for i in range(5))
+        rid, _ = self.permission(risk="low", cmd=cmd, grant={"rule": "pnpm test", "match": "prefix"})
+        self.wait_approval(rid)
+        screen = self.wait_armed()
+        check(screen["request"]["allow"] == "inactive" and screen["request"]["pages"] == 2, f"card {screen['request']}")
+        mark = self.mock.mark()
+        self.press("approve")
+        self.no_mock_frame(["permission_response"], rid, 0.8, mark)
+        self.open_menu()
+        screen = self.menu_to("session")
+        check(screen["request"]["session"] == "locked" and "Read the whole command first" in screen["texts"],
+              f"locked row: {screen['request']} {screen['texts']}")
+        self.press("approve", "long")
+        self.no_mock_frame(["decide", "permission_response"], rid, 1.0, mark)
+        self.press("reject")
+        self.wait_screen(lambda s: (s.get("request") or {}).get("view") == "card", 3, "back to the card")
+        self.press("action")
+        self.wait_screen(lambda s: (s.get("request") or {}).get("page") == 2, 3, "page 2")
+        self.open_menu()
+        screen = self.menu_to("session")
+        check(screen["request"]["session"] == "ready", f"after every page: {screen['request']}")
+        self.press("approve", "long")
+        self.decide_frame(rid, "allow_session", mark, "decide after reading")
+        self.dismiss(rid, "answered", choice="allow_session")
+        self.wait_pet()
+        return "allow inactive and session row locked until page 2 was shown; then the hold granted the session"
+
+    def step_read_before_yes(self):
+        cmd = "\n".join(f"echo part {i:02d}" for i in range(7))
+        rid, _ = self.permission(risk="low", cmd=cmd)
+        self.wait_approval(rid)
+        self.wait_armed()
+        mark = self.mock.mark()
+        bmark = self.board.mark()
+        self.press("approve")
+        self.wait_board(lambda e: e.get("evt") == "card" and e.get("op") == "shake", 3, bmark, "shake")
+        self.press("action")
+        self.press("approve")
+        self.no_mock_frame(["permission_response"], rid, 0.8, mark)
+        self.press("action")
+        screen = self.wait_screen(lambda s: (s.get("request") or {}).get("allow") == "click", 3, "allow active")
+        check(screen["request"]["seen"] == 3, f"seen {screen['request']}")
+        self.answer_and_confirm(rid, "approve", "press", True)
+        self.wait_pet()
+        return "three pages: allow shakes until page 3 was shown, then allows"
+
+    def step_cut(self):
+        rid, _ = self.permission(risk="low", cmd="x" * 600, cut=True, grant={"rule": "x", "match": "exact"})
+        screen = self.wait_approval(rid)
+        screen = self.wait_armed()
+        req = screen["request"]
+        check(req["cut"] and req["allow"] == "none", f"cut card {req}")
+        check(not ((screen.get("tabs") or {}).get("approve") or {}).get("text"), f"tabs {screen.get('tabs')}")
+        mark = self.mock.mark()
+        self.press("approve")
+        self.press("approve", "long")
+        self.no_mock_frame(["permission_response", "decide"], rid, 0.5, mark)
+        screen = self.open_menu()
+        check(screen["request"]["rows"] == ["terminal", "deny_ask_why", "deny_stop"], f"rows {screen['request']}")
+        self.press("reject")
+        self.answer_and_confirm(rid, "reject", "press", False)
+        self.wait_pet()
+        return "cut request: no Allow tab, approve sends nothing, no session row; deny works"
+
+    def step_not_allowed(self):
+        rid, _ = self.permission(risk="low", cmd="pnpm lint")
+        self.wait_approval(rid)
+        mark = self.mock.mark()
+        self.press("approve")
+        self.wait_mock_frame("permission_response", lambda f: f.get("id") == rid, 5, mark, "response")
+        bmark = self.board.mark()
+        self.send({"type": "error", "code": "NOT_ALLOWED", "message": "cut", "id": rid})
+        self.wait_toast("Not allowed from this device", bmark)
+        screen = self.wait_screen(lambda s: (s.get("request") or {}).get("sent") is False, 3, "unsent card")
+        check(((screen.get("tabs") or {}).get("approve") or {}).get("text") == "Allow", f"tabs {screen.get('tabs')}")
+        self.answer_and_confirm(rid, "reject", "press", False)
+        self.wait_pet()
+        return "error NOT_ALLOWED -> toast, card back to unsent with its tabs"
+
+    def step_hold_cancel(self):
+        rid, _ = self.permission(risk="high", cmd="git push --force origin master", reason="Force push")
+        self.wait_approval(rid)
+        mark = self.mock.mark()
+        bmark = self.board.mark()
+        self.press("approve", "hold 1100")
+        self.wait_board(lambda e: e.get("evt") == "btn" and e.get("kind") == "cancelled", 3, bmark, "cancelled")
+        self.wait_board(lambda e: e.get("evt") == "nudge", 3, bmark, "nudge after the cancel")
+        self.no_mock_frame(["permission_response"], rid, 0.8, mark)
+        self.press("approve", "hold 1300")
+        _, frame = self.wait_mock_frame("permission_response", lambda f: f.get("id") == rid, 5, mark, "response")
+        check(frame.get("granted") is True, f"frame {frame}")
+        self.dismiss(rid, "answered")
+        self.wait_pet()
+        return "release at 1100 ms cancelled (nudge, nothing sent); 1300 ms allowed"
+
+    def step_arming(self):
+        mark = self.mock.mark()
+        bmark = self.board.mark()
+        rid, _ = self.permission(risk="low", cmd="pnpm format")
+        self.wait_board(lambda e: e.get("evt") == "screen" and e.get("id") == "approval", 3, bmark, "card shown")
+        self.press("approve", armed=False)
+        self.no_mock_frame(["permission_response"], rid, 0.8, mark)
+        clicks = [e for _, e in self.board.events(bmark) if e.get("evt") == "btn"]
+        check(clicks and all(e.get("swallowed") for e in clicks), f"press during the arming delay: {clicks}")
+        self.dismiss(rid, "cancelled")
+        self.wait_pet()
+
+        # A press that began on home before the card appeared is swallowed to its end.
+        rid2 = self.new_id()
+        bmark = self.board.mark()
+        timer = threading.Timer(0.3, lambda: self.permission(rid=rid2, risk="low", cmd="pnpm lint"))
+        timer.start()
+        self.press("approve", "hold 2000", armed=False)
+        timer.join()
+        self.no_mock_frame(["permission_response"], rid2, 0.8, mark)
+        outs = [e for _, e in self.board.events(bmark) if e.get("evt") == "btn"]
+        check(outs and all(e.get("swallowed") for e in outs), f"press that began before the card: {outs}")
+        self.dismiss(rid2, "cancelled")
+        self.wait_pet()
+
+        # A commit hold whose card closes under the finger never counts for the next card.
+        first, _ = self.permission(risk="high", cmd="git push -f origin a")
+        second, _ = self.permission(risk="high", cmd="git push -f origin b")
+        self.wait_approval(first)
+        self.wait_armed()
+        bmark = self.board.mark()
+        timer = threading.Timer(0.6, lambda: self.dismiss(first, "cancelled"))
+        timer.start()
+        self.press("approve", "hold 2500")
+        timer.join()
+        self.no_mock_frame(["permission_response"], second, 0.8, mark)
+        commits = [e for _, e in self.board.events(bmark) if e.get("evt") == "btn" and e.get("kind") == "commit"]
+        check(commits and all(e.get("swallowed") for e in commits), f"commit after the card closed: {commits}")
+        self.dismiss(second, "cancelled")
+        self.wait_pet()
+        return ("a click during the arming delay, a hold that began on home and a hold whose card closed under "
+                "the finger were all swallowed; nothing sent")
+
+    def step_timeout_during_hold(self):
+        rid, _ = self.permission(risk="high", cmd="git reset --hard", timeout=3000)
+        self.wait_approval(rid)
+        self.wait_armed()
+        # The hold starts with less time left than it needs to commit.
+        self.wait_screen(lambda s: (s.get("request") or {}).get("remainingMs", 9999) < 900, 3, "under 0.9 s left")
+        mark = self.mock.mark()
+        bmark = self.board.mark()
+        self.press("approve", "hold 2000")
+        self.wait_receipt("Time ran out \u00b7 Sent to terminal", bmark, timeout=3)
+        self.closed[rid] = time.time()
+        self.no_mock_frame(["permission_response"], rid, 0.5, mark)
+        self.wait_pet()
+        return "the card ran out during a hold: no allow, receipt shown"
+
+    def step_queue_next(self):
+        ids = [self.permission(cmd=f"echo next {i}")[0] for i in range(2)]
+        self.wait_approval(ids[0])
+        self.wait_armed()
+        mark = self.mock.mark()
+        self.press("reject")
+        self.wait_mock_frame("permission_response", lambda f: f.get("id") == ids[0], 5, mark, "deny")
+        bmark = self.board.mark()
+        self.dismiss(ids[0], "answered", outcome="deny")
+        self.wait_board(lambda e: e.get("evt") == "receipt" and e.get("strip") is True, 3, bmark, "receipt strip")
+        screen = self.wait_approval(ids[1])
+        check(screen.get("strip") == "Denied \u00b7 next request" and not screen["request"]["armed"],
+              f"strip {screen.get('strip')} armed {screen['request']['armed']}")
+        self.screenshot("queue-next")
+        self.wait_board(lambda e: e.get("evt") == "fb" and e.get("pattern") == "next", 2, bmark, "next haptic")
+        started = time.monotonic()
+        self.wait_armed()
+        armed_after = time.monotonic() - started
+        check(armed_after >= 0.4, f"armed after {armed_after:.2f} s")
+        self.dismiss(ids[1], "cancelled")
+        self.wait_pet()
+        return f"strip 'Denied \u00b7 next request', next haptic, card armed after ~{armed_after + 0.3:.1f} s"
+
+    def step_phase1_server(self):
+        self.mock.ctl("caps none")
+        self.mock.ctl("drop")
+        try:
+            self.board.wait_state(lambda s: not is_registered(s), 10, "link dropped")
+            self.board.wait_state(is_registered, 30, "re-registration without caps")
+            rid, _ = self.permission(details="Run a harmless command\n$ echo ok", summary="echo ok")
+            self.wait_approval(rid)
+            screen = self.open_menu()
+            check(screen["request"]["rows"] == ["terminal"] and not screen["request"]["decide"],
+                  f"phase-1 menu {screen['request']}")
+            mark = self.mock.mark()
+            self.press("approve")
+            self.wait_mock_frame("permission_defer", lambda f: f.get("id") == rid, 5, mark, "defer")
+            self.dismiss(rid, "released")
+            self.wait_pet()
+        finally:
+            self.mock.ctl("caps decide")
+            self.mock.ctl("drop")
+            self.board.wait_state(lambda s: not is_registered(s), 10, "link dropped again")
+            self.board.wait_state(is_registered, 30, "re-registration with decide")
+            deadline = time.monotonic() + 5
+            while self.mock.ctl("status").get("registered") != 1 and time.monotonic() < deadline:
+                time.sleep(0.2)
+        return "without decide in register_ack: phase-1 fields shown, menu has only 'Send to terminal'"
+
     def step_never_answered_closed(self):
         late = []
         for event in self.mock.snapshot():
-            for kind in ("permission_response", "permission_defer"):
+            for kind in ("permission_response", "permission_defer", "decide"):
                 frame = frame_of(event, kind)
                 if frame and frame.get("id") in self.closed and event["t"] > self.closed[frame["id"]]:
                     late.append((kind, frame["id"]))
@@ -544,6 +874,15 @@ class Run:
 
     # ---- driver ----
 
+    def close_leftovers(self):
+        """After a failed step: cancel what it left queued, so the next step starts on home."""
+        try:
+            for rid in [r for r in self.sent_ids if r not in self.closed]:
+                self.dismiss(rid, "cancelled")
+            self.wait_pet(8)
+        except (StepFailed, ConsoleError, ConsoleTimeout):
+            pass
+
     def run_step(self, name, function):
         started = time.monotonic()
         try:
@@ -552,6 +891,7 @@ class Run:
         except (StepFailed, ConsoleError, ConsoleTimeout) as e:
             detail = f"{type(e).__name__}: {e}"
             ok = False
+            self.close_leftovers()
         self.results.append({"step": name, "ok": ok, "seconds": round(time.monotonic() - started, 1), "detail": detail})
         print(f"{'PASS' if ok else 'FAIL'} {name} ({time.monotonic() - started:.1f} s): {detail}", flush=True)
         return ok
@@ -562,6 +902,16 @@ class Run:
             ("deny", self.step_deny),
             ("high-risk", self.step_high_risk),
             ("defer", self.step_defer),
+            ("menu-rows", self.step_menu_rows),
+            ("session-grant", self.step_session_grant),
+            ("session-locked", self.step_session_locked),
+            ("read-before-yes", self.step_read_before_yes),
+            ("cut", self.step_cut),
+            ("not-allowed", self.step_not_allowed),
+            ("hold-cancel", self.step_hold_cancel),
+            ("arming", self.step_arming),
+            ("timeout-during-hold", self.step_timeout_during_hold),
+            ("queue-next", self.step_queue_next),
             ("burst", self.step_burst),
             ("overflow", self.step_overflow),
             ("dismiss-reasons", self.step_dismiss_reasons),
@@ -572,6 +922,7 @@ class Run:
             ("notify", self.step_notify),
             ("mode", self.step_mode),
             ("identify", self.step_identify),
+            ("phase1-server", self.step_phase1_server),
         ]
         selected = self.args.steps.split(",") if self.args.steps else None
         ok = True

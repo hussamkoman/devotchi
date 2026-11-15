@@ -91,7 +91,7 @@ with the ESP-IDF Python:
 PY=~/.espressif/tools/python/v6.0/venv/bin/python
 $PY -I tools/devotchi_serial.py state                # application state as JSON
 $PY -I tools/devotchi_serial.py cmd screen           # screen id and visible texts
-$PY -I tools/devotchi_serial.py cmd btn approve press
+$PY -I tools/devotchi_serial.py cmd btn approve press   # also: long (1.3 s), hold <ms>
 $PY -I tools/devotchi_serial.py screenshot /tmp/s.png
 $PY -I tools/devotchi_serial.py monitor              # log and EVT lines
 ```
@@ -164,7 +164,6 @@ off and put the original values back.
 | Option | Default | Meaning |
 |---|---|---|
 | `DEVOTCHI_DEFAULT_SERVER_URL` | `ws://10.0.0.120:8080` | Server used until one is set by console, provisioning or settings |
-| `DEVOTCHI_LONG_PRESS_MS` | 1000 | Long-press threshold |
 | `DEVOTCHI_DISPLAY_SPI_HZ` | 40000000 | Panel SPI clock |
 | `DEVOTCHI_DIM_BRIGHTNESS_PCT` | 10 | Backlight in the dim stage |
 | `DEVOTCHI_PWR_USB_DEEP_MIN` | 0 | Deep sleep on external power after N minutes (0 = never) |

@@ -35,6 +35,7 @@ static const char *TAG = "app";
 static QueueHandle_t s_queue;
 static SemaphoreHandle_t s_snapshot_lock;
 static esp_timer_handle_t s_tick_timer;
+static esp_timer_handle_t s_btn_timer;
 static SemaphoreHandle_t s_setting_applied;
 
 typedef enum {
@@ -356,56 +357,91 @@ void app_agent_activity(uint32_t now)
 
 static void on_button(const btn_fsm_out_t *out, uint32_t now_ms)
 {
-    if (snapshot_lock()) {
-        s_snapshot.has_last_btn = true;
-        s_snapshot.last_btn = *out;
-        s_snapshot.last_btn_ms = now_ms;
-        xSemaphoreGive(s_snapshot_lock);
+    /* Progress arrives every tick of a hold; the snapshot and the log keep the outcomes. */
+    if (out->kind != BTN_PROGRESS) {
+        if (snapshot_lock()) {
+            s_snapshot.has_last_btn = true;
+            s_snapshot.last_btn = *out;
+            s_snapshot.last_btn_ms = now_ms;
+            xSemaphoreGive(s_snapshot_lock);
+        }
+        char evt[112];
+        snprintf(evt, sizeof(evt),
+                 "{\"evt\":\"btn\",\"id\":\"%s\",\"kind\":\"%s\",\"permille\":%u,\"swallowed\":%s}",
+                 btn_id_name(out->id), btn_kind_name(out->kind), out->permille, out->swallowed ? "true" : "false");
+        console_evt(evt);
     }
-
-    char evt[96];
-    snprintf(evt, sizeof(evt), "{\"evt\":\"btn\",\"id\":\"%s\",\"kind\":\"%s\",\"swallowed\":%s}",
-             btn_id_name(out->id), btn_kind_name(out->kind), out->swallowed ? "true" : "false");
-    console_evt(evt);
-
     if (!out->swallowed) {
         app_link_on_button(out);
     }
+}
+
+void app_btn_arm(uint32_t now, uint32_t delay_ms)
+{
+    btn_fsm_arm(&s_btn, now, delay_ms);
+}
+
+bool app_btn_armed(uint32_t now)
+{
+    return !btn_fsm_swallowing(&s_btn, now);
+}
+
+bool app_btn_arm_end(uint32_t *out)
+{
+    return btn_fsm_swallowing(&s_btn, app_now_ms()) && btn_fsm_armed_until(&s_btn, out);
 }
 
 /* A press while the screen is dim or off only wakes it (architecture 4.8). */
 static void wake_press(uint32_t now)
 {
     if (app_power_stage() != POWER_STAGE_ACTIVE) {
-        btn_fsm_arm_swallow(&s_btn, now);
+        btn_fsm_arm(&s_btn, now, BTN_FSM_WAKE_GUARD_MS);
     }
     app_user_activity(now);
+}
+
+/* The tick runs only while a button is down, so an idle device keeps no periodic timer for the buttons. */
+static void btn_timer_update(void)
+{
+    const bool down = btn_fsm_any_down(&s_btn);
+    if (down && !esp_timer_is_active(s_btn_timer)) {
+        esp_timer_start_periodic(s_btn_timer, BTN_FSM_TICK_MS * 1000);
+    } else if (!down && esp_timer_is_active(s_btn_timer)) {
+        esp_timer_stop(s_btn_timer);
+    }
 }
 
 static void handle_btn_raw(const app_event_t *ev)
 {
     const btn_id_t id = (btn_id_t)ev->arg.u8[0];
     const btn_raw_t raw = (btn_raw_t)ev->arg.u8[1];
+    if (id >= BTN_COUNT) {
+        return;
+    }
+    btn_fsm_out_t out;
+    bool has;
     if (raw == BTN_RAW_DOWN) {
         wake_press(ev->t_ms);
+        const btn_mode_t mode = app_link_btn_mode(id, ev->t_ms);
+        ESP_LOGD(TAG, "down %s %s", btn_id_name(id), btn_mode_name(mode));
+        has = btn_fsm_down(&s_btn, id, mode, ev->t_ms, &out);
+    } else {
+        has = btn_fsm_up(&s_btn, id, ev->t_ms, &out);
     }
-    ESP_LOGD(TAG, "raw %s %d", btn_id_name(id), raw);
-    btn_fsm_out_t out;
-    if (btn_fsm_raw(&s_btn, id, raw, ev->t_ms, &out)) {
+    btn_timer_update();
+    if (has) {
         on_button(&out, ev->t_ms);
     }
 }
 
-static void handle_btn_inject(const app_event_t *ev)
+static void handle_btn_tick(const app_event_t *ev)
 {
-    const btn_id_t id = (btn_id_t)ev->arg.u8[0];
-    if (id >= BTN_COUNT) {
-        return;
+    btn_fsm_out_t out[BTN_COUNT];
+    const size_t n = btn_fsm_tick(&s_btn, ev->t_ms, out);
+    btn_timer_update();
+    for (size_t i = 0; i < n; i++) {
+        on_button(&out[i], ev->t_ms);
     }
-    wake_press(ev->t_ms);
-    btn_fsm_out_t out;
-    btn_fsm_inject(&s_btn, id, (btn_kind_t)ev->arg.u8[1], ev->t_ms, &out);
-    on_button(&out, ev->t_ms);
 }
 
 static void handle_fb_step(const app_event_t *ev)
@@ -496,8 +532,8 @@ static void handle_event(const app_event_t *ev)
     case APP_EV_BTN_RAW:
         handle_btn_raw(ev);
         break;
-    case APP_EV_BTN_INJECT:
-        handle_btn_inject(ev);
+    case APP_EV_BTN_TICK:
+        handle_btn_tick(ev);
         break;
     case APP_EV_USER_ACTIVITY:
         app_user_activity(ev->t_ms);
@@ -562,6 +598,13 @@ static void tick_cb(void *arg)
     app_post(&ev);
 }
 
+static void btn_tick_cb(void *arg)
+{
+    (void)arg;
+    const app_event_t ev = {.id = APP_EV_BTN_TICK, .t_ms = app_now_ms()};
+    app_post(&ev);
+}
+
 static void on_button_raw(btn_id_t id, btn_raw_t raw, uint32_t now_ms)
 {
     const app_event_t ev = {.id = APP_EV_BTN_RAW, .t_ms = now_ms, .arg.u8 = {(uint8_t)id, (uint8_t)raw}};
@@ -597,8 +640,14 @@ esp_err_t app_init(void)
     btn_fsm_init(&s_btn);
     /* The press that woke the device from deep sleep only wakes it. */
     if (esp_reset_reason() == ESP_RST_DEEPSLEEP) {
-        btn_fsm_arm_swallow(&s_btn, app_now_ms());
+        btn_fsm_arm(&s_btn, app_now_ms(), BTN_FSM_WAKE_GUARD_MS);
     }
+    const esp_timer_create_args_t btn_tick = {
+        .callback = btn_tick_cb,
+        .name = "btn_tick",
+        .skip_unhandled_events = true,
+    };
+    ESP_RETURN_ON_ERROR(esp_timer_create(&btn_tick, &s_btn_timer), TAG, "button timer");
 
     /* Buttons first: in power-save mode the button library installs the GPIO ISR service itself. */
     ESP_RETURN_ON_ERROR(buttons_init(on_button_raw), TAG, "buttons");

@@ -332,6 +332,22 @@ size_t text_wrap_lines(const char *src, size_t cols)
     return lines;
 }
 
+size_t text_wrap_lines_first(const char *src, size_t cols)
+{
+    size_t lines = 0;
+    const char *p = src;
+    while (p != NULL && *p != '\0' && cols > 0) {
+        size_t len;
+        const char *line = p;
+        p = wrap_line(p, cols, &len);
+        lines++;
+        if (line[len] == '\n' || line[len] == '\0') {
+            break;
+        }
+    }
+    return lines;
+}
+
 size_t text_wrap_pages(const char *src, size_t cols, size_t lines_per_page)
 {
     if (lines_per_page == 0) {

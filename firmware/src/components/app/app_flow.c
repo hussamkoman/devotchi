@@ -1,6 +1,7 @@
 #include "app_priv.h"
 
 #include "app.h"
+#include "card_fsm.h"
 #include "console.h"
 #include "fb_seq.h"
 #include "feedback.h"
@@ -46,6 +47,8 @@ static const char *TAG = "flow";
 #define PAGE_IDLE_MS        20000
 /* Home shows its button tabs this long after a press (design-system 5). */
 #define HOME_TABS_MS        3000
+/* The receipt strip over the next card lasts as long as that card arms (ux-flows 6). */
+#define RECEIPT_STRIP_MS    CARD_ARM_NEXT_MS
 
 /* Everything below belongs to the app task, except s_view (guarded by s_view_lock). */
 
@@ -77,6 +80,13 @@ static pet_pokes_t s_pokes;
 
 static SemaphoreHandle_t s_view_lock;
 static app_flow_view_t s_view;
+
+/* The card of the head request; s_card_id is "" while no card is open. */
+static card_fsm_t s_card;
+static char s_card_id[PROTO_ID_SIZE];
+static bool s_card_visible;
+/* A visible card left the queue with a receipt: the next card replaces it (28b). */
+static bool s_card_replaced;
 
 static uint32_t after(uint32_t now, uint32_t ms)
 {
@@ -310,33 +320,73 @@ static const char *dismiss_reason_name(proto_dismiss_reason_t r)
     return "";
 }
 
+static ui_toast_kind_t tone_kind(card_tone_t tone)
+{
+    switch (tone) {
+    case CARD_TONE_ALLOWED:
+        return UI_TOAST_POSITIVE;
+    case CARD_TONE_DENIED:
+        return UI_TOAST_NEGATIVE;
+    case CARD_TONE_NEUTRAL:
+        break;
+    }
+    return UI_TOAST_INFO;
+}
+
+/*
+ * A visible card closed: the receipt is a strip over the next card while it
+ * arms, or a toast on home (ux-flows 3.2). Called after the entry left the queue.
+ */
+static void show_receipt(const card_receipt_t *r)
+{
+    static char text[2 * TOAST_SIZE];
+    static char escaped[4 * TOAST_SIZE];
+    static char evt[EVT_SIZE + 4 * TOAST_SIZE];
+    const bool strip = reqq_count(&s_q) > 0;
+    if (strip) {
+        snprintf(text, sizeof(text), "%s \xC2\xB7 next request", r->title);
+        ui_receipt_strip(tone_kind(r->tone), text, RECEIPT_STRIP_MS);
+        s_card_replaced = true;
+    } else {
+        ui_toast_show(tone_kind(r->tone), r->title, r->detail[0] != '\0' ? r->detail : NULL, UI_TOAST_DEFAULT_MS);
+        snprintf(text, sizeof(text), r->detail[0] != '\0' ? "%s \xC2\xB7 %s" : "%s%s", r->title, r->detail);
+    }
+    json_escape(escaped, sizeof(escaped), text);
+    snprintf(evt, sizeof(evt), "{\"evt\":\"receipt\",\"text\":\"%s\",\"strip\":%s}", escaped,
+             strip ? "true" : "false");
+    console_evt(evt);
+}
+
 static void on_dismiss(const proto_dismiss_t *d, uint32_t now)
 {
-    const reqq_entry_t *e = reqq_find(&s_q, d->id);
+    reqq_entry_t *e = reqq_find(&s_q, d->id);
     if (e == NULL) {
         return;
     }
     const bool visible = is_visible_head(e, now);
-    const bool ours = e->answered || (d->by[0] != '\0' && strcmp(d->by, s_device_id) == 0);
+    /* `by` wins over e->answered: this device's answer may have lost the race to another consumer's. */
+    const bool ours = d->by[0] != '\0' ? strcmp(d->by, s_device_id) == 0 : e->answered;
+    /* Static: the entry is about to be overwritten by the queue shift, and the app task's stack is small. */
+    static card_receipt_t r;
+    card_receipt_dismiss(&r, d, ours, e);
     reqq_remove(&s_q, d->id);
     request_evt("remove", d->id, dismiss_reason_name(d->reason));
-    if (visible && !ours) {
-        switch (d->reason) {
-        case PROTO_DISMISS_ANSWERED:
-            app_toast("Answered elsewhere");
+    if (visible) {
+        show_receipt(&r);
+        if (!ours && d->reason == PROTO_DISMISS_ANSWERED) {
             play(FB_SEQ_TICK, 0);
-            break;
-        case PROTO_DISMISS_CANCELLED:
-            app_toast("Handled in terminal");
-            break;
-        case PROTO_DISMISS_TIMEOUT:
-            app_toast("Timed out - use terminal");
-            break;
-        case PROTO_DISMISS_RELEASED:
-            break;
         }
     }
     queue_changed(now);
+}
+
+/* The server refused an answer: the card's buttons come back. */
+static void unsend(reqq_entry_t *e)
+{
+    e->answered = false;
+    if (strcmp(e->id, s_card_id) == 0) {
+        card_fsm_set_sent(&s_card, false);
+    }
 }
 
 static void on_error(const proto_error_t *err, uint32_t now)
@@ -352,8 +402,12 @@ static void on_error(const proto_error_t *err, uint32_t now)
         app_toast("No longer pending");
         queue_changed(now);
     } else if (strcmp(err->code, "INVALID_MESSAGE") == 0) {
-        e->answered = false;
+        unsend(e);
         app_toast("Not delivered");
+    } else if (strcmp(err->code, "NOT_ALLOWED") == 0) {
+        /* Only when the device and the server disagree about `cut`; the request stays pending. */
+        unsend(e);
+        app_toast("Not allowed from this device");
     } else {
         ESP_LOGD(TAG, "server error %s for a queued request", err->code);
     }
@@ -471,14 +525,74 @@ void app_flow_on_link_lost(uint32_t now)
 
 /* ---- buttons ---- */
 
-static void answer(reqq_entry_t *e, bool granted, uint32_t now)
+static const char *const NUDGE_TEXT[BTN_COUNT] = {
+    [BTN_APPROVE] = "Hold to allow",
+    [BTN_REJECT] = "",
+    [BTN_ACTION] = "Hold for more",
+};
+
+static ui_tab_btn_t tab_of(btn_id_t id)
 {
+    switch (id) {
+    case BTN_REJECT:
+        return UI_TAB_REJECT;
+    case BTN_ACTION:
+        return UI_TAB_ACTION;
+    case BTN_APPROVE:
+    case BTN_COUNT:
+        break;
+    }
+    return UI_TAB_APPROVE;
+}
+
+/* The frame of a decision; -1 for none. */
+static int write_decision(card_decision_t d, const char *id, const char **type, char *extra, size_t extra_cap)
+{
+    switch (d) {
+    case CARD_DECISION_ALLOW:
+    case CARD_DECISION_DENY:
+        *type = "permission_response";
+        snprintf(extra, extra_cap, ",\"id\":\"%s\",\"granted\":%s", id,
+                 d == CARD_DECISION_ALLOW ? "true" : "false");
+        return proto_write_permission_response(s_tx, sizeof(s_tx), id, d == CARD_DECISION_ALLOW);
+    case CARD_DECISION_DEFER:
+        *type = "permission_defer";
+        snprintf(extra, extra_cap, ",\"id\":\"%s\"", id);
+        return proto_write_permission_defer(s_tx, sizeof(s_tx), id);
+    case CARD_DECISION_ALLOW_SESSION:
+    case CARD_DECISION_DENY_ASK_WHY:
+    case CARD_DECISION_DENY_STOP: {
+        const proto_choice_t choice = d == CARD_DECISION_ALLOW_SESSION ? PROTO_CHOICE_ALLOW_SESSION
+                                      : d == CARD_DECISION_DENY_ASK_WHY ? PROTO_CHOICE_DENY_ASK_WHY
+                                                                        : PROTO_CHOICE_DENY_STOP;
+        *type = "decide";
+        snprintf(extra, extra_cap, ",\"id\":\"%s\",\"choice\":\"%s\"", id, proto_choice_name(choice));
+        return proto_write_decide(s_tx, sizeof(s_tx), id, choice);
+    }
+    case CARD_DECISION_NONE:
+        break;
+    }
+    return -1;
+}
+
+/*
+ * The only way a decision reaches the wire. The card's own check runs again
+ * here, next to the serialiser: a session grant needs a grant in the entry, a
+ * whole command and every page shown; nothing goes out for a sent or expired card.
+ */
+static void send_decision(reqq_entry_t *e, card_decision_t d, uint32_t now)
+{
+    if (strcmp(e->id, s_card_id) != 0 || !card_fsm_may_send(&s_card, d, now) ||
+        (d == CARD_DECISION_ALLOW_SESSION && (!e->has_grant || e->cut))) {
+        ESP_LOGW(TAG, "decision %s refused for the card on screen", card_decision_name(d));
+        return;
+    }
     char id[PROTO_ID_SIZE];
     memcpy(id, e->id, sizeof(id));
-    char extra[80];
-    snprintf(extra, sizeof(extra), ",\"id\":\"%s\",\"granted\":%s", id, granted ? "true" : "false");
-    const int len = proto_write_permission_response(s_tx, sizeof(s_tx), id, granted);
-    const bool sent = app_link_send(now, "permission_response", s_tx, len, extra);
+    const char *type = "";
+    char extra[96];
+    const int len = write_decision(d, id, &type, extra, sizeof(extra));
+    const bool sent = len > 0 && app_link_send(now, type, s_tx, len, extra);
     /* A failed send can take the link down, and the link loss empties the queue. */
     reqq_entry_t *still = reqq_find(&s_q, id);
     if (still == NULL) {
@@ -487,63 +601,76 @@ static void answer(reqq_entry_t *e, bool granted, uint32_t now)
     if (sent) {
         still->answered = true;
         still->answered_ms = now;
+        card_fsm_set_sent(&s_card, true);
         schedule_nag(now);
     } else {
         app_toast("Not delivered");
     }
 }
 
-static void defer(reqq_entry_t *e, uint32_t now)
+static void card_evt(const char *what)
 {
-    char id[PROTO_ID_SIZE];
-    memcpy(id, e->id, sizeof(id));
-    char extra[48];
-    snprintf(extra, sizeof(extra), ",\"id\":\"%s\"", id);
-    const bool sent =
-        app_link_send(now, "permission_defer", s_tx, proto_write_permission_defer(s_tx, sizeof(s_tx), id), extra);
-    reqq_entry_t *still = reqq_find(&s_q, id);
-    if (still == NULL) {
+    char evt[128];
+    snprintf(evt, sizeof(evt), "{\"evt\":\"card\",\"op\":\"%s\",\"view\":\"%s\",\"page\":%u,\"row\":\"%s\"}", what,
+             s_card.view == CARD_VIEW_MENU ? "menu" : "card", s_card.page + 1,
+             card_row_name(card_fsm_focused_row(&s_card)));
+    console_evt(evt);
+}
+
+static void on_card_out(reqq_entry_t *e, const card_out_t *o, uint32_t now)
+{
+    switch (o->kind) {
+    case CARD_OUT_NONE:
+        return;
+    case CARD_OUT_PROGRESS:
+        ui_tabs_hold_progress(tab_of(o->btn), o->permille > 0 ? o->permille : 1);
+        return;
+    case CARD_OUT_CANCEL:
+        ui_tabs_hold_progress(UI_TAB_APPROVE, 0);
+        return;
+    case CARD_OUT_PAGE:
+    case CARD_OUT_CURSOR:
+        play(FB_SEQ_CLICK, 0);
+        card_evt(o->kind == CARD_OUT_PAGE ? "page" : "cursor");
+        return;
+    case CARD_OUT_MENU_OPEN:
+    case CARD_OUT_MENU_BACK:
+        play(FB_SEQ_TICK, 0);
+        app_btn_arm(now, o->arm_ms);
+        card_evt(o->kind == CARD_OUT_MENU_OPEN ? "menu" : "back");
+        return;
+    case CARD_OUT_SHAKE:
+        play(FB_SEQ_CLICK, 0);
+        ui_tabs_shake(tab_of(o->btn));
+        card_evt("shake");
+        return;
+    case CARD_OUT_NUDGE: {
+        /* A click on a hold-only tab only explains the hold (design-system 5). */
+        play(FB_SEQ_CLICK, 0);
+        ui_tabs_hold_progress(tab_of(o->btn), 0);
+        ui_tabs_nudge(tab_of(o->btn), NUDGE_TEXT[o->btn]);
+        char evt[96];
+        snprintf(evt, sizeof(evt), "{\"evt\":\"nudge\",\"btn\":\"%s\",\"text\":\"%s\"}", btn_id_name(o->btn),
+                 NUDGE_TEXT[o->btn]);
+        console_evt(evt);
         return;
     }
-    if (sent) {
-        still->answered = true;
-        still->answered_ms = now;
-    } else {
-        app_toast("Not delivered");
+    case CARD_OUT_DECIDE:
+        play(FB_SEQ_CLICK, 0);
+        ui_tabs_hold_progress(UI_TAB_APPROVE, 0);
+        send_decision(e, o->decision, now);
+        return;
     }
 }
 
 static void on_approval_button(const btn_fsm_out_t *out, uint32_t now)
 {
     reqq_entry_t *e = reqq_head(&s_q);
-    if (e == NULL || e->answered) {
+    if (e == NULL || strcmp(e->id, s_card_id) != 0) {
         return;
     }
-    if (out->id == BTN_APPROVE && out->kind == BTN_CLICK) {
-        play(FB_SEQ_CLICK, 0);
-        if (e->risk == PROTO_RISK_HIGH) {
-            /* A click on a hold-only tab only explains the hold (design-system 5). */
-            ui_tabs_nudge(UI_TAB_APPROVE, "Hold to allow");
-            console_evt("{\"evt\":\"nudge\",\"btn\":\"approve\",\"text\":\"Hold to allow\"}");
-        } else {
-            answer(e, true, now);
-        }
-    } else if (out->id == BTN_APPROVE && out->kind == BTN_LONG) {
-        play(FB_SEQ_CLICK, 0);
-        answer(e, true, now);
-    } else if (out->id == BTN_REJECT && out->kind == BTN_CLICK) {
-        play(FB_SEQ_CLICK, 0);
-        answer(e, false, now);
-    } else if (out->id == BTN_ACTION && out->kind == BTN_CLICK) {
-        const size_t pages = text_wrap_pages(e->details, UI_DETAILS_COLS, UI_DETAILS_LINES);
-        if (pages > 1) {
-            play(FB_SEQ_CLICK, 0);
-            e->page = (uint8_t)((e->page + 1) % pages);
-        }
-    } else if (out->id == BTN_ACTION && out->kind == BTN_LONG) {
-        play(FB_SEQ_CLICK, 0);
-        defer(e, now);
-    }
+    const card_out_t o = card_fsm_button(&s_card, out, now);
+    on_card_out(e, &o, now);
 }
 
 static void pet_evt(ui_pet_reaction_t r)
@@ -586,10 +713,10 @@ static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
     if (s_page == UI_PET_PAGE_PET) {
         ui_pet_show_tabs(HOME_TABS_MS);
     }
-    if (out->id == BTN_ACTION && out->kind == BTN_LONG) {
+    if (out->id == BTN_ACTION && out->kind == BTN_HOLD) {
         return false;
     }
-    if (out->id == BTN_REJECT && out->kind == BTN_LONG) {
+    if (out->id == BTN_REJECT && out->kind == BTN_HOLD) {
         const proto_mode_t next = app_link_mode() == PROTO_MODE_DESK ? PROTO_MODE_ASK : PROTO_MODE_DESK;
         char extra[24];
         snprintf(extra, sizeof(extra), ",\"mode\":\"%s\"", proto_mode_name(next));
@@ -618,8 +745,32 @@ static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
     return true;
 }
 
+btn_mode_t app_flow_btn_mode(btn_id_t id, uint32_t now)
+{
+    /* The urgent banner and identify have one tab: any button. */
+    if (s_attention || identify_active(now)) {
+        return BTN_MODE_CLICK;
+    }
+    if (s_screen == UI_SCREEN_APPROVAL) {
+        return s_card_id[0] != '\0' ? card_fsm_mode(&s_card, id, now) : BTN_MODE_NONE;
+    }
+    /* Home: REJECT hold toggles desk mode, ACTION hold opens Settings. */
+    return id == BTN_APPROVE ? BTN_MODE_CLICK : BTN_MODE_NAV_HOLD;
+}
+
+bool app_flow_card_visible(void)
+{
+    return s_card_visible && app_link_flow_shown();
+}
+
 bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
 {
+    if (out->kind == BTN_PROGRESS) {
+        if (s_screen == UI_SCREEN_APPROVAL) {
+            on_approval_button(out, now);
+        }
+        return true;
+    }
     if (s_attention) {
         /* The press that acknowledges an urgent notification does nothing else. */
         s_attention = false;
@@ -664,14 +815,22 @@ static void on_timer_cb(void *arg)
 
 static void run_deadlines(uint32_t now)
 {
+    if (s_card_id[0] != '\0') {
+        const card_out_t o = card_fsm_tick(&s_card, now);
+        on_card_out(reqq_head(&s_q), &o, now);
+    }
     char id[PROTO_ID_SIZE];
     bool expired = false;
     while (reqq_expire(&s_q, now, id)) {
         request_evt("remove", id, "expired");
         expired = true;
+        if (s_card_visible && strcmp(id, s_card_id) == 0) {
+            static card_receipt_t r;
+            card_receipt_timeout(&r);
+            show_receipt(&r);
+        }
     }
     if (expired) {
-        app_toast("Timed out - use terminal");
         queue_changed(now);
         if (reqq_count(&s_q) > 0) {
             schedule_nag(now);
@@ -680,7 +839,7 @@ static void run_deadlines(uint32_t now)
     for (size_t i = 0; i < s_q.count; i++) {
         reqq_entry_t *e = &s_q.entries[i];
         if (e->answered && now - e->answered_ms >= CONFIRM_MS) {
-            e->answered = false;
+            unsend(e);
             app_toast("Not delivered");
             schedule_nag(now);
         }
@@ -725,6 +884,11 @@ void app_flow_arm_timer(uint32_t now)
     }
     if (s_screen == UI_SCREEN_APPROVAL && reqq_count(&s_q) > 0) {
         at = earliest(at, after(now, BAR_REFRESH_MS), now);
+    }
+    /* The tabs turn active when the arming delay ends. */
+    uint32_t armed_at;
+    if (s_card_visible && app_btn_arm_end(&armed_at)) {
+        at = earliest(at, armed_at != 0 ? armed_at : 1, now);
     }
     if (on_about()) {
         at = earliest(at, after(s_page_at, PAGE_IDLE_MS), now);
@@ -779,40 +943,67 @@ void app_flow_hide_banner(void)
     set_banner(NULL, false);
 }
 
-static void render_approval(const reqq_entry_t *e, uint8_t position, uint8_t count, uint32_t now,
-                            app_flow_view_t *view)
+static void render_approval(const reqq_entry_t *e, const card_fsm_t *c, bool armed, uint8_t position,
+                            uint8_t count, uint32_t now, app_flow_view_t *view)
 {
-    /* Static: a details page does not belong on the app task's stack. */
-    static char page_text[UI_DETAILS_COLS * UI_DETAILS_LINES + UI_DETAILS_LINES + 1];
-    const size_t pages = text_wrap_pages(e->details, UI_DETAILS_COLS, UI_DETAILS_LINES);
-    const size_t page = pages > 0 ? e->page % pages : 0;
-    if (pages == 0 || !text_wrap_page(page_text, sizeof(page_text), e->details, UI_DETAILS_COLS, UI_DETAILS_LINES,
-                                      page)) {
-        page_text[0] = '\0';
+    /* Static: a command page and its first line do not belong on the app task's stack. */
+    static char wrapped[CARD_COLS * CARD_LINES * 4 + CARD_LINES + 1];
+    static char page_text[sizeof(wrapped) + 2 * CARD_LINES];
+    static char cmd_line[PROTO_CMD_SIZE];
+    if (c->pages == 0 || !text_wrap_page(wrapped, sizeof(wrapped), e->cmd, c->cols, CARD_LINES, c->page)) {
+        wrapped[0] = '\0';
     }
+    /* A shell command hangs behind its "$ " prompt: every line is indented by the prompt's width. */
+    const bool prompt = c->cols < CARD_COLS;
+    size_t n = 0;
+    for (const char *p = wrapped; *p != '\0' && n + 3 < sizeof(page_text); p++) {
+        if (prompt && (p == wrapped || p[-1] == '\n')) {
+            page_text[n++] = ' ';
+            page_text[n++] = ' ';
+        }
+        page_text[n++] = *p;
+    }
+    page_text[n] = '\0';
+    const size_t first = strcspn(e->cmd, "\n");
+    memcpy(cmd_line, e->cmd, first);
+    cmd_line[first] = '\0';
     const int32_t left = (int32_t)(e->deadline_ms - now);
-    const size_t lines = text_wrap_lines(e->details, UI_DETAILS_COLS);
-    const size_t seen = (page + 1) * UI_DETAILS_LINES;
+    const size_t lines = text_wrap_lines(e->cmd, c->cols);
+    const size_t seen = ((size_t)c->page + 1) * CARD_LINES;
     uint16_t permille = 0;
     if (left > 0 && e->timeout_ms > 0) {
         const uint64_t p = (uint64_t)left * 1000 / e->timeout_ms;
         permille = p > 1000 ? 1000 : (uint16_t)p;
     }
-    const ui_approval_t a = {
+    ui_approval_t a = {
         .tool = e->tool,
         .risk = e->risk,
         .project = e->project,
-        .summary = e->summary,
+        .sid = e->sid,
+        /* Only `desc` is Claude's own words; `summary` is the server's. */
+        .words = e->has_cmd ? e->desc : e->summary,
+        .words_claude = e->has_cmd,
+        .reason = e->risk != PROTO_RISK_LOW ? e->reason : "",
         .details = page_text,
+        .prompt = prompt && c->page == 0,
         .position = position,
         .count = count,
-        .page = (uint8_t)(page + 1),
-        .pages = (uint8_t)pages,
+        .page = (uint8_t)(c->page + 1),
+        .pages = c->pages,
         .lines_after = (uint16_t)(lines > seen ? lines - seen : 0),
         .remaining_permille = permille,
         .remaining_s = (uint16_t)(left > 0 ? (left + 999) / 1000 : 0),
         .sent = e->answered,
+        .armed = armed,
+        .allow = card_fsm_allow(c),
+        .view = c->view,
+        .cmd_line = cmd_line,
+        .cursor = c->cursor,
+        .session = card_fsm_session(c),
+        .rule = e->grant_rule,
+        .rule_prefix = e->grant_prefix,
     };
+    a.rows = card_fsm_rows(c, a.row);
     ui_approval_set(&a);
 
     view->has_request = true;
@@ -822,10 +1013,54 @@ static void render_approval(const reqq_entry_t *e, uint8_t position, uint8_t cou
     view->request.risk = e->risk;
     view->request.position = position;
     view->request.count = count;
-    view->request.page = (uint8_t)(page + 1);
-    view->request.pages = (uint8_t)pages;
+    view->request.page = (uint8_t)(c->page + 1);
+    view->request.pages = c->pages;
+    view->request.seen = c->seen;
     view->request.deadline_ms = e->deadline_ms;
     view->request.answered = e->answered;
+    view->request.armed = armed;
+    view->request.cut = e->cut;
+    view->request.decide = c->decide;
+    view->request.menu = c->view == CARD_VIEW_MENU;
+    view->request.allow = a.allow;
+    view->request.session = a.session;
+    view->request.rows = a.rows;
+    memcpy(view->request.row, a.row, sizeof(a.row));
+    view->request.cursor = c->cursor;
+}
+
+/* A card for the head request: opened when the head changes, armed whenever it comes on screen. */
+static void show_card(const reqq_entry_t *head, uint32_t now)
+{
+    if (strcmp(head->id, s_card_id) != 0) {
+        card_fsm_open(&s_card, head, (app_link_server_caps() & PROTO_CAP_DECIDE) != 0);
+        card_fsm_set_sent(&s_card, head->answered);
+        strlcpy(s_card_id, head->id, sizeof(s_card_id));
+        ui_tabs_hold_progress(UI_TAB_APPROVE, 0);
+        if (s_card_replaced) {
+            app_btn_arm(now, CARD_ARM_NEXT_MS);
+            play(FB_SEQ_NEXT, 0);
+        } else {
+            app_btn_arm(now, CARD_ARM_MS);
+        }
+    } else if (!s_card_visible) {
+        app_btn_arm(now, CARD_ARM_MS);
+    }
+    s_card_replaced = false;
+    s_card_visible = true;
+}
+
+static void hide_card(uint32_t now)
+{
+    /* A press that began on the card ends unheard: a menu hold must not open Settings on home. */
+    if (s_card_visible) {
+        app_btn_arm(now, 0);
+    }
+    s_card_visible = false;
+    s_card_replaced = false;
+    if (reqq_head(&s_q) == NULL) {
+        s_card_id[0] = '\0';
+    }
 }
 
 static void preview_entry(reqq_entry_t *e, bool high, uint32_t now)
@@ -834,17 +1069,18 @@ static void preview_entry(reqq_entry_t *e, bool high, uint32_t now)
     strlcpy(e->id, "0123456789abcdef0123456789abcdef", sizeof(e->id));
     strlcpy(e->tool, "Bash", sizeof(e->tool));
     strlcpy(e->project, "devotchi", sizeof(e->project));
+    strlcpy(e->sid, "3fa9c1", sizeof(e->sid));
+    e->has_cmd = true;
     if (high) {
-        strlcpy(e->summary, "rm -rf dist build node_modules/.cache", sizeof(e->summary));
-        strlcpy(e->details,
-                "Remove build output and caches before a clean rebuild of every package\n"
-                "$ rm -rf dist build node_modules/.cache\n"
-                "cwd /work/devotchi",
-                sizeof(e->details));
+        strlcpy(e->summary, "git push --force origin master", sizeof(e->summary));
+        strlcpy(e->cmd, "git push --force origin master", sizeof(e->cmd));
+        strlcpy(e->desc, "Update the remote branch", sizeof(e->desc));
+        strlcpy(e->reason, "Force push: rewrites the remote branch", sizeof(e->reason));
         e->risk = PROTO_RISK_HIGH;
     } else {
-        strlcpy(e->summary, "Run the unit tests", sizeof(e->summary));
-        strlcpy(e->details, "$ pnpm test --filter server", sizeof(e->details));
+        strlcpy(e->summary, "pnpm test --filter server", sizeof(e->summary));
+        strlcpy(e->cmd, "pnpm test --filter server", sizeof(e->cmd));
+        strlcpy(e->desc, "Run the server test suite", sizeof(e->desc));
         e->risk = PROTO_RISK_LOW;
     }
     e->timeout_ms = 30000;
@@ -902,13 +1138,16 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
     ui_screen_id_t screen;
     if (preview != APP_FLOW_PREVIEW_OFF) {
         set_banner(NULL, false);
+        hide_card(now);
         if (preview == APP_FLOW_PREVIEW_IDENTIFY) {
             ui_identify_set(app_link_name());
             screen = UI_SCREEN_IDENTIFY;
         } else {
             static reqq_entry_t sample;
+            static card_fsm_t card;
             preview_entry(&sample, preview == APP_FLOW_PREVIEW_APPROVAL_HIGH, now);
-            render_approval(&sample, 1, preview == APP_FLOW_PREVIEW_APPROVAL_HIGH ? 3 : 1, now, &view);
+            card_fsm_open(&card, &sample, true);
+            render_approval(&sample, &card, true, 1, preview == APP_FLOW_PREVIEW_APPROVAL_HIGH ? 3 : 1, now, &view);
             screen = UI_SCREEN_APPROVAL;
         }
         s_screen = screen;
@@ -926,11 +1165,14 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
     set_banner(identify ? NULL : s_attention ? s_attention_text : about ? NULL : offline_banner,
                !identify && s_attention);
     if (identify) {
+        hide_card(now);
         screen = UI_SCREEN_IDENTIFY;
     } else if (head != NULL) {
-        render_approval(head, 1, (uint8_t)reqq_count(&s_q), now, &view);
+        show_card(head, now);
+        render_approval(head, &s_card, app_btn_armed(now), 1, (uint8_t)reqq_count(&s_q), now, &view);
         screen = UI_SCREEN_APPROVAL;
     } else {
+        hide_card(now);
         ui_pet_set(s_pet.project, s_pet.mood, s_pet.status);
         if (about) {
             render_about();

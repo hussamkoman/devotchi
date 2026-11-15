@@ -364,9 +364,10 @@ static const demo_entry_t DEMOS[] = {
     {"offline", NULL, UI_SCREEN_CONNECTING},
     {"pairing", NULL, UI_SCREEN_PAIRING},
     {"home", "idle|working|angry|tabs", UI_SCREEN_PET},
-    {"toast", "positive|sticky|desk|battery|strip", UI_SCREEN_PET},
+    {"toast", "positive|sticky|desk|battery|strip|receipt", UI_SCREEN_PET},
     {"about", "1|2", UI_SCREEN_PET},
-    {"approval", "low|med|details|high|sent", UI_SCREEN_APPROVAL},
+    {"approval", "low|med|details|long|high|clicked|holding|sent|next", UI_SCREEN_APPROVAL},
+    {"menu", "terminal|session|high|locked", UI_SCREEN_APPROVAL},
     {"tabs", "hold|nudge|any|inactive", UI_SCREEN_APPROVAL},
     {"settings", NULL, UI_SCREEN_SETTINGS},
     {"identify", NULL, UI_SCREEN_IDENTIFY},
@@ -376,7 +377,8 @@ static const demo_entry_t DEMOS[] = {
 const char *ui_demo_usage(void)
 {
     return "splash provisioning[qr|code] wifi connecting offline pairing home[idle|working|angry|tabs] "
-           "toast[positive|sticky|desk|battery|strip] about[1|2] approval[low|med|details|high|sent] "
+           "toast[positive|sticky|desk|battery|strip|receipt] about[1|2] "
+           "approval[low|med|details|long|high|clicked|holding|sent|next] menu[terminal|session|high|locked] "
            "tabs[hold|nudge|any|inactive] settings identify lowbatt | off";
 }
 
@@ -422,7 +424,7 @@ static void demo_load(const demo_entry_t *d, int v)
 {
     static const ui_pet_demo_t HOME[] = {PET_DEMO_IDLE, PET_DEMO_WORKING, PET_DEMO_ANGRY, PET_DEMO_TABS};
     static const ui_pet_demo_t TOAST[] = {PET_DEMO_HAPPY_BARE, PET_DEMO_SAD_BARE, PET_DEMO_IDLE_BARE,
-                                          PET_DEMO_IDLE_BARE, PET_DEMO_IDLE_BARE};
+                                          PET_DEMO_IDLE_BARE, PET_DEMO_IDLE_BARE, PET_DEMO_IDLE_BARE};
     w_toast_demo(W_TOAST_DEMO_NONE);
     demo_status(false, 72, UI_LINK_REGISTERED, 3);
     switch (d->screen) {
@@ -456,7 +458,9 @@ static void demo_load(const demo_entry_t *d, int v)
         }
         break;
     case UI_SCREEN_APPROVAL:
-        screen_approval_demo(strcmp(d->name, "tabs") == 0 ? APPROVAL_DEMO_HOLD + v : APPROVAL_DEMO_LOW + v);
+        screen_approval_demo(strcmp(d->name, "tabs") == 0   ? APPROVAL_DEMO_HOLD + v
+                             : strcmp(d->name, "menu") == 0 ? APPROVAL_DEMO_MENU + v
+                                                            : APPROVAL_DEMO_LOW + v);
         break;
     case UI_SCREEN_SETTINGS:
         screen_settings_demo();

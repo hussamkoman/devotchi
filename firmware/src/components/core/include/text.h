@@ -55,6 +55,9 @@ size_t text_utf8_truncate(char *dst, size_t cap, const char *src);
  */
 size_t text_wrap_lines(const char *src, size_t cols);
 
+/** Display lines the first line of src (up to its first '\n') takes when wrapped like text_wrap_lines(). */
+size_t text_wrap_lines_first(const char *src, size_t cols);
+
 /** Pages of lines_per_page wrapped lines; 0 for an empty src. */
 size_t text_wrap_pages(const char *src, size_t cols, size_t lines_per_page);
 
