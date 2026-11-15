@@ -1404,6 +1404,9 @@ static void render_status_bar(void)
     } else if (s_info.ws_phase == APP_WS_PHASE_RUNNING) {
         st.link = UI_LINK_CONNECTING;
     }
+    if (app_flow_showcase_active()) {
+        st.link = UI_LINK_HIDDEN;
+    }
     char date[CLOCK_DATE_SIZE];
     app_clock_format(app_clock_epoch_ms(), st.time, date);
     ui_status_set(&st);
@@ -1412,7 +1415,9 @@ static void render_status_bar(void)
 static void render_flow(uint32_t now, app_flow_preview_t preview)
 {
     char buf[LINE_SIZE];
-    const ui_screen_id_t id = app_flow_render(now, preview == APP_FLOW_PREVIEW_OFF ? offline_banner(now, buf) : NULL,
+    /* The showcase is a local demo: a missing server is not news to the audience. */
+    const bool banner = preview == APP_FLOW_PREVIEW_OFF && !app_flow_showcase_active();
+    const ui_screen_id_t id = app_flow_render(now, banner ? offline_banner(now, buf) : NULL,
                                               preview);
     s_flow_shown = preview == APP_FLOW_PREVIEW_OFF;
     show(id);
@@ -1474,6 +1479,9 @@ static void render(uint32_t now)
         if (app_flow_takes_over(now)) {
             render_flow(now, APP_FLOW_PREVIEW_OFF);
         } else {
+            if (app_flow_showcase_active()) {
+                app_flow_drop_offline_banner();
+            }
             app_settings_render(false);
             show(app_settings_picker() ? UI_SCREEN_PICKER : UI_SCREEN_SETTINGS);
         }

@@ -75,6 +75,8 @@ const char *ui_link_name(ui_link_t l)
         return "connecting";
     case UI_LINK_OFFLINE:
         return "offline";
+    case UI_LINK_HIDDEN:
+        return "hidden";
     }
     return "";
 }
@@ -213,6 +215,7 @@ static void draw_bars(uint8_t bars)
 
 static void draw_link(ui_link_t link)
 {
+    ui_set_hidden(s_dot, link == UI_LINK_HIDDEN);
     lv_color_t c = UI_C_CORAL;
     if (link == UI_LINK_REGISTERED) {
         c = UI_C_MINT;

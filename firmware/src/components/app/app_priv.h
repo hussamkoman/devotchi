@@ -210,6 +210,8 @@ bool app_flow_mood_idle(void);
 
 /* Showcase (protocol 14.7, ux-flows 8). */
 bool app_flow_showcase_active(void);
+/** Drops the offline banner (an attention banner stays): used by the showcase menu. */
+void app_flow_drop_offline_banner(void);
 /** False, and nothing changes, while a real request is queued. */
 bool app_flow_showcase_enter(uint32_t now);
 void app_flow_showcase_on_request(app_request_t *req, uint32_t now);
