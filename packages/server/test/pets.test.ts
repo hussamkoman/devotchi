@@ -10,7 +10,7 @@ import { until } from "./hook-helpers.js";
 const repo = new URL("../../../", import.meta.url);
 const golden = (id: string) => new Uint8Array(readFileSync(new URL(`pets/golden/${id}.pet`, repo)));
 const goldenCrc = (id: string) => readFileSync(new URL(`pets/golden/${id}.crc32`, repo), "utf8").trim();
-const mochiSource = () => JSON.parse(readFileSync(new URL("packages/server/pets/mochi.pet.json", repo), "utf8")) as PetSource;
+const sproutSource = () => JSON.parse(readFileSync(new URL("pets/sprout.pet.json", repo), "utf8")) as PetSource;
 
 /** A pack of `id` built from Devo's source. */
 function packOf(id: string, rev = 1, name = "Copy"): Uint8Array {
@@ -68,10 +68,10 @@ describe("GET /api/pets", () => {
     const res = await t.fetch("/api/pets", { token });
     expect(res.status).toBe(200);
     const { pets } = (await res.json()) as { pets: Json[] };
-    expect(pets.map((p) => p.id)).toEqual(["devo", "ember", "mochi"]);
-    expect(pets[0]).toEqual({ id: "devo", name: "Devo", rev: 1, size: 344, crc32: goldenCrc("devo"), source: "catalog" });
-    expect(pets[1]).toMatchObject({ id: "ember", crc32: goldenCrc("ember"), source: "catalog" });
-    expect(pets[2]).toMatchObject({ id: "mochi", name: "Mochi", source: "catalog", size: encodePet(mochiSource()).length });
+    expect(pets.map((p) => p.id)).toEqual(["devo", "ember", "sprout"]);
+    expect(pets[0]).toEqual({ id: "devo", name: "Devo", rev: 1, size: 344, crc32: goldenCrc("devo"), source: "catalog", builtin: true });
+    expect(pets[1]).toMatchObject({ id: "ember", crc32: goldenCrc("ember"), source: "catalog", builtin: true });
+    expect(pets[2]).toEqual({ id: "sprout", name: "Sprout", rev: 1, size: encodePet(sproutSource()).length, crc32: goldenCrc("sprout"), source: "catalog" });
     const device = t.deviceToken(roomId);
     expect((await t.fetch("/api/pets", { token: device.token })).status).toBe(200);
     await expectError(await t.fetch("/api/pets"), 401, "unauthorized");
@@ -131,11 +131,11 @@ describe("POST /api/pets", () => {
       source: "room",
     });
     expect((await upload(pack)).status).toBe(200);
-    const fromJson = await t.fetch("/api/pets", { method: "POST", token, json: { ...mochiSource(), id: "mochi2" } });
+    const fromJson = await t.fetch("/api/pets", { method: "POST", token, json: { ...sproutSource(), id: "sprout2" } });
     expect(fromJson.status).toBe(201);
-    expect(await fromJson.json()).toMatchObject({ id: "mochi2", source: "room" });
+    expect(await fromJson.json()).toMatchObject({ id: "sprout2", source: "room" });
     const { pets } = (await (await t.fetch("/api/pets", { token })).json()) as { pets: Json[] };
-    expect(pets.map((p) => `${p.id}:${p.source}`)).toEqual(["devo:catalog", "ember:catalog", "mochi:catalog", "copy:room", "mochi2:room"]);
+    expect(pets.map((p) => `${p.id}:${p.source}`)).toEqual(["devo:catalog", "ember:catalog", "sprout:catalog", "copy:room", "sprout2:room"]);
   });
 
   it("answers every error of the 14.8 table with its code", async () => {
@@ -145,14 +145,14 @@ describe("POST /api/pets", () => {
     await expectError(await upload(badCrc), 400, "invalid_request", /crc/i);
     await expectError(await upload(new Uint8Array(10)), 400, "invalid_request", /10 bytes/);
     await expectError(
-      await t.fetch("/api/pets", { method: "POST", token, json: { ...mochiSource(), id: "Upper" } }),
+      await t.fetch("/api/pets", { method: "POST", token, json: { ...sproutSource(), id: "Upper" } }),
       400,
       "invalid_request",
       /^Pet source refused: id: "Upper"/,
     );
     await expectError(await upload(new Uint8Array(2049)), 413, "payload_too_large");
     await expectError(
-      await t.fetch("/api/pets", { method: "POST", token, json: { ...mochiSource(), pad: "x".repeat(17 * 1024) } }),
+      await t.fetch("/api/pets", { method: "POST", token, json: { ...sproutSource(), pad: "x".repeat(17 * 1024) } }),
       413,
       "payload_too_large",
     );
@@ -242,8 +242,8 @@ describe("POST /api/devices/:id/pet", () => {
       crc32: crc32(pack.subarray(0, pack.length - 4)).toString(16).padStart(8, "0"),
       select: true,
     });
-    expect((await command(device.deviceId, { op: "install", pet: "mochi" })).status).toBe(202);
-    expect(await d.awaitMessage("pet_cmd")).toMatchObject({ op: "install", pet: "mochi", select: false });
+    expect((await command(device.deviceId, { op: "install", pet: "sprout" })).status).toBe(202);
+    expect(await d.awaitMessage("pet_cmd")).toMatchObject({ op: "install", pet: "sprout", select: false });
     expect((await command(device.deviceId, { op: "remove", pet: "mine" })).status).toBe(202);
     expect(await d.awaitMessage("pet_cmd")).toEqual({ type: "pet_cmd", op: "remove", pet: "mine" });
   });
@@ -255,17 +255,17 @@ describe("POST /api/devices/:id/pet", () => {
     await expectError(await command("dv-ffffff", { op: "install", pet: "../x" }), 400, "invalid_request", /\[a-z0-9\]/);
     await expectError(await command(device.deviceId, { op: "install", pet: "Mochi" }), 400, "invalid_request");
     await expectError(await command(device.deviceId, { op: "install", pet: "toolongpet" }), 400, "invalid_request");
-    await expectError(await command(device.deviceId, { op: "wear", pet: "mochi" }), 400, "invalid_request", /op/);
-    await expectError(await command(device.deviceId, { op: "install", pet: "mochi", select: "yes" }), 400, "invalid_request");
-    await expectError(await command(device.deviceId, { op: "install", pet: "mochi", rev: 9 }), 400, "invalid_request", /rev/);
+    await expectError(await command(device.deviceId, { op: "wear", pet: "sprout" }), 400, "invalid_request", /op/);
+    await expectError(await command(device.deviceId, { op: "install", pet: "sprout", select: "yes" }), 400, "invalid_request");
+    await expectError(await command(device.deviceId, { op: "install", pet: "sprout", rev: 9 }), 400, "invalid_request", /rev/);
     await expectError(await command(device.deviceId, "nope"), 400, "invalid_request");
-    await expectError(await command("dv-ffffff", { op: "select", pet: "mochi" }), 404, "not_found", /device/i);
-    await expectError(await command(device.deviceId, { op: "select", pet: "mochi" }), 409, "conflict", "device offline");
+    await expectError(await command("dv-ffffff", { op: "select", pet: "sprout" }), 404, "not_found", /device/i);
+    await expectError(await command(device.deviceId, { op: "select", pet: "sprout" }), 409, "conflict", "device offline");
     const old = await track(consumer(t, device.token, { kind: "device", deviceId: device.deviceId }));
-    await expectError(await command(device.deviceId, { op: "select", pet: "mochi" }), 409, "conflict", "device does not support pets");
+    await expectError(await command(device.deviceId, { op: "select", pet: "sprout" }), 409, "conflict", "device does not support pets");
     old.close();
-    await until(async () => (await command(device.deviceId, { op: "select", pet: "mochi" })).status === 409 &&
-      ((await (await command(device.deviceId, { op: "select", pet: "mochi" })).json()) as Json).error === "device offline");
+    await until(async () => (await command(device.deviceId, { op: "select", pet: "sprout" })).status === 409 &&
+      ((await (await command(device.deviceId, { op: "select", pet: "sprout" })).json()) as Json).error === "device offline");
     const d = await track(consumer(t, device.token, { kind: "device", deviceId: device.deviceId, caps: ["pets"] as never }));
     d.send(PETS_STATE);
     await until(async () => {

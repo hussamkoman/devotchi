@@ -151,7 +151,7 @@ const pet_def_t *ui_pet_def(void)
 {
     if (!s_def_ready) {
         const pet_builtin_t *b = pet_builtin_find(PET_BUILTIN_DEFAULT);
-        s_def_ready = pet_pack_decode(b->bytes, *b->len, &s_def) == PET_PACK_OK;
+        s_def_ready = pet_pack_decode(b->bytes, b->len, &s_def) == PET_PACK_OK;
     }
     return &s_def;
 }

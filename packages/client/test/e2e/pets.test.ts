@@ -41,7 +41,8 @@ describe("pets with a sim", () => {
     const listed = await world.cli(["pets"]);
     expect(listed.code).toBe(0);
     expect(listed.stdout).toMatch(/^copy "Copy": rev 2, \d+ bytes, crc32 [0-9a-f]{8}, uploaded to this room$/m);
-    expect(listed.stdout).toMatch(/^mochi "Mochi": .* catalog$/m);
+    expect(listed.stdout).toMatch(/^sprout "Sprout": .* catalog$/m);
+    expect(listed.stdout).toMatch(/^devo "Devo": .* catalog, built in$/m);
     expect(listed.stdout).toContain('sim-pet "petsim": shows devo; 8 of 8 slots free; devo (built-in), ember (built-in)');
 
     const sent = await world.cli(["pets", "send", "copy", "--use", "--wait", "10"]);

@@ -232,6 +232,12 @@ export interface PetListEntry {
   /** 8 lowercase hex digits: the pack's CRC-32 trailer. */
   crc32: string;
   source: PetSourceKind;
+  /**
+   * A catalog pet that firmware built from the same repository compiles in
+   * (pets/builtin.txt). Informational: what a device really has is the
+   * `builtin` flag of its own `pets` message.
+   */
+  builtin?: true;
 }
 
 export interface ListPetsResponse {

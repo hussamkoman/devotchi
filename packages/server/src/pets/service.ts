@@ -40,10 +40,11 @@ export interface StoredPet {
   info: PetInfo;
   bytes: Uint8Array;
   source: PetListEntry["source"];
+  builtin?: boolean;
 }
 
 const conflict = (message: string) => new HttpError(409, "conflict", message);
-const entry = (pet: StoredPet): PetListEntry => ({ ...pet.info, source: pet.source });
+const entry = (pet: StoredPet): PetListEntry => ({ ...pet.info, source: pet.source, ...(pet.builtin === true ? { builtin: true } : {}) });
 
 /** A pet_cmd body after the checks of POST /api/devices/:id/pet. */
 interface PetCommand {

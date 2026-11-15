@@ -25,7 +25,7 @@ function checkId(id: string): void {
 }
 
 export function petLine(pet: PetListEntry): string {
-  return `${pet.id} "${pet.name}": rev ${pet.rev}, ${pet.size} bytes, crc32 ${pet.crc32}, ${pet.source === "catalog" ? "catalog" : "uploaded to this room"}`;
+  return `${pet.id} "${pet.name}": rev ${pet.rev}, ${pet.size} bytes, crc32 ${pet.crc32}, ${pet.source === "catalog" ? "catalog" : "uploaded to this room"}${pet.builtin === true ? ", built in" : ""}`;
 }
 
 export function devicePetsLine(device: Device): string {

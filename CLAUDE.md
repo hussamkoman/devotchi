@@ -26,6 +26,7 @@ pnpm run lint             # ESLint (typescript-eslint)
 pnpm run server           # Start the server (default port 8080)
 pnpm run client           # Run the CLI from source (e.g. pnpm run client -- start --local)
 pnpm run dev              # Web UI with Vite HMR against `devotchi start --dev` (DEVOTCHI_DEV_DASHBOARD=<port>)
+pnpm run pet-sheet [id]   # Pet preview sheet (moods, reactions, night outline, greyscale); pets/README.md
 ```
 
 Firmware host tests (no ESP-IDF needed):
@@ -82,10 +83,9 @@ Every command that talks to a server takes `--server <url>`. Tests set
 ```
 packages/shared/src/           — Protocol types, validators, API types, config types, pet pack codec and SVG renderer
 packages/server/src/           — Koa server (routes, WebSocket, SQLite, permissions, devices, pets)
-packages/server/pets/          — Gallery-only pet sources (the catalog adds pets/*.pet.json; built into dist/pets.json)
 packages/client/src/           — CLI, MCP server, hook setup, dashboard proxy, sim
 packages/client/web/           — Dashboard web UI (Vite, framework-free TypeScript)
-pets/                          — Pet JSON sources and golden packs (shared by the firmware and the TypeScript codec)
+pets/                          — Every pet: JSON sources, golden packs, builtin.txt (compiled into the firmware), _template.pet.json; also the server catalog
 firmware/                      — ESP32-S3 firmware (C, ESP-IDF v6.0, LVGL 9); host tests in firmware/host_test
 docs/                          — Architecture, protocol, deployment, phase-2 manual tests, hardware docs + datasheets
 ```

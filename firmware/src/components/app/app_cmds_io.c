@@ -440,7 +440,7 @@ static console_rc_t pet_list(void)
         cJSON *e = cJSON_CreateObject();
         cJSON_AddStringToObject(e, "id", b->id);
         cJSON_AddNumberToObject(e, "rev", b->bytes[5]);
-        cJSON_AddNumberToObject(e, "size", (double)*b->len);
+        cJSON_AddNumberToObject(e, "size", (double)b->len);
         cJSON_AddBoolToObject(e, "builtin", true);
         cJSON_AddItemToArray(list, e);
     }

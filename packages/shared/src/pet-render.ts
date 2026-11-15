@@ -1,10 +1,22 @@
-// Static SVG of a pet in one mood: the drawing rules of the firmware rig
-// (core/pet_pose.c, ui/pet_view.c; drawn first in docs/design/tools/pet.py)
-// at rest: no bob, blink, glance, jitter, oscillators or reactions. Parts are
-// drawn back to front, then eyes, brows, mouth and the mood's accessory.
-// Everything in the SVG comes from numbers; no pack text reaches the markup.
+// Static SVG of a pet in one mood or reaction: the drawing rules of the
+// firmware rig (core/pet_pose.c, ui/pet_view.c) at rest: no bob, blink,
+// glance, jitter or oscillators; a reaction is drawn at its peak on top of
+// idle. Parts are drawn back to front, then eyes, brows, mouth, the mood's
+// accessory and the reaction's effect. The outline option draws the night
+// clock's style (fills become 2 px borders on black). Everything in the SVG
+// comes from numbers; no pack text reaches the markup.
 
-import { PET_LID_OFF, PET_MOODS, parsePet, petMix, petMoodColor, type PetDef, type PetMood } from "./petpack.js";
+import {
+  PET_LID_OFF,
+  PET_MOODS,
+  PET_REACTIONS,
+  parsePet,
+  petMix,
+  petMoodColor,
+  type PetDef,
+  type PetMood,
+  type PetReaction,
+} from "./petpack.js";
 
 const INK = 0x1a1d26;
 const WHITE = 0xffffff;
@@ -17,6 +29,10 @@ const CREAM = 0xf3eee3;
 const TONGUE = 0xff8a80;
 const SPARKLE = 0xffe9a8;
 const DROP = 0xb3e5fc;
+const HEART = 0xff8fa3;
+const SLATE = 0x7c8597;
+const NIGHT = 0x9a4a26;
+const BLACK = 0x000000;
 const DARK_T = 71;
 const LIGHT_T = 102;
 const CHEEK_T = 107;
@@ -31,8 +47,8 @@ const ACC_SPARKLES = 4;
 const ACC_DOTS = 5;
 const ACC_TONGUE = 6;
 
-/** The shared pose of a mood (pet-animations 1 and 3), channels in format order. */
-interface Pose {
+/** The pose of a mood or reaction at rest (pet-animations 1 and 3): the face channels a static frame uses. */
+export interface PetPose {
   eyeOpen: number;
   eyeSize: number;
   pupilSize: number;
@@ -64,13 +80,35 @@ const BASE: Record<PetMood, number[]> = {
   working: [88, 24, 46, 0, 45, 0, 34, 0, ACC_TONGUE, PET_LID_OFF],
   thinking: [92, 24, 45, 60, -60, 0, -4, 0, ACC_DOTS, PET_LID_OFF],
 };
-const EXTRA: Partial<Record<PetMood, Partial<Pose>>> = {
+const EXTRA: Partial<Record<PetMood, Partial<PetPose>>> = {
   focused: { mouthW: 11 },
   working: { mouthW: 13 },
   thinking: { browL: -4, browR: -16, browLift: 5, mouthDx: 9, mouthW: 8 },
 };
+// The channels each reaction sets on the mood's pose; the brows reset to the mood's angle.
+const REACT: Record<PetReaction, Partial<PetPose>> = {
+  pat: { mouthCurve: 90, mouthOpen: 0, browAngle: 0, accessory: 0, mouthDx: 0, mouthW: 0 },
+  poke: { eyeOpen: 25, mouthCurve: -20, mouthOpen: 0, browAngle: -14, lid: PET_LID_OFF, accessory: 0, mouthDx: 0 },
+  dizzy: { mouthCurve: -10, mouthOpen: 20, browAngle: 0, accessory: 0, mouthDx: 0 },
+  wake: { eyeOpen: 38, mouthCurve: 0, mouthOpen: 70, browAngle: -16, eyeSize: 26, lid: PET_LID_OFF, accessory: 0, mouthDx: 0 },
+  attention: {
+    eyeOpen: 100,
+    eyeSize: 30,
+    pupilSize: 34,
+    pupilDy: -30,
+    pupilDx: 0,
+    mouthCurve: 0,
+    mouthOpen: 22,
+    browAngle: -14,
+    lid: PET_LID_OFF,
+    accessory: 0,
+    mouthDx: 0,
+  },
+};
+/** Override and oscillator number of the first reaction (format 1). */
+const REACT_BASE = 16;
 /** Format channel number -> pose field; channels a static frame does not use are absent. */
-const CHANNEL_FIELD: Partial<Record<number, keyof Pose>> = {
+const CHANNEL_FIELD: Partial<Record<number, keyof PetPose>> = {
   0: "eyeOpen",
   1: "eyeSize",
   2: "pupilSize",
@@ -88,10 +126,18 @@ const CHANNEL_FIELD: Partial<Record<number, keyof Pose>> = {
   20: "mouthW",
 };
 
-function poseFor(def: PetDef, mood: number): Pose {
+function applyOverrides(def: PetDef, number: number, pose: PetPose): PetPose {
+  for (const o of def.overrides) {
+    const field = CHANNEL_FIELD[o.channel];
+    if (o.mood === number && field !== undefined) pose[field] = o.value;
+  }
+  return pose;
+}
+
+function poseFor(def: PetDef, mood: number): PetPose {
   const name = PET_MOODS[mood];
   const b = BASE[name];
-  const pose: Pose = {
+  const pose: PetPose = {
     eyeOpen: b[0],
     eyeSize: b[1],
     pupilSize: b[2],
@@ -109,11 +155,16 @@ function poseFor(def: PetDef, mood: number): Pose {
     mouthW: 0,
     ...EXTRA[name],
   };
-  for (const o of def.overrides) {
-    const field = CHANNEL_FIELD[o.channel];
-    if (o.mood === mood && field !== undefined) pose[field] = o.value;
-  }
-  return pose;
+  return applyOverrides(def, mood, pose);
+}
+
+/** The pose a frame shows: the shared table with the pack's overrides; a reaction on top of idle. */
+export function petPose(pet: PetDef | Uint8Array, frame: PetMood | PetReaction): PetPose {
+  const def = pet instanceof Uint8Array ? parsePet(pet) : pet;
+  const r = (PET_REACTIONS as readonly string[]).indexOf(frame);
+  if (r < 0) return poseFor(def, Math.max(0, PET_MOODS.indexOf(frame as PetMood)));
+  const pose = { ...poseFor(def, PET_MOODS.indexOf("idle")), browL: 0, browR: 0, browLift: 0, ...REACT[frame as PetReaction] };
+  return applyOverrides(def, REACT_BASE + r, pose);
 }
 
 export interface PetSvgOptions {
@@ -122,6 +173,8 @@ export interface PetSvgOptions {
   height?: number;
   /** Greyscale (pet-animations 5 rule 7). */
   gray?: boolean;
+  /** The night clock's outline style: parts marked `outline: false`, brows, lids and effects are left out. */
+  outline?: boolean;
   /** Prefix of the clip-path ids; must differ between SVGs inlined in one document. */
   idPrefix?: string;
 }
@@ -198,15 +251,45 @@ function star(svg: Svg, x: number, y: number, r: number): void {
   svg.poly([[x, y - r], [x + k, y - k], [x + r, y], [x + k, y + k], [x, y + r], [x - k, y + k], [x - r, y], [x - k, y - k]], SPARKLE);
 }
 
+function heart(svg: Svg, x: number, y: number, s: number): void {
+  svg.circle(x - s / 2, y - (s * 3) / 10, (s * 55) / 100, HEART);
+  svg.circle(x + s / 2, y - (s * 3) / 10, (s * 55) / 100, HEART);
+  svg.poly([[x - (s * 105) / 100, y - s / 10], [x + (s * 105) / 100, y - s / 10], [x, y + s]], HEART);
+}
+
+/** A reaction's effect at the moment its pose is full (ui/pet_view.c build_fx). */
+function effect(svg: Svg, reaction: PetReaction): void {
+  if (reaction === "pat") {
+    heart(svg, 78, -62, 8);
+    heart(svg, 96, -38, 5);
+  } else if (reaction === "poke") {
+    for (const [x0, y0, x1, y1] of [[-84, -34, -96, -44], [-90, -14, -104, -14], [84, -34, 96, -44], [90, -14, 104, -14]]) {
+      svg.line([[x0, y0], [x1, y1]], 3, CREAM);
+    }
+  } else if (reaction === "attention") {
+    svg.circle(80, -62, 14, YELLOW);
+    svg.rect(80, -66, 5, 13, 2.5, INK);
+    svg.circle(80, -54, 3, INK);
+  } else if (reaction === "wake") {
+    svg.line([[66, -56], [75, -56], [66, -47], [75, -47]], 3, SLATE);
+  }
+}
+
 /**
- * The pet in `mood` as an SVG document string. `pet` is a pack or a decoded
- * pack; an invalid pack throws PetPackError.
+ * The pet in `mood` (or at the peak of a reaction) as an SVG document
+ * string. `pet` is a pack or a decoded pack; an invalid pack throws
+ * PetPackError.
  */
-export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | number, options: PetSvgOptions = {}): string {
+export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReaction | number, options: PetSvgOptions = {}): string {
   const def = pet instanceof Uint8Array ? parsePet(pet) : pet;
-  const m = typeof mood === "number" ? mood : PET_MOODS.indexOf(mood);
+  const reactIndex = typeof mood === "string" ? (PET_REACTIONS as readonly string[]).indexOf(mood) : -1;
+  const reaction = reactIndex >= 0 ? PET_REACTIONS[reactIndex] : undefined;
+  const m = reaction !== undefined ? PET_MOODS.indexOf("idle") : typeof mood === "number" ? mood : PET_MOODS.indexOf(mood as PetMood);
   const moodIndex = m >= 0 && m < PET_MOODS.length ? m : PET_MOODS.indexOf("idle");
-  const pose = poseFor(def, moodIndex);
+  const pose = reaction !== undefined ? petPose(def, reaction) : poseFor(def, moodIndex);
+  const night = options.outline === true;
+  const ink = night ? NIGHT : INK;
+  const stroke = night ? 2 : 4;
   const face = def.face;
   const body = petMoodColor(def, moodIndex);
   const dark = petMix(body, INK, DARK_T);
@@ -226,16 +309,23 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | number, o
       FOG,
       YELLOW,
     ][role] ?? body;
-  const aux = def.aux[moodIndex];
-  const squish = PET_MOODS[moodIndex] === "sleeping" ? face.sleepDrop : 0;
+  const aux = def.aux[reaction !== undefined ? PET_MOODS.length + reactIndex : moodIndex];
+  const squish = reaction === undefined && PET_MOODS[moodIndex] === "sleeping" ? face.sleepDrop : 0;
   const headDy = (squish * face.eyeSq) / 16;
   const mouthDy = (squish * face.mouthSq) / 16;
-  const svg = new Svg(options.idPrefix ?? `pet-${def.id}-${moodIndex}`);
+  const svg = new Svg(options.idPrefix ?? `pet-${def.id}-${reaction ?? moodIndex}`);
+  /** A filled rounded rect, or in outline mode a 2 px border on black. */
+  const fillRect = (cx: number, cy: number, w: number, h: number, r: number, color: number) => {
+    if (!night) return svg.rect(cx, cy, w, h, r, color);
+    svg.rect(cx, cy, w, h, r, BLACK);
+    svg.ring(cx, cy, w, h, r, NIGHT, 2);
+  };
 
   // Parts, back to front; a mirrored part is drawn again at -x.
   const anchorEnd: [number, number][][] = def.parts.map(() => [[0, 0], [0, 0]]);
   def.parts.forEach((part, index) => {
-    const shown = part.drivers.every((d) => (d.op === 2 ? aux[d.aux] !== 0 : d.op === 3 ? aux[d.aux] === d.arg : true));
+    const shown =
+      !(night && part.noOutline) && part.drivers.every((d) => (d.op === 2 ? aux[d.aux] !== 0 : d.op === 3 ? aux[d.aux] === d.arg : true));
     for (let side = 0; side < (part.mirror ? 2 : 1); side++) {
       const sx = side === 0 ? 1 : -1;
       const p: [number, number][] = part.points.map(([x, y]) => [x * sx, y]);
@@ -259,7 +349,7 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | number, o
       const dy = part.layer === 2 || part.layer === 3 ? headDy : 0;
       for (const pt of p) pt[1] += dy;
       if (!shown) continue;
-      const color = roleColor(part.role);
+      const color = night ? NIGHT : roleColor(part.role);
       if (part.shape === 0) {
         let h = part.h;
         let cy = p[0][1];
@@ -267,10 +357,12 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | number, o
           h -= squish;
           cy += squish / 2;
         }
-        if (part.ring) svg.ring(p[0][0], cy, part.w, h, part.r, color, 2.5);
-        else svg.rect(p[0][0], cy, part.w, h, part.r, color);
+        if (part.ring && !night) svg.ring(p[0][0], cy, part.w, h, part.r, color, 2.5);
+        else fillRect(p[0][0], cy, part.w, h, part.r, color);
       } else if (part.shape === 1) {
-        svg.line(p, part.width, color);
+        svg.line(p, night ? 2 : part.width, color);
+      } else if (night) {
+        svg.line([...p, p[0]], 2, NIGHT);
       } else {
         svg.poly(p, color);
       }
@@ -287,15 +379,33 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | number, o
   for (const sx of [-1, 1]) {
     const x = sx * face.eyeDx;
     const y = eyeY;
+    if (reaction === "pat") {
+      svg.quad([x - w / 2, y + 4], [x, y - 12], [x + w / 2, y + 4], stroke, ink);
+      continue;
+    }
+    if (reaction === "dizzy") {
+      const spiral: [number, number][] = [];
+      for (let i = 0; i < 12; i++) {
+        const ang = (i * 756) / 11;
+        const r = 1 + (i * (w / 2 - 1)) / 11;
+        spiral.push([x + cosDeg(ang) * r, y + sinDeg(ang) * r]);
+      }
+      svg.line(spiral, 3, ink);
+      continue;
+    }
     if (eo < EYE_SHUT_OPEN) {
-      svg.quad([x - w / 2, y], [x, y + 9], [x + w / 2, y], 4, INK);
+      svg.quad([x - w / 2, y], [x, y + 9], [x + w / 2, y], stroke, ink);
       continue;
     }
     let lid = pose.lid;
     if (lid === PET_LID_OFF && !face.brows && eo < 100) lid = pose.browAngle;
-    const hasLid = lid !== PET_LID_OFF;
+    const hasLid = lid !== PET_LID_OFF && !night;
     const h = Math.max(4, hasLid ? hf : (hf * eo) / 100);
     const r = Math.min(w, h) / 2;
+    if (night) {
+      fillRect(x, y + hf / 2 - h / 2, w, h, r, NIGHT);
+      continue;
+    }
     const dot = face.eyeStyle === 2;
     let clip: string | undefined;
     if (!dot) {
@@ -332,7 +442,7 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | number, o
   }
 
   // Brows.
-  if (face.brows && eo >= EYE_SHUT_OPEN) {
+  if (face.brows && !night && eo >= EYE_SHUT_OPEN && reaction !== "pat" && reaction !== "dizzy") {
     for (const [side, sx] of [[0, -1], [1, 1]] as const) {
       const angle = pose.browAngle + (side === 0 ? pose.browL : pose.browR);
       if (Math.abs(angle) < BROW_MIN_ANGLE) continue;
@@ -355,29 +465,29 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | number, o
   const sag = (curve * hw * 6) / 1000;
   const y0 = my - sag / 2;
   if (pose.mouthOpen > 5) {
-    if (curve > 40) {
+    if (curve > 40 && !night) {
       const hh = 8 + (pose.mouthOpen * 16) / 100;
       svg.quad([cx - hw, y0 - 2], [cx, y0 + 2 * hh], [cx + hw, y0 - 2], 4, INK, INK);
       svg.rect(cx, y0 + hh - 1, 14, 7, 3.5, TONGUE);
     } else {
       const mh = 6 + pose.mouthOpen / 5;
-      svg.rect(cx, my, 14 + pose.mouthOpen / 10, mh, Math.min(mh / 2, 7), INK);
+      fillRect(cx, my, 14 + pose.mouthOpen / 10, mh, Math.min(mh / 2, 7), INK);
     }
   } else {
-    if (pose.accessory === ACC_TONGUE && !own(ACC_TONGUE)) svg.rect(cx + hw - 4, y0 + (sag * 9) / 10 + 3.5, 10, 9, 4.5, TONGUE);
-    svg.quad([cx - hw, y0], [cx, y0 + 2 * sag], [cx + hw, y0], 4, INK);
-    if (face.mouthSet === 1) {
+    if (!night && pose.accessory === ACC_TONGUE && !own(ACC_TONGUE)) svg.rect(cx + hw - 4, y0 + (sag * 9) / 10 + 3.5, 10, 9, 4.5, TONGUE);
+    svg.quad([cx - hw, y0], [cx, y0 + 2 * sag], [cx + hw, y0], stroke, ink);
+    if (face.mouthSet === 1 && !night) {
       const fy = y0 + (sag * 45) / 100;
       for (const s of [-9, 9]) svg.poly([[cx + s - 3.5, fy], [cx + s, fy + 7], [cx + s + 3.5, fy]], WHITE);
     }
   }
 
-  // The mood's accessory, unless the pet draws its own.
+  // The mood's accessory, unless the pet draws its own; at night only the zzz.
   const acc = pose.accessory;
-  if (acc > 0 && !own(acc)) {
+  if (acc > 0 && !own(acc) && (!night || acc === ACC_ZZZ)) {
     if (acc === ACC_ZZZ) {
       for (const [x, y, s] of [[62, -52, 8], [76, -70, 10], [90, -92, 13]]) {
-        svg.line([[x, y], [x + s, y], [x, y + s], [x + s, y + s]], 3, FOG);
+        svg.line([[x, y], [x + s, y], [x, y + s], [x + s, y + s]], night ? 2 : 3, night ? NIGHT : FOG);
       }
     } else if (acc === ACC_SWEAT) {
       drop(svg, face.eyeDx + 37, face.sweatY + headDy, 8);
@@ -389,6 +499,7 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | number, o
       for (let i = 0; i < 3; i++) svg.circle(64 + 13 * i, -66 - 9 * i, 3 + i, CREAM);
     }
   }
+  if (reaction !== undefined && !night) effect(svg, reaction);
 
   const width = options.width ?? 220;
   const height = options.height ?? 190;

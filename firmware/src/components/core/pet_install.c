@@ -204,7 +204,7 @@ pet_source_t pet_install_resolve(const pet_store_ops_t *ops, const char *selecte
     const pet_builtin_t *b = selected != NULL ? pet_builtin_find(selected) : NULL;
     if (b != NULL) {
         *bytes = b->bytes;
-        *len = *b->len;
+        *len = b->len;
         return PET_SOURCE_BUILTIN;
     }
     size_t n = 0;
@@ -215,7 +215,7 @@ pet_source_t pet_install_resolve(const pet_store_ops_t *ops, const char *selecte
     }
     b = pet_builtin_find(PET_BUILTIN_DEFAULT);
     *bytes = b->bytes;
-    *len = *b->len;
+    *len = b->len;
     return PET_SOURCE_FALLBACK;
 }
 

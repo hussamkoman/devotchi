@@ -69,9 +69,13 @@ target_include_directories(third_party SYSTEM PUBLIC "${CJSON_DIR}" "${UNITY_DIR
 target_compile_definitions(third_party PUBLIC CJSON_NESTING_LIMIT=1000)
 target_compile_options(third_party PRIVATE -g ${SANITIZE})
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+include("${CMAKE_CURRENT_LIST_DIR}/../tools/pet_builtins.cmake")
+devotchi_pet_builtins("${Python3_EXECUTABLE}" "${CMAKE_CURRENT_BINARY_DIR}/pets")
+
 file(GLOB CORE_SRCS CONFIGURE_DEPENDS "${CORE_DIR}/*.c")
-add_library(core STATIC ${CORE_SRCS})
-target_include_directories(core PUBLIC "${CORE_DIR}/include")
+add_library(core STATIC ${CORE_SRCS} "${CMAKE_CURRENT_BINARY_DIR}/pets/pet_builtins.c")
+target_include_directories(core PUBLIC "${CORE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}/pets")
 target_compile_options(core PRIVATE -Wall -Wextra -Werror -g ${SANITIZE})
 target_link_libraries(core PUBLIC third_party)
 
@@ -90,3 +94,7 @@ endforeach()
 
 # The golden packs the compiled-in arrays are compared with.
 target_compile_definitions(test_pet_pack PRIVATE PETS_GOLDEN_DIR="${CMAKE_CURRENT_LIST_DIR}/../../pets/golden")
+
+# petpack.py itself: lint, golden packs and the generated built-ins; every
+# pets/*.pet.json must pass `petpack.py check`.
+add_test(NAME test_petpack COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_CURRENT_LIST_DIR}/../tools/test_petpack.py")
