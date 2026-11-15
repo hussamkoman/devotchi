@@ -6,7 +6,9 @@ device firmware (`firmware/`). Where an implementation disagrees with this
 document, the implementation is wrong.
 
 Protocol version: **2**. Section 12 lists every change from v1 and which
-implementation has to change.
+implementation has to change. Section 14 specifies the phase-2 additions (questions,
+plans, richer decisions, pets, time); they are optional and negotiated, so the
+version stays 2.
 
 ---
 
@@ -103,6 +105,7 @@ The first frame a client sends, within 10 seconds of the upgrade:
 | `client.model` | string | no | Max 24 bytes. `devotchi-v1` for the first board. |
 | `client.version` | string | no | Max 24 bytes. Software version of the client. For a device this is its firmware version; the server stores it as `Device.fw`. There is no `client.fw` field. |
 | `client.project` | string | no | Producers only: basename of the process cwd, max 32 bytes. |
+| `client.caps` | string[] | no | Consumers only: phase-2 capabilities (section 14.1). Absent means none. |
 
 Rules:
 
@@ -743,7 +746,7 @@ contacting consumers, when any of these holds:
 |---|---|
 | Room mode is `desk` | `desk` |
 | No consumer is registered in the room | `no_consumer` |
-| `tool_name` is `AskUserQuestion` or `ExitPlanMode` (a bare allow is not sufficient for them) | `skipped_tool` |
+| `tool_name` is `AskUserQuestion` or `ExitPlanMode` (a bare allow is not sufficient for them) and the request is not eligible for the phase-2 flows of 14.4 / 14.5 | `skipped_tool` |
 | The room already has 8 pending requests | `room_busy` |
 
 Otherwise it creates a request, sends `permission` (with `timeout` = hold
@@ -1081,5 +1084,441 @@ the ESP-IDF certificate bundle.
 - BLE as a message transport. BLE is used only for WiFi provisioning
   (`docs/architecture.md`). The v1 "BLE Protocol" section is withdrawn.
 - A phone app, OTA firmware update, mDNS discovery, activity history,
-  questions with selectable answers, and progress messages are backlog items
-  and have no wire representation yet.
+  and progress messages are backlog items and have no wire representation
+  yet. Questions with selectable answers are specified in section 14.
+
+---
+
+## 14. Phase 2 additions (questions, plans, richer decisions, pets, time)
+
+Status: **specified, being implemented** (server/client packages T1..T3,
+firmware packages F1..F5). The protocol version stays **2**: everything here
+is optional and negotiated per consumer, so a phase-1 device, dashboard or sim
+keeps working against a phase-2 server and the other way round. Where this
+section and sections 1..13 disagree about a phase-2 feature, this section wins.
+
+### 14.1 Compatibility rules
+
+- `register.client.caps` (optional array of strings, at most 8 entries of at
+  most 16 bytes; unknown entries are ignored) says what a **consumer** can
+  present. A consumer without `caps` is a phase-1 consumer.
+
+  | Cap | The consumer ... |
+  |---|---|
+  | `decide` | reads the card fields of 14.2, may send `decide` (14.3) |
+  | `ask` | presents `question` (14.4), may send `question_response`, `extend` |
+  | `plan` | presents `plan` (14.5), may send `decide` for plans, `extend` |
+  | `pets` | handles `pet_cmd` and sends `pets` (14.8); devices and sims only |
+
+- `register_ack` gains `caps` (the server's list, same names; a feature
+  switched off by configuration is missing) and `utcOffsetMin` (14.9). A consumer uses a feature only when the server
+  listed it; against a phase-1 server it behaves as a phase-1 consumer.
+- The server sends `question`, `plan`, `deadline`, `pet_cmd` and `time` only
+  to consumers that declared the matching cap. `permission` goes to every
+  consumer; its phase-2 fields go only to consumers with `decide`.
+- A request that needs a cap no registered consumer has is answered with the
+  neutral reply at once (`skipped_tool`), exactly as in phase 1.
+- All frames stay within 2048 bytes. Ids, `holding`, `permission_defer`,
+  `dismiss`, ACK/ALIVE timers and the cancelling events of 8.3 apply to
+  questions and plans exactly as to permissions ("request" below means any of
+  the three). `holding` may name any request id.
+- **Text for devices in phase-2 messages.** `question` and `plan` text uses
+  the *device charset*: printable ASCII, U+00A0..U+00FF and
+  `– — ‘ ’ “ ” • … ← ↑ → ↓ ✓ × −`. The server maps anything else: line
+  feed, carriage return and tab become one space each (only `permission.cmd`
+  keeps `\n` as its line separator); then NFKD and strip combining marks;
+  whatever is still outside the charset becomes `?`. Spaces written for line
+  breaks do not count as replaced characters in 14.4. `permission` fields
+  stay ASCII as in section 2.
+- The rule of 8.3 is unchanged and now covers every new outcome: **only an
+  explicit human choice on a consumer produces allow or deny.** Timeouts, lost
+  holders, errors, invalid choices, the device's showcase and everything else
+  end in `{}`.
+
+Additions to the table of 3.7: consumer -> server `decide`,
+`question_response`, `extend`, `pets`; server -> consumer `question`, `plan`,
+`deadline`, `pet_cmd`, `pets` (dashboards only), `time`.
+
+### 14.2 `permission`: card fields (consumers with `decide`)
+
+| Field | Type | Limit | Notes |
+|---|---|---|---|
+| `cmd` | string | 600 bytes | The exact command, path or arguments, lines separated by `\n`. Bash: the command verbatim. Edit/Write: first line the path, second `+A -B lines`, then the change. Other tools: compact JSON of the input |
+| `cut` | boolean | | Present and `true` when `cmd` is not the complete command (it was shortened to fit). **A device offers no allow for a cut request** (deny, the deny rows and "Send to terminal" remain) and the server answers `permission_response granted:true` or `decide allow_session` for such a request with `error NOT_ALLOWED` (with `id`) when it comes from a `device` or `sim` connection **that declared `decide`**; the request stays pending. A phase-1 device or sim (no `decide` cap) never receives `cut` and keeps its phase-1 behaviour: its allow is accepted, as today. Dashboards are not restricted (they can show the full text, 14.6a) |
+| `desc` | string | 200 bytes | Claude's own description of the call (Bash `description`), when it gave one. Consumers label it as Claude's words |
+| `reason` | string | 40 bytes | Why the risk is `med` or `high`: the description of the risk rule that matched. Computed by the server from the command only |
+| `grant` | object | | Never together with `cut`. Present only when "Allow for this session" may be offered: `{"rule":"pnpm test","match":"prefix"}`. `rule` (at most 120 bytes) is the text the consumer must show word for word; `match` is `exact` or `prefix` (the consumer renders a prefix as `pnpm test …`) |
+
+Consumers with `decide` do not receive `details`; `summary` stays. The server
+shortens `cmd` (and sets `cut`) when the frame would pass 2048 bytes.
+
+**When the server writes `grant`.** All of these must hold, otherwise there is
+no `grant` and no consumer may offer a wider yes:
+
+1. Session grants are enabled (`DEVOTCHI_SESSION_GRANTS`, default on).
+2. `tool_name` is `Bash`, `risk` is not `high`, and the request is not `cut`
+   (a rule is never offered for a command the consumer cannot show whole).
+3. `permission_suggestions` holds exactly one entry with `type: "addRules"`
+   and `behavior: "allow"` (entries of other types are ignored), and that
+   entry has exactly one rule with `toolName: "Bash"` and a string
+   `ruleContent`.
+4. `ruleContent` is printable ASCII. A trailing `:*` or ` *` makes it a
+   `prefix` rule (the text before it is `rule`); any other `*` disqualifies
+   it; otherwise it is `exact`.
+5. `exact`: `rule` equals the trimmed command. `prefix`: the command starts
+   with `rule` followed by a space or the end, `risk` is `low`, and `rule` is
+   **one of the allowlisted families below, word for word** (single spaces,
+   nothing before or after).
+6. Denylist, for exact and prefix rules alike. Words are split on spaces; the
+   *first word* is taken after its last `/`.
+   - The first word is not a shell, interpreter, wrapper or executor:
+     `sh bash zsh fish dash ksh csh node deno python python2 python3 perl ruby
+     php lua npx pnpx bunx uvx eval exec source . sudo doas su env xargs ssh
+     timeout nice nohup time command builtin stdbuf ionice chrt taskset setsid
+     script watch chroot nix nix-shell flatpak awk gawk sed find make`.
+   - The first two words are not `npm|pnpm|yarn|bun` + `exec|dlx|x|create`,
+     `uv|poetry|pipx|conda|pipenv|hatch|pdm` + `run`,
+     `docker|podman|kubectl|nerdctl` + `run|exec`, `go run`, `cargo run`, or
+     `git -c` (also `git --config-env…` and `git -C`).
+   - `bun` (it runs a file given as its first argument) is allowed as a first
+     word only when the second word is `run` or one of the script words of
+     the allowlist below.
+7. `rule` is 2..120 bytes.
+8. Paths: `rule` has no `..` path segment and no `~`, and every absolute path
+   in it (a word, or the part of a word after `=`, that starts with `/`) lies
+   inside the hook's `cwd`. This is the "path outside the project" rule of
+   ux-flows 3.2.
+
+**Prefix allowlist.** A prefix rule is offered only when `rule` is exactly one
+of these (a denylist cannot keep up with commands whose arguments run other
+commands, so prefix grants are opt-in by family):
+
+| Family | `rule` |
+|---|---|
+| Package scripts | `npm|pnpm|yarn|bun` + ` test|lint|build|typecheck|check|format` |
+| Named script | `npm|pnpm|yarn|bun` + ` run <script>`, `<script>` matching `[A-Za-z0-9:_-]{1,40}` |
+| Cargo | `cargo test|build|check|clippy|fmt` |
+| Go | `go test|build|vet` |
+| Git, read-only | `git status|diff|log|show` |
+
+Every other prefix suggestion (`timeout 60:*`, `pnpm exec:*`, `docker run:*`,
+`find .:*`, `git -c:*`, `make -C:*`, …) gets no `grant`. The list lives in one
+constant (`SESSION_PREFIX_FAMILIES` in `packages/shared`); widening it is a
+reviewed change with tests.
+
+The server never composes a rule of its own, never changes `ruleContent`, and
+never uses any destination but `session`. `decide allow_session` for a request
+without `grant` is `INVALID_MESSAGE`.
+
+### 14.3 `decide` (consumer -> server)
+
+```json
+{"type":"decide","id":"9f2c4e6a8b0d1f3a5c7e9b1d3f5a7c9e","choice":"deny_ask_why"}
+```
+
+A richer answer than `permission_response`. First valid answer wins, as in
+4.8. A `choice` that does not fit the request (table) gets
+`error INVALID_MESSAGE` with the `id` and the request stays pending.
+
+| `choice` | Request kind | `dismiss` | Hook `decision` |
+|---|---|---|---|
+| `allow_session` | permission with `grant` | `outcome: allow` | `{"behavior":"allow","updatedPermissions":[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"<the suggestion's ruleContent>"}],"behavior":"allow","destination":"session"}]}` |
+| `deny_ask_why` | permission | `deny` | `{"behavior":"deny","message":"Denied on Devotchi for now. The user wants to know why: explain what this call is for and why it is needed, then you may ask again."}` |
+| `deny_stop` | permission, plan | `deny` | `{"behavior":"deny","message":"Denied on Devotchi. The user asked you to stop.","interrupt":true}` |
+| `approve` | plan | `allow` | `{"behavior":"allow","updatedInput":<original tool_input>,"updatedPermissions":[{"type":"setMode","mode":"default","destination":"session"}]}` |
+| `approve_accept_edits` | plan | `allow` | as `approve` with `"mode":"acceptEdits"` |
+| `revise` | plan | `deny` | `{"behavior":"deny","message":"The user read the plan on Devotchi and wants changes. Stay in plan mode and ask the user what to change."}` |
+| `decline` | question | `deny` | `{"behavior":"deny","message":"The user declined to answer on Devotchi. Use your best judgment, or ask again later."}` |
+
+The decisions are wrapped as in 8.3
+(`{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":…}}`).
+`dismiss` gains the optional field `choice` (the `decide` choice, `answered`
+for a `question_response`, absent for a plain `permission_response`), so every
+consumer can print the receipt.
+
+Changes to the plain answers:
+
+- `permission_response` is valid for permissions only. For a question or a
+  plan it gets `error INVALID_MESSAGE` and the request stays pending.
+- The deny message of `permission_response granted:false` becomes
+  `"Denied on Devotchi. Do not retry this call; try another way or ask the user."`.
+- Nothing else may appear in a reply: no `updatedInput` for ordinary tools, no
+  rule with `deny` or `ask`, no `replaceRules`/`removeRules`, no directories,
+  no destination other than `session`, no mode other than `default` and
+  `acceptEdits`. The reply builder is pinned by tests byte for byte, because
+  Claude Code treats a reply that fails its schema as "no decision".
+
+### 14.4 Questions (`AskUserQuestion`)
+
+**Eligibility.** The hook is held (instead of `skipped_tool`) when questions
+are enabled (`DEVOTCHI_QUESTIONS`, default on), a consumer with `ask` is
+registered, and `tool_input.questions` is an array of 1..4 questions that each
+have: a non-empty `question` of at most 480 bytes (after the charset
+mapping), unique within the call;
+2..4 `options` with non-empty `label`s of at most 80 bytes, unique within the
+question; `multiSelect` absent or boolean; and no question or label in which
+the charset mapping had to replace more than a fifth of the characters.
+`header` does not affect eligibility: it may be missing, empty or not a string
+(the frame then has no `header` and consumers show none), and a longer one is
+shortened to 24 bytes ending in `…`. Anything else goes to the terminal as
+before. Free text is terminal-only.
+
+**Wire.** One frame per question, sent back to back:
+
+```json
+{"type":"question","id":"9f2c…","index":0,"count":2,"header":"Framework",
+ "text":"Which framework should the dashboard use?","multi":false,
+ "options":[{"label":"React","desc":"Component library"},
+            {"label":"Vue","desc":"Progressive framework"}],
+ "sid":"3fa9c1","project":"devotchi","timeout":30000,
+ "timestamp":"2026-11-15T09:00:00.000Z"}
+```
+
+| Field | Limit | Notes |
+|---|---|---|
+| `index`, `count` | 0..3, 1..4 | A consumer presents (and names in `holding`) the request once it has all `count` frames |
+| `header` | 24 bytes | Optional; shortened with `…` |
+| `text` | 480 bytes | Never shortened |
+| `options[].label` | 80 bytes | Never shortened |
+| `options[].desc` | 200 bytes | Optional; shortened with `…`, further when the frame would pass 2048 bytes |
+| `timeout` | | Remaining hold, as in 4.6. Replay after `register_ack` resends every frame |
+
+**Answer.**
+
+```json
+{"type":"question_response","id":"9f2c…","answers":[[0],[1,3]]}
+```
+
+`answers` has exactly `count` entries, in question order. Each is an array of
+distinct option indexes (single choice: exactly one; multi-select: none or
+more) or `null` ("no preference"). Anything else is `INVALID_MESSAGE` with the
+`id`; the request stays pending. The server builds the reply from the
+**original** hook input, never from text a consumer sent:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{
+  "behavior":"allow",
+  "updatedInput":{"questions":[…the original array, unchanged…],
+                  "answers":{"<question text>":"<answer>"}}}}}
+```
+
+`updatedInput` is the original `tool_input` with every key kept and `answers`
+set. The answer string is: the option's original `label`; for multi-select the
+labels in option order joined with `", "`; `"None of these"` for an empty
+multi-select; `"No preference, use your judgment"` for `null`. Every question
+gets a key. `dismiss` carries `outcome: allow`, `choice: answered`.
+
+Other outcomes: `decide decline` (14.3), `permission_defer` ("answer in
+terminal", neutral), and every neutral outcome of 8.3.
+
+**Cancelling.** For `AskUserQuestion` the `PostToolUse` match of 8.3 compares
+the `questions` array only (the terminal adds `answers`); for `ExitPlanMode`
+any `PostToolUse`/`PostToolUseFailure` of that tool in the session cancels.
+
+### 14.5 Plans (`ExitPlanMode`)
+
+Held when plans are enabled (`DEVOTCHI_PLANS`, default on), a consumer with
+`plan` is registered and `tool_input.plan` is a non-empty string.
+
+```json
+{"type":"plan","id":"9f2c…","title":"Add pet packs",
+ "steps":["Define the pack format","Add the pets partition","Port Devo"],
+ "more":0,"cut":true,"sid":"3fa9c1","project":"devotchi","timeout":30000,
+ "timestamp":"2026-11-15T09:00:00.000Z"}
+```
+
+| Field | Limit | Notes |
+|---|---|---|
+| `title` | 80 bytes | First Markdown heading, else the first non-empty line. Shortened with `…` |
+| `steps` | 12 entries of 120 bytes | Top-level list items in order with Markdown marks removed; when the plan has no list, its non-empty lines after the title. Shortened with `…` |
+| `more` | integer | Steps left out (more than 12, or dropped by the overflow rule) |
+| `cut` | boolean | Present and `true` when the frame is **not the whole plan**: see below |
+
+**`cut`.** The frame is a summary, and the consumer must know when it is a
+lossy one. The server sets `cut` when any of these holds: the title or a step
+was shortened; `more > 0`; any non-blank line of the plan is neither the title
+line nor a line that became one whole step (prose, nested or continued list
+items, code blocks, tables, further headings); the charset mapping replaced a
+character with `?`; the overflow rule dropped a step. A plan without `cut` is
+shown complete, word for word apart from Markdown marks.
+
+**Overflow.** After building the frame the server serialises it; while it is
+longer than 2048 bytes it removes the last step, adds one to `more` and sets
+`cut`. (Limits are bytes before JSON escaping, so a plan full of quotes or
+backslashes can pass 2048 bytes with fewer than 12 steps.)
+
+**What a device or sim may answer** (connections of role `device` or `sim`;
+the server answers anything else in this table with `error NOT_ALLOWED` with
+the `id`, and the request stays pending):
+
+| Frame | `approve` | `approve_accept_edits` | `revise`, `deny_stop`, `permission_defer` |
+|---|---|---|---|
+| complete (`more` 0, no `cut`) | yes | yes | yes |
+| `cut`, `more` 0 | yes; the card says "Shortened · full plan in the terminal" | **no** | yes |
+| `more > 0` | **no** | **no** | yes |
+
+Why `approve` stays on a shortened plan: it sets the mode to `default`, so
+every edit and every command of the plan still comes back as its own
+permission request and nothing runs unseen; the person has read every step
+title. `approve_accept_edits` lets Claude change files without asking, so it
+needs the complete plan on screen. Real plans almost always carry prose or
+nested items; refusing `approve` for every such plan would leave the device
+with "Revise" only. Dashboards show the full text (14.6a) and are not
+restricted.
+
+Answers: `decide` with `approve`, `approve_accept_edits`, `revise`,
+`deny_stop`; `permission_defer`. The plan text is never edited.
+
+### 14.6 `extend` and `deadline`
+
+A question or plan starts with the room hold like any request. A person
+reading it keeps it alive:
+
+```json
+{"type":"extend","id":"9f2c…"}                    consumer -> server
+{"type":"deadline","id":"9f2c…","timeout":60000}  server -> consumers with ask or plan
+```
+
+On `extend` for a pending question or plan the server sets the deadline to
+`min(max(deadline, now + 60000), createdAt + 300000)` and, if that moved it by
+at least 1000 ms, sends `deadline` with the new remaining time to every
+consumer that got the request. `extend` for a permission or an unknown id is
+ignored. A consumer sends `extend` after a button press or click on the
+request, at most once per 5 s per id, and only while less than 55 s remain.
+The 300 s cap sits inside the 310 s hook timeout that `devotchi setup`
+installs.
+
+### 14.6a Full text for dashboards
+
+Frames are small; a dashboard reads the whole request over REST:
+`GET /api/room/requests/:id` (`cli` token) returns
+`{"id","kind":"permission"|"question"|"plan","tool","toolInput":<the hook's tool_input>,"remainingMs"}`
+for a pending request of the room, otherwise 404 in the REST error format of
+section 7 (`{"error":"…","code":"not_found"}`). `Room.pending`
+entries gain `kind`. Devices never call it.
+
+### 14.7 Showcase (demo) mode on a device
+
+The showcase is local to the device and has no wire representation:
+
+- Sample cards never use a request id and nothing a person does on them is
+  sent. The firmware's serializer refuses any id that is not 32 hex
+  characters; sample content carries the id `sample`.
+- The device stays registered, keeps sending `holding` for real requests it
+  has queued, and telemetry reports `screen: "showcase"`.
+- The showcase cannot be entered while the device has a real request queued
+  (the menu row is inactive and says "A request is waiting"); sample cards
+  never cover a real one.
+- A real request interrupts the showcase at once and is presented outside it
+  (ux-flows 8). A real request is never answered by a press that began before
+  it was shown.
+
+### 14.8 Pets
+
+Pack format, slots and storage: `docs/architecture.md` 7.2.
+
+REST (base rules of section 7; `cli` or `device` token unless noted). Errors
+use the REST format and the lowercase codes of `API_ERROR_CODES`
+(`{"error":"<words>","code":"invalid_request"}`); no new codes are added, the
+`error` text says which case it is:
+
+| Method and path | Result |
+|---|---|
+| `GET /api/pets` | `{"pets":[{"id":"mochi","name":"Mochi","rev":1,"size":612,"crc32":"1a2b3c4d","source":"catalog"}]}`. `source` is `catalog` (shipped with the server) or `room` (uploaded) |
+| `GET /api/pets/:id/pack` | The pack, `application/octet-stream`, `Content-Length` = `size`, `ETag: "<crc32>"`. 404 `not_found` (also for a pack of another room) |
+| `POST /api/pets` (`cli`) | Body: a pack (`application/octet-stream`, at most 2048 bytes) or its JSON source (`application/json`, at most 16 kB). Validated with the shared codec; stored for the room (at most 16). 201 with the list entry; 400 `invalid_request` (the `error` text carries the codec's message); 413 `payload_too_large`; 409 `conflict` when the id is a catalog id or the room already has 16 |
+| `DELETE /api/pets/:id` (`cli`) | Room packs only. 204; 404 `not_found`; 409 `conflict` for a catalog id |
+| `POST /api/devices/:id/pet` (`cli`) | Body `{"op":"install","pet":"mochi","select":true}`, `{"op":"select","pet":"devo"}` or `{"op":"remove","pet":"mochi"}`. Sends `pet_cmd` to the device. 202; 400 `invalid_request` (bad body, `pet` not `[a-z0-9]{1,8}`); 404 `not_found` (device, or pack for `install`); 409 `conflict` when the device is offline ("device offline"), has no `pets` cap ("device does not support pets") or reports the id as built-in for `install`/`remove` ("built-in pet") |
+
+`GET /api/devices` entries gain `pets` (the device's last `pets` message
+without `result`).
+
+```json
+{"type":"pet_cmd","op":"install","pet":"mochi","rev":1,"size":612,
+ "crc32":"1a2b3c4d","select":true}
+```
+
+Server -> one device. `pet` must match `[a-z0-9]{1,8}`, `rev` 1..255, `size`
+36..2048, `crc32` 8 lowercase hex digits; the device checks all four **before
+it builds a URL or touches storage** and answers a malformed command with
+`error: "unknown"`. `op` is:
+
+- `install`: refused with `builtin` when `pet` is a compiled-in id (built-in
+  pets are never replaced by a download; the dashboard offers "Use" for them).
+  Otherwise fetch `GET /api/pets/<pet>/pack` with the device token from the
+  configured server (the command carries no URL) and check, in this order:
+  HTTP 200 and `Content-Length` = `size` (`http` / `size`); exactly `size`
+  bytes received (`http` for a short body or a dropped connection); CRC-32 of
+  the body = `crc32` = the pack's own trailer (`crc`); magic, `fmt` and
+  structure (`format`); header `id` = `pet` and header `rev` = `rev`
+  (`mismatch`). Then store it, read it back and validate the stored copy, and
+  only then select it when `select` is true. A failure at any step leaves the
+  stored pets and the selection exactly as they were; replacing an installed
+  pet with a newer `rev` keeps the old one until the new one is stored.
+- `select`: a built-in or stored pet (`unknown` otherwise).
+- `remove`: a stored pet (`unknown` if not stored, `builtin` for a built-in);
+  if it was selected the device selects `devo`.
+
+```json
+{"type":"pets","selected":"devo","slots":8,"free":7,
+ "installed":[{"id":"devo","rev":1,"builtin":true},{"id":"ember","rev":1,"builtin":true},
+              {"id":"mochi","rev":1}],
+ "result":{"op":"install","pet":"mochi","ok":false,"error":"crc"}}
+```
+
+Device -> server, at most 700 bytes: once after `register_ack`, after every
+change (also a change made in the device's settings), and after every
+`pet_cmd` with `result`. `error` is one of `http`, `size`, `crc`, `format`,
+`mismatch`, `full`, `unknown`, `builtin`, `busy`, `storage`. The server keeps the latest per device
+and forwards the message, with `device` (the registry id) added, to the
+dashboards of the room. `telemetry` gains the optional `pet` (selected id, `[a-z0-9]{1,8}`; the
+shared validator keeps it, drops a malformed one, and `GET /api/devices`
+returns it).
+
+### 14.9 Time
+
+Devices have no clock of their own. `register_ack.serverTime` stays; phase 2
+adds the local-time offset:
+
+- Room setting `timeZone` (7.6): an IANA zone name, or `""` (default) for the
+  zone of the server process. `PUT /api/room/settings` accepts and validates
+  it; the settings object returns it. The CLI
+  (`devotchi start`, `devotchi pair`) and the dashboard set it from the PC or
+  browser zone when it is still `""`.
+- `register_ack.utcOffsetMin`: minutes east of UTC for that zone at
+  `serverTime` (-720..840).
+- `{"type":"time","serverTime":1794668400000,"utcOffsetMin":60}` to every
+  consumer that declared at least one cap: every 60 minutes, when the offset
+  changes (daylight saving) and when the room setting changes.
+
+A device shows local time as `serverTime + utcOffsetMin`, keeps it running on
+its own timer between messages, and shows no time before the first one.
+
+### 14.10 Limits added
+
+| Item | Limit |
+|---|---|
+| `register.client.caps` | 8 entries of 16 bytes |
+| `permission.cmd` / `desc` / `reason` / `grant.rule` | 600 / 200 / 40 / 120 bytes |
+| Questions per call / options per question | 4 / 4 (2 at least) |
+| `question.text` / `header` / `label` / `desc` | 480 / 24 / 80 / 200 bytes |
+| `plan.title` / steps | 80 bytes / 12 of 120 bytes; fewer steps when the frame would pass 2048 bytes |
+| Question and plan hold | room hold; `extend` to 60 s after a press; 300 s total |
+| On-device question or plan store | 2 (others are not named in `holding`) |
+| Pet pack | 2048 bytes; 8 device slots; 16 room packs |
+| `pets` message | 700 bytes |
+
+### 14.11 Behaviour of Claude Code that phase 2 relies on but could not verify
+
+These come from the hook documentation by inference
+(`hooks-facts` research, 2026-11-15) and must be confirmed on a real session
+before release; each has a server switch so it can be turned off alone.
+
+| Assumption | If it is wrong | Switch |
+|---|---|---|
+| An `addRules` entry with `destination: "session"`, derived from a suggestion, is accepted | The reply fails validation and the terminal prompt appears (nothing is allowed) | `DEVOTCHI_SESSION_GRANTS=0` |
+| A session prefix rule (`pnpm test:*`) does not match a compound command (`pnpm test && …`); Claude Code splits on shell operators | A session grant is wider than the device said | `DEVOTCHI_SESSION_GRANTS=0` |
+| `interrupt: true` ends the turn like Esc | "Deny and stop" behaves like a plain deny | none needed |
+| `setMode default` / `acceptEdits` with `updatedInput` leaves plan mode in that mode | Wrong mode after approval | `DEVOTCHI_PLANS=0` |
+| The terminal dialog is hidden while the hook is pending | Harmless: both can answer, the first wins | |
+| Every question must have an `answers` key | Already always sent | |
