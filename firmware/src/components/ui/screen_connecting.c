@@ -68,7 +68,7 @@ void ui_connecting_set(const char *host, const char *state, const char *error, c
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(host, state, error, retry);
     }
     ui_unlock();

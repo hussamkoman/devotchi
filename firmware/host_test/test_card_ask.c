@@ -70,8 +70,12 @@ static void open_ask(uint32_t caps)
     card_fsm_open_ask(&s_c, &s_e, s_lines, caps);
 }
 
+/* A click is a whole press: the app asks the mode at press-down. */
 static card_out_t press(btn_id_t id, btn_kind_t kind)
 {
+    if (kind == BTN_CLICK) {
+        card_fsm_mode(&s_c, id, s_now);
+    }
     const btn_fsm_out_t out = {.id = id, .kind = kind};
     return card_fsm_button(&s_c, &out, s_now);
 }
@@ -85,6 +89,7 @@ static card_out_t commit_hold(void)
 {
     const btn_fsm_out_t p0 = {.id = BTN_APPROVE, .kind = BTN_PROGRESS, .permille = 0};
     const btn_fsm_out_t p1 = {.id = BTN_APPROVE, .kind = BTN_PROGRESS, .permille = 500};
+    card_fsm_mode(&s_c, BTN_APPROVE, s_now);
     card_fsm_button(&s_c, &p0, s_now);
     card_fsm_button(&s_c, &p1, s_now);
     return press(BTN_APPROVE, BTN_COMMIT);
@@ -381,6 +386,39 @@ static void test_plan_hold_only(void)
     expect_decision(commit_hold(), CARD_DECISION_APPROVE);
 }
 
+/* APPROVE down on one row, ACTION moves the cursor, APPROVE up: nothing is chosen or decided. */
+static void test_cursor_move_cancels_an_approve_press(void)
+{
+    const btn_fsm_out_t up = {.id = BTN_APPROVE, .kind = BTN_CLICK};
+    questions(1, 3, 0);
+    open_ask(PROTO_CAP_ASK);
+    TEST_ASSERT_EQUAL(BTN_MODE_CLICK, card_fsm_mode(&s_c, BTN_APPROVE, s_now));
+    TEST_ASSERT_EQUAL(CARD_OUT_CURSOR, click(BTN_ACTION).kind);
+    TEST_ASSERT_EQUAL(CARD_OUT_NONE, card_fsm_button(&s_c, &up, s_now).kind);
+    TEST_ASSERT_EQUAL_HEX8(0, s_c.answered);
+    expect_decision(click(BTN_APPROVE), CARD_DECISION_ANSWER);
+
+    questions(1, 2, 0);
+    open_ask(PROTO_CAP_ASK);
+    menu_to(CARD_ROW_TERMINAL);
+    TEST_ASSERT_EQUAL(BTN_MODE_CLICK, card_fsm_mode(&s_c, BTN_APPROVE, s_now));
+    TEST_ASSERT_EQUAL(CARD_OUT_CURSOR, click(BTN_ACTION).kind);
+    TEST_ASSERT_EQUAL(CARD_OUT_NONE, card_fsm_button(&s_c, &up, s_now).kind);
+    TEST_ASSERT_EQUAL(CARD_VIEW_MENU, s_c.view);
+
+    plan(3, 0, false);
+    open_ask(PROTO_CAP_PLAN);
+    menu_to(CARD_ROW_TERMINAL);
+    TEST_ASSERT_EQUAL(BTN_MODE_CLICK, card_fsm_mode(&s_c, BTN_APPROVE, s_now));
+    TEST_ASSERT_EQUAL(CARD_OUT_CURSOR, click(BTN_ACTION).kind);
+    TEST_ASSERT_EQUAL(CARD_OUT_NONE, card_fsm_button(&s_c, &up, s_now).kind);
+    TEST_ASSERT_FALSE(s_c.sent);
+    while (card_fsm_focused_row(&s_c) != CARD_ROW_DENY_STOP) {
+        TEST_ASSERT_EQUAL(CARD_OUT_CURSOR, click(BTN_ACTION).kind);
+    }
+    expect_decision(click(BTN_APPROVE), CARD_DECISION_DENY_STOP);
+}
+
 static void test_plan_complete(void)
 {
     plan(3, 0, false);
@@ -660,6 +698,7 @@ int main(void)
     RUN_TEST(test_question_menu);
     RUN_TEST(test_review_menu);
     RUN_TEST(test_question_refuses_permission_decisions);
+    RUN_TEST(test_cursor_move_cancels_an_approve_press);
     RUN_TEST(test_plan_complete);
     RUN_TEST(test_plan_hold_only);
     RUN_TEST(test_plan_pages_must_be_seen);

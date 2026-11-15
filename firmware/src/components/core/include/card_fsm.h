@@ -143,6 +143,8 @@ typedef struct {
     bool sent;
     /** A commit hold began on this card and is under way. */
     bool holding;
+    /** The cursor moved since APPROVE last went down: that press decides nothing. */
+    bool approve_moved;
 
     /* Questions: the call's questions, the one on screen, and the answers so far. */
     uint8_t q_count;
@@ -210,8 +212,11 @@ card_session_t card_fsm_session(const card_fsm_t *c);
 uint8_t card_fsm_rows(const card_fsm_t *c, card_row_t rows[CARD_MENU_ROWS]);
 card_row_t card_fsm_focused_row(const card_fsm_t *c);
 
-/** The mode the app asks btn_fsm for when this button goes down. */
-btn_mode_t card_fsm_mode(const card_fsm_t *c, btn_id_t btn, uint32_t now_ms);
+/**
+ * The mode the app asks btn_fsm for when this button goes down.
+ * Call it once per press, at press-down: an APPROVE press starts there.
+ */
+btn_mode_t card_fsm_mode(card_fsm_t *c, btn_id_t btn, uint32_t now_ms);
 
 /** Applies one button output (swallowed ones do nothing). */
 card_out_t card_fsm_button(card_fsm_t *c, const btn_fsm_out_t *out, uint32_t now_ms);

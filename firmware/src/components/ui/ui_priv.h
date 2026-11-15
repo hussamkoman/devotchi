@@ -150,8 +150,8 @@ void w_toast_demo(w_toast_demo_t demo);
  */
 void ui_screen_set_tabs(ui_screen_id_t id, const ui_tabs_t *tabs);
 void ui_screen_set_title(ui_screen_id_t id, const char *title);
-/** True while ui demo has the screen: the app's setters are ignored. */
-bool ui_demo_active(void);
+/** True while ui demo has the screen: the app's setters are ignored. Caller holds ui_lock. */
+bool ui_demo_active_locked(void);
 
 /*
  * The animated pet (architecture 7.4): one view per place it is shown, each

@@ -30,7 +30,7 @@ void ui_identify_set(const char *name)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(name);
     }
     ui_unlock();

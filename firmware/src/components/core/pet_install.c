@@ -141,8 +141,19 @@ static bool stored_valid(const pet_store_ops_t *ops, const char *id, uint8_t *bu
     return true;
 }
 
+/* Puts the id back as it was before the install: removed when it was new, the saved pack otherwise. */
+static void roll_back(const pet_store_ops_t *ops, const char *id, bool existed, const uint8_t *backup, size_t backup_len)
+{
+    if (!existed) {
+        ops->remove(ops->ctx, id);
+    } else if (backup_len > 0) {
+        ops->put(ops->ctx, id, backup, backup_len);
+    }
+}
+
 pet_result_t pet_install_commit(const pet_store_ops_t *ops, const pet_cmd_t *cmd, const uint8_t *pack, size_t len,
-                                uint8_t *scratch, size_t scratch_cap, bool *selected)
+                                uint8_t *scratch, size_t scratch_cap, uint8_t *backup, size_t backup_cap,
+                                bool *selected)
 {
     *selected = false;
     if (ops->slots == 0) {
@@ -152,18 +163,18 @@ pet_result_t pet_install_commit(const pet_store_ops_t *ops, const pet_cmd_t *cmd
     if (!existed && ops->count(ops->ctx) >= ops->slots) {
         return PET_RESULT_FULL;
     }
+    const size_t backup_len = existed ? ops->get(ops->ctx, cmd->id, backup, backup_cap) : 0;
     if (!ops->put(ops->ctx, cmd->id, pack, len)) {
         return PET_RESULT_STORAGE;
     }
     size_t back = 0;
     if (!stored_valid(ops, cmd->id, scratch, scratch_cap, &back) || back != len || memcmp(scratch, pack, len) != 0) {
-        if (!existed) {
-            ops->remove(ops->ctx, cmd->id);
-        }
+        roll_back(ops, cmd->id, existed, backup, backup_len);
         return PET_RESULT_STORAGE;
     }
     if (cmd->select) {
         if (!ops->select(ops->ctx, cmd->id)) {
+            roll_back(ops, cmd->id, existed, backup, backup_len);
             return PET_RESULT_STORAGE;
         }
         *selected = true;

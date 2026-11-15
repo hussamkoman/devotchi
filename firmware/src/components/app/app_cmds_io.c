@@ -3,6 +3,7 @@
 #include "app.h"
 #include "battery.h"
 #include "btn_fsm.h"
+#include "clock.h"
 #include "console.h"
 #include "fb_seq.h"
 #include "feedback.h"
@@ -85,6 +86,15 @@ static bool parse_long(const char *s, long min, long max, long *out)
     }
     *out = v;
     return true;
+}
+
+/* Digits with an optional sign and nothing else; the range is the request's to check. */
+static bool whole_number(const char *s)
+{
+    char *end = NULL;
+    errno = 0;
+    (void)strtoll(s, &end, 10);
+    return end != s && *end == '\0' && errno == 0;
 }
 
 static bool parse_flag(const char *s, bool *out)
@@ -546,7 +556,9 @@ static console_rc_t cmd_factory_reset(int argc, char **argv, const char *raw_arg
 static console_rc_t cmd_clock(int argc, char **argv, const char *raw_args)
 {
     (void)raw_args;
-    if (argc == 4 && strcmp(argv[1], "set") == 0) {
+    long offset;
+    if (argc == 4 && strcmp(argv[1], "set") == 0 && whole_number(argv[2]) &&
+        parse_long(argv[3], CLOCK_OFFSET_MIN_MIN, CLOCK_OFFSET_MAX_MIN, &offset)) {
         char arg[APP_REQUEST_ARG_SIZE];
         snprintf(arg, sizeof(arg), "%.30s %.8s", argv[2], argv[3]);
         return app_req(APP_REQUEST_CLOCK, "set", arg);

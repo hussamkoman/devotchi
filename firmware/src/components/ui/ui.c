@@ -268,7 +268,7 @@ void ui_screen_set_title(ui_screen_id_t id, const char *title)
     }
 }
 
-bool ui_demo_active(void)
+bool ui_demo_active_locked(void)
 {
     return s_demo;
 }

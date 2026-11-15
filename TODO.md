@@ -42,14 +42,7 @@
 
 ### Open minor issues (phase 2)
 
-- [ ] Firmware: in the decision menu the APPROVE mode is fixed at press-down, so APPROVE pressed on one row, ACTION moving the cursor, then APPROVE released decides the newly focused row (never an allow); cancel the APPROVE press when the cursor moves (`core/card_fsm.c`)
-- [ ] Firmware: `pet_install_commit` returns `storage` when the select step fails after a good write and read-back, but leaves the new pack stored (protocol 14.8 says nothing changes on failure)
-- [ ] Firmware: a pet fetch requested while Wi-Fi is down has no deadline; further installs answer `busy` until the fetch runs (`app/app_pets.c`)
-- [ ] Firmware: `power_fsm` sets `show_clock` from power state only, so with Settings or the showcase open when the screen dims the backlight uses clock levels and the CPU lock is released; pass "home visible" into `power_fsm`
-- [ ] Firmware: `clock set <epoch>` without an offset is accepted as offset 0 instead of a usage error (`app/app_clock.c`)
 - [ ] Firmware: the connecting, offline and splash screens have no pet; the offline screen has no Retry tab because there is no retry action
-- [ ] Firmware: `power_fsm_output_t.low_toast` (the voltage-based toast) is computed but not used by the app; the toasts follow the percent
-- [ ] Firmware: `ui_demo_active()` (lock held) and `ui_demo_is_active()` (takes the lock) are easy to confuse
 - [ ] Firmware: the caps helper upper-cases Latin-1 letters (é becomes É); the design brief asked to leave non-ASCII letters as they are; owner to decide
 - [ ] Pets: `petpack.py check` warns that Ember's spade reaches outside the 220x190 mockup box
 

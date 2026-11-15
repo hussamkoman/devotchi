@@ -265,8 +265,11 @@ static btn_mode_t plan_mode(const card_fsm_t *c, btn_id_t btn)
     return BTN_MODE_NONE;
 }
 
-btn_mode_t card_fsm_mode(const card_fsm_t *c, btn_id_t btn, uint32_t now_ms)
+btn_mode_t card_fsm_mode(card_fsm_t *c, btn_id_t btn, uint32_t now_ms)
 {
+    if (btn == BTN_APPROVE) {
+        c->approve_moved = false;
+    }
     if (c->sent || expired(c, now_ms)) {
         return BTN_MODE_NONE;
     }
@@ -682,6 +685,11 @@ card_out_t card_fsm_button(card_fsm_t *c, const btn_fsm_out_t *out, uint32_t now
     if (expired(c, now_ms)) {
         return card_fsm_tick(c, now_ms);
     }
+    /* The mode was latched for the row focused at press-down; the release must not decide another one. */
+    if (out->id == BTN_APPROVE && c->approve_moved) {
+        c->holding = false;
+        return NONE;
+    }
     card_out_t o;
     switch (c->kind) {
     case REQQ_QUESTION:
@@ -692,7 +700,11 @@ card_out_t card_fsm_button(card_fsm_t *c, const btn_fsm_out_t *out, uint32_t now
         break;
     case REQQ_PERMISSION:
     default:
-        return c->view == CARD_VIEW_MENU ? on_menu(c, out, now_ms) : on_card(c, out, now_ms);
+        o = c->view == CARD_VIEW_MENU ? on_menu(c, out, now_ms) : on_card(c, out, now_ms);
+        break;
+    }
+    if (o.kind == CARD_OUT_CURSOR) {
+        c->approve_moved = true;
     }
     if (out->kind != BTN_PROGRESS && o.kind != CARD_OUT_DECIDE) {
         o.extend = want_extend(c, now_ms);

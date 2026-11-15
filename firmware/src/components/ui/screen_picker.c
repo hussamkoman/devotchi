@@ -157,7 +157,7 @@ void ui_picker_set(const ui_picker_t *p)
     if (p == NULL || !ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(p);
     }
     ui_unlock();

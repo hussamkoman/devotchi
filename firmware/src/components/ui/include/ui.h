@@ -573,6 +573,7 @@ void ui_identify_set(const char *name);
 esp_err_t ui_demo(const char *name, const char *variant);
 /** Leaves the demo: the screen the app last asked for comes back; the app renders again after this. */
 void ui_demo_off(void);
+/** True while ui demo has the screen; takes ui_lock (inside the lock use ui_demo_active_locked). */
 bool ui_demo_is_active(void);
 /** "name[:variant|variant...] ..." for the console help. */
 const char *ui_demo_usage(void);

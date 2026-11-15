@@ -50,7 +50,7 @@ void ui_sleep_set(uint8_t seconds, uint16_t permille)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(seconds, permille);
     }
     ui_unlock();

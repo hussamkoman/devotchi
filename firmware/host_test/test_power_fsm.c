@@ -32,6 +32,7 @@ static void reset(uint32_t boot)
         .light_sleep_enabled = true,
         .brightness_pct = 75,
         .dim_pct = 10,
+        .home_visible = true,
     };
 }
 
@@ -379,38 +380,17 @@ static void test_force_stage_until_activity(void)
     TEST_ASSERT_EQUAL(10, s_out.backlight_pct);
 }
 
-static void test_low_toast_once_per_episode(void)
-{
-    reset(0);
-    s_in.batt_low = true;
-    at(1000);
-    TEST_ASSERT_TRUE(s_out.low_toast);
-    at(2000);
-    TEST_ASSERT_FALSE(s_out.low_toast);
-    at(3000);
-    TEST_ASSERT_FALSE(s_out.low_toast);
-    s_in.batt_low = false;
-    at(4000);
-    TEST_ASSERT_FALSE(s_out.low_toast);
-    s_in.batt_low = true;
-    at(5000);
-    TEST_ASSERT_TRUE(s_out.low_toast);
-}
-
 static void test_low_battery_ignored_on_ext_power_or_absent(void)
 {
     reset(0);
-    s_in.batt_low = true;
     s_in.batt_critical = true;
     s_in.ext_power = true;
     at(GRACE_MS + 10000);
-    TEST_ASSERT_FALSE(s_out.low_toast);
     TEST_ASSERT_FALSE(s_out.show_lowbatt);
     TEST_ASSERT_FALSE(s_out.enter_deep_sleep);
     s_in.ext_power = false;
     s_in.batt_present = false;
     at(GRACE_MS + 20000);
-    TEST_ASSERT_FALSE(s_out.low_toast);
     TEST_ASSERT_FALSE(s_out.show_lowbatt);
     TEST_ASSERT_FALSE(s_out.enter_deep_sleep);
 }
@@ -420,7 +400,6 @@ static void test_critical_battery_sleeps_after_card(void)
     reset(0);
     const uint32_t t0 = GRACE_MS + 1000;
     at(t0 - 1);
-    s_in.batt_low = true;
     s_in.batt_critical = true;
     /* A pending request does not keep a dying battery awake. */
     s_in.pending_count = 1;
@@ -779,6 +758,48 @@ static void test_clock_needs_nothing_pending(void)
     TEST_ASSERT_TRUE(s_out.show_clock);
 }
 
+/* Settings or the showcase open as the screen dims: the backlight stays at dim and the CPU lock is held. */
+static void test_clock_needs_home(void)
+{
+    reset(0);
+    s_in.agent_idle = true;
+    s_in.home_visible = false;
+    at(31000);
+    expect_stage(POWER_STAGE_DIM);
+    TEST_ASSERT_FALSE(s_out.show_clock);
+    TEST_ASSERT_EQUAL(10, s_out.backlight_pct);
+    TEST_ASSERT_TRUE(s_out.hold_cpu_lock);
+    /* Back on home in the same stage: the clock replaces it. */
+    s_in.home_visible = true;
+    at(32000);
+    expect_stage(POWER_STAGE_DIM);
+    TEST_ASSERT_TRUE(s_out.show_clock);
+    TEST_ASSERT_FALSE(s_out.hold_cpu_lock);
+
+    /* Always on USB power does not keep another screen lit past its timeout. */
+    reset(0);
+    s_in.boot_grace_s = 0;
+    s_in.deep_timeout_ms = 0;
+    s_in.agent_idle = true;
+    s_in.ext_power = true;
+    s_in.clock_mode = POWER_CLOCK_ALWAYS_USB;
+    s_in.home_visible = false;
+    at(301000);
+    expect_stage(POWER_STAGE_OFF);
+    TEST_ASSERT_FALSE(s_out.show_clock);
+
+    /* Screen timeout Never: no clock over Settings after two minutes. */
+    reset(0);
+    s_in.agent_idle = true;
+    s_in.screen_timeout_s = 0;
+    s_in.home_visible = false;
+    at(POWER_FSM_NEVER_CLOCK_MS + 1000);
+    expect_stage(POWER_STAGE_ACTIVE);
+    TEST_ASSERT_FALSE(s_out.show_clock);
+    TEST_ASSERT_EQUAL(75, s_out.backlight_pct);
+    TEST_ASSERT_TRUE(s_out.hold_cpu_lock);
+}
+
 static void test_clock_battery_window(void)
 {
     /* Default timeouts on battery: the clock is visible from 30 s to 60 s of idle. */
@@ -899,7 +920,6 @@ int main(void)
     RUN_TEST(test_screen_timeout_zero_keeps_active);
     RUN_TEST(test_ext_power_switch_uses_new_table);
     RUN_TEST(test_force_stage_until_activity);
-    RUN_TEST(test_low_toast_once_per_episode);
     RUN_TEST(test_low_battery_ignored_on_ext_power_or_absent);
     RUN_TEST(test_critical_battery_sleeps_after_card);
     RUN_TEST(test_critical_battery_guards);
@@ -919,6 +939,7 @@ int main(void)
     RUN_TEST(test_card_hidden_keeps_the_pending_cap);
     RUN_TEST(test_clock_table);
     RUN_TEST(test_clock_needs_nothing_pending);
+    RUN_TEST(test_clock_needs_home);
     RUN_TEST(test_clock_battery_window);
     RUN_TEST(test_night_switch_changes_backlight);
     RUN_TEST(test_sleep_warning);

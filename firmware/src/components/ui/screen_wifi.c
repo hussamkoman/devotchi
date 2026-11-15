@@ -60,7 +60,7 @@ void ui_wifi_set(const char *ssid, const char *state, const char *reason, const 
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(ssid, state, reason, retry, can_setup);
     }
     ui_unlock();

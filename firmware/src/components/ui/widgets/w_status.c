@@ -298,7 +298,7 @@ void ui_mark_set(ui_mark_t mark)
         return;
     }
     s_app_mark = mark;
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         w_status_set_mark(mark);
     }
     ui_unlock();

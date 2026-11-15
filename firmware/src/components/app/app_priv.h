@@ -202,6 +202,9 @@ btn_mode_t app_flow_btn_mode(btn_id_t id, uint32_t now);
 /** App task: a request card or its menu is on screen (power_fsm holds the active stage). */
 bool app_flow_card_visible(void);
 
+/** App task: home (the pet or the clock replacing it) is on screen, not settings, the showcase or a card. */
+bool app_flow_home_visible(void);
+
 /** The resting face is on screen: a press there only wakes. */
 bool app_flow_clock_visible(void);
 
@@ -440,6 +443,8 @@ bool app_pets_take_fetch(char id[NET_JOB_ARG_SIZE]);
 void app_pets_on_fetch(const net_job_result_t *r, uint32_t now);
 /** A pending download could not be submitted (no token): answered with `http`. */
 void app_pets_fetch_failed(uint32_t now);
+/** Once a second: a download that could not start within 30 s is answered with `http`. */
+void app_pets_tick(uint32_t now);
 /** A person's choice (picker, console): `unknown` for a pet that is not there. */
 pet_result_t app_pets_select(const char *id, uint32_t now);
 pet_result_t app_pets_remove(const char *id, uint32_t now);

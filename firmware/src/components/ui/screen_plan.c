@@ -249,7 +249,7 @@ void ui_plan_set(const ui_plan_t *p)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(p);
     }
     ui_unlock();

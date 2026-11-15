@@ -1633,6 +1633,7 @@ bool app_link_handle_event(const app_event_t *ev)
     case APP_EV_TICK:
         s_splash_done = true;
         app_telemetry_tick(now);
+        app_pets_tick(now);
         break;
     case APP_EV_LINK_TIMER:
     case APP_EV_FLOW_TIMER:
