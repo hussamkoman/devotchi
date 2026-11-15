@@ -735,7 +735,7 @@ def build():
         b += a(0, 205, 320, 8, dots(pages, idx), "c", "line-height:8px")
         b += H([("click", "Back")], [("click", "Next")], None if current else [("click", "Use")])
         return b
-    screen("60-pet-picker", "Pets", "Pet picker: a live, animated preview per pet; the one in use is tagged. Page dots only: ACTION is the one way to move.", picker("devo", "Devo", "Built in · antenna glows with its mood", 0, True))
+    screen("60-pet-picker", "Pets", "Pet picker: a live, animated preview per pet; the one in use is tagged. Page dots only: ACTION is the one way to move.", picker("devo", "Devo", "Built in · the Devotchi ghost", 0, True))
     screen("60b-pet-picker-mochi", "Pets", "The next built-in pet: Mochi, the soft square with an antenna. APPROVE switches.", picker("mochi", "Mochi", "Built in · a soft square with an antenna", 1, False))
     screen("61-pet-picker-ember", "Pets", "A pet with its own body, face and colours. APPROVE switches; the change shows everywhere at once.", picker("ember", "Ember", "Built in · a small jade dragon", 2, False))
     b = sb(left="Pet")
