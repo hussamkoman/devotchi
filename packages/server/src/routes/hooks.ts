@@ -3,12 +3,12 @@
 
 import Router from "@koa/router";
 import type { Middleware } from "koa";
-import type { HookReply } from "@devotchi/shared";
+import type { HookReply, PermissionDecision, PermissionDecisionReply, SessionPermissionUpdate } from "@devotchi/shared";
 import type { HookBody, HookDispatcher } from "../hooks/dispatcher.js";
 import { authOf, requireAuth, requireCli, type Authenticator } from "../http/auth.js";
 import { byToken, type RateLimits } from "../http/rate-limit.js";
 import { errorFields, type Logger } from "../log.js";
-import type { PermissionManager, PermissionOutcome } from "../permissions/manager.js";
+import type { AllowAnswer, DenyChoice, PermissionManager, PermissionOutcome } from "../permissions/manager.js";
 
 export interface HookRouteDeps {
   auth: Authenticator;
@@ -20,21 +20,57 @@ export interface HookRouteDeps {
 
 const NEUTRAL: HookReply = {};
 
+/** Protocol 14.3: the deny messages, by choice. */
+export const DENY_MESSAGES: Readonly<Record<DenyChoice | "deny", string>> = {
+  deny: "Denied on Devotchi. Do not retry this call; try another way or ask the user.",
+  deny_ask_why:
+    "Denied on Devotchi for now. The user wants to know why: explain what this call is for and why it is needed, then you may ask again.",
+  deny_stop: "Denied on Devotchi. The user asked you to stop.",
+  revise:
+    "The user read the plan on Devotchi and wants changes. Stay in plan mode and ask the user what to change.",
+  decline: "The user declined to answer on Devotchi. Use your best judgment, or ask again later.",
+};
+
+function wrap(decision: PermissionDecision): PermissionDecisionReply {
+  return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision } };
+}
+
+function allowDecision(answer: AllowAnswer): PermissionDecision {
+  switch (answer.choice) {
+    case null:
+      return { behavior: "allow" };
+    case "answered":
+      return { behavior: "allow", updatedInput: { ...answer.toolInput, answers: answer.answers } };
+    case "allow_session":
+    case "approve":
+    case "approve_accept_edits": {
+      const update: SessionPermissionUpdate =
+        answer.choice === "allow_session"
+          ? {
+              type: "addRules",
+              rules: [{ toolName: "Bash", ruleContent: answer.ruleContent }],
+              behavior: "allow",
+              destination: "session",
+            }
+          : { type: "setMode", mode: answer.choice === "approve" ? "default" : "acceptEdits", destination: "session" };
+      const input = answer.choice === "allow_session" ? {} : { updatedInput: answer.toolInput };
+      // The one place a reply carries permission updates.
+      return { behavior: "allow", ...input, updatedPermissions: [update] } as PermissionDecision;
+    }
+  }
+}
+
 /**
- * The hook reply for an outcome (protocol 8.3). A decision exists only for
- * the two outcomes a consumer's permission_response produces.
+ * The hook reply for an outcome (protocol 8.3, 14.3, 14.4). A decision
+ * exists only for an explicit answer of a consumer; everything else is the
+ * neutral reply. The JSON is pinned byte for byte by tests: Claude Code
+ * treats a reply that fails its schema as no decision.
  */
 export function hookReply(outcome: PermissionOutcome): HookReply {
-  if (outcome.kind === "allow") {
-    return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } };
-  }
+  if (outcome.kind === "allow") return wrap(allowDecision(outcome.answer));
   if (outcome.kind === "deny") {
-    return {
-      hookSpecificOutput: {
-        hookEventName: "PermissionRequest",
-        decision: { behavior: "deny", message: "Denied on Devotchi" },
-      },
-    };
+    const message = DENY_MESSAGES[outcome.choice ?? "deny"];
+    return wrap(outcome.choice === "deny_stop" ? { behavior: "deny", message, interrupt: true } : { behavior: "deny", message });
   }
   return NEUTRAL;
 }

@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import type { Logger } from "../log.js";
 import type { Db } from "./index.js";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** The v0 schema exactly as the sql.js server created it. */
 export const V0_SCHEMA = `
@@ -204,6 +204,11 @@ function migrateV1toV2(db: Db): void {
   db.exec("ALTER TABLE device_pairings ADD COLUMN token_id TEXT REFERENCES tokens(id) ON DELETE SET NULL");
 }
 
+/** Protocol 14.9: "" follows the zone of the server process. */
+function migrateV2toV3(db: Db): void {
+  db.exec("ALTER TABLE room_settings ADD COLUMN time_zone TEXT NOT NULL DEFAULT ''");
+}
+
 /** Brings the schema to SCHEMA_VERSION. Requires foreign keys to be off. */
 export function migrate(db: Db, log: Logger): void {
   const version = db.get<{ user_version: number }>("PRAGMA user_version")?.user_version ?? 0;
@@ -215,6 +220,7 @@ export function migrate(db: Db, log: Logger): void {
     let counts = {};
     if (version < 1) counts = migrateV0toV1(db);
     if (version < 2) migrateV1toV2(db);
+    if (version < 3) migrateV2toV3(db);
     const violations = db.all("PRAGMA foreign_key_check");
     if (violations.length > 0) throw new Error(`migration left ${violations.length} foreign key violations`);
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

@@ -227,7 +227,7 @@ describe("neutral replies without a request", () => {
     expect((await roomState(t, token)).lastRequest).toMatchObject({ outcome: "neutral", detail: "no_consumer" });
   });
 
-  it("leaves AskUserQuestion and ExitPlanMode to the terminal", async () => {
+  it("leaves AskUserQuestion and ExitPlanMode to the terminal for a phase-1 consumer", async () => {
     const { t, token, c } = await setup();
     for (const tool of ["AskUserQuestion", "ExitPlanMode"]) {
       expect(await hook(t, token, permissionInput({ tool_name: tool, tool_input: {} }))).toEqual({});

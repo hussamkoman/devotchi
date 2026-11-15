@@ -15,6 +15,7 @@ import {
   PAIRING_CODE_TTL_MS,
   REGISTER_DEADLINE_MS,
   REPLAY_MAX_AGE_MS,
+  TIME_INTERVAL_MS,
 } from "./protocol.js";
 
 export const DEFAULT_SERVER_HOST = "0.0.0.0";
@@ -63,6 +64,10 @@ export interface ServerTiming {
   deviceWriteMs: number;
   /** Lifetime of a multi-user login session. */
   loginSessionTtlMs: number;
+  /** How often rooms are checked for a changed UTC offset (protocol 14.9). */
+  timeCheckMs: number;
+  /** `time` is resent to a room at least this often. */
+  timeIntervalMs: number;
 }
 
 export const DEFAULT_SERVER_TIMING: Readonly<ServerTiming> = {
@@ -84,6 +89,8 @@ export const DEFAULT_SERVER_TIMING: Readonly<ServerTiming> = {
   pairDeliveryMs: PAIR_DELIVERY_MS,
   deviceWriteMs: DEVICE_WRITE_INTERVAL_MS,
   loginSessionTtlMs: LOGIN_SESSION_TTL_MS,
+  timeCheckMs: 60_000,
+  timeIntervalMs: TIME_INTERVAL_MS,
 };
 
 /** Architecture section 2.6. */
@@ -101,7 +108,23 @@ export interface ServerConfig {
   inviteCode?: string;
   logLevel: LogLevel;
   timing: ServerTiming;
+  features: ServerFeatures;
 }
+
+/**
+ * Protocol 14.11: phase-2 features that rely on unverified Claude Code
+ * behaviour, each switchable on its own. Off restores the phase-1 behaviour.
+ */
+export interface ServerFeatures {
+  /** DEVOTCHI_QUESTIONS: AskUserQuestion on consumers with `ask`. */
+  questions: boolean;
+  /** DEVOTCHI_PLANS: ExitPlanMode on consumers with `plan`. */
+  plans: boolean;
+  /** DEVOTCHI_SESSION_GRANTS: "Allow for this session". */
+  sessionGrants: boolean;
+}
+
+export const DEFAULT_SERVER_FEATURES: Readonly<ServerFeatures> = { questions: true, plans: true, sessionGrants: true };
 
 /** Credentials for one server, keyed by its normalised base URL. */
 export interface ServerCredentials {

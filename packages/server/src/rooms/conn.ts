@@ -5,6 +5,7 @@ import {
   CONTENT_RATE_PER_MIN,
   HOLDING_BUCKET,
   serialize,
+  type Cap,
   type ClientKind,
   type DeviceTelemetry,
   type Role,
@@ -41,6 +42,8 @@ export class Conn {
   /** The `lastTelemetry.at` value last written to the registry. */
   telemetryWrittenAt: number | null = null;
   registration: Registration | null = null;
+  /** Protocol 14.1: what the consumer declared and the server offers; empty for phase-1 consumers and producers. */
+  caps: ReadonlySet<Cap> = new Set();
   readonly content: RateLog;
   readonly holding: TokenBucket;
   readonly telemetry: MinInterval;

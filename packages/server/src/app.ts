@@ -19,6 +19,7 @@ import { cors, securityHeaders } from "./http/security.js";
 import { Logger, errorFields } from "./log.js";
 import { PairingService } from "./pairing/service.js";
 import { PermissionManager } from "./permissions/manager.js";
+import { TimeService } from "./time/service.js";
 import { RoomRegistry } from "./rooms/registry.js";
 import { accountRoutes } from "./routes/accounts.js";
 import { deviceRoutes } from "./routes/devices.js";
@@ -46,6 +47,7 @@ export interface ServerInternals {
   rooms: RoomRegistry;
   ws: WsServer;
   permissions: PermissionManager;
+  time: TimeService;
   devices: DeviceService;
   pairing: PairingService;
   /** Multi-user mode only. */
@@ -123,7 +125,13 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   const auth = new Authenticator(db, config.mode, config.timing.lastUsedWriteMs);
   const limits = new RateLimits(config.timing.rateWindowMs);
   const ws = new WsServer({ config, db, rooms, auth, log });
-  const permissions = new PermissionManager(rooms, db, log, config.timing);
+  const permissions = new PermissionManager(rooms, db, log, config.timing, config.features);
+  const time = new TimeService({
+    db,
+    rooms,
+    checkMs: config.timing.timeCheckMs,
+    intervalMs: config.timing.timeIntervalMs,
+  });
   const dispatcher = new HookDispatcher({ config, db, rooms, permissions });
   const devices = new DeviceService({ db, rooms, ws, permissions, log, writeIntervalMs: config.timing.deviceWriteMs });
   const pairing = new PairingService({ db, ws, log, timing: config.timing });
@@ -137,6 +145,9 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   ws.handle("holding", (conn, msg) => permissions.onHolding(conn, msg.ids));
   ws.handle("permission_response", (conn, msg) => permissions.onResponse(conn, msg.id, msg.granted));
   ws.handle("permission_defer", (conn, msg) => permissions.onDefer(conn, msg.id));
+  ws.handle("decide", (conn, msg) => permissions.onDecide(conn, msg.id, msg.choice));
+  ws.handle("question_response", (conn, msg) => permissions.onQuestionResponse(conn, msg.id, msg.answers));
+  ws.handle("extend", (conn, msg) => permissions.onExtend(conn, msg.id));
   ws.onConsumerRegistered((conn, room) => permissions.onConsumerRegistered(conn, room));
   ws.handle("telemetry", (conn, msg) => devices.onTelemetry(conn, msg));
   ws.onConnectionClosed((conn, room) => {
@@ -167,7 +178,17 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
     tokenRoutes({ db, config, auth, limits, ws }),
     pairingRoutes({ auth, limits, pairing }),
     deviceRoutes({ auth, devices }),
-    roomRoutes({ db, config, auth, limits, rooms, ws, permissions, listDevices: (roomId) => devices.list(roomId) }),
+    roomRoutes({
+      db,
+      config,
+      auth,
+      limits,
+      rooms,
+      ws,
+      permissions,
+      listDevices: (roomId) => devices.list(roomId),
+      onTimeZoneChanged: (roomId) => time.onZoneChanged(roomId),
+    }),
     hookRoutes({ auth, limits, dispatcher, permissions, log }),
     ...(accounts ? [accountRoutes({ config, auth, limits, accounts, accountPage })] : []),
   ]) {
@@ -202,6 +223,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   }, MAINTENANCE_MS);
   maintenance.unref();
   devices.start();
+  time.start();
 
   const port = (http.address() as AddressInfo).port;
   const url = baseUrl(config.host, port);
@@ -221,6 +243,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
       }
       await ws.shutdown();
       devices.stop();
+      time.stop();
       http.closeIdleConnections();
       let drainTimer: NodeJS.Timeout | undefined;
       await Promise.race([httpClosed, new Promise<void>((resolve) => (drainTimer = setTimeout(resolve, DRAIN_MS)))]);
@@ -244,6 +267,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
       rooms,
       ws,
       permissions,
+      time,
       devices,
       pairing,
       accounts,

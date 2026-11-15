@@ -21,6 +21,9 @@ services:
       DEVOTCHI_INVITE_CODE: ${DEVOTCHI_INVITE_CODE:-}
       DEVOTCHI_ADMIN_SECRET: ${DEVOTCHI_ADMIN_SECRET:-}
       DEVOTCHI_LOG_LEVEL: ${DEVOTCHI_LOG_LEVEL:-info}
+      DEVOTCHI_QUESTIONS: ${DEVOTCHI_QUESTIONS:-1}
+      DEVOTCHI_PLANS: ${DEVOTCHI_PLANS:-1}
+      DEVOTCHI_SESSION_GRANTS: ${DEVOTCHI_SESSION_GRANTS:-1}
     volumes:
       - devotchi-data:/data
     # Not published: only Caddy reaches it, over the compose network.

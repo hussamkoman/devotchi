@@ -42,6 +42,35 @@ export type RoomMode = (typeof ROOM_MODES)[number];
 export const RISK_LEVELS = ["low", "med", "high"] as const;
 export type Risk = (typeof RISK_LEVELS)[number];
 
+/** Section 14.1: what a consumer can present. */
+export const CAPS = ["decide", "ask", "plan", "pets"] as const;
+export type Cap = (typeof CAPS)[number];
+
+export function isCap(value: unknown): value is Cap {
+  return typeof value === "string" && (CAPS as readonly string[]).includes(value);
+}
+
+/** Request kinds of section 14 (`Room.pending[].kind`, `GET /api/room/requests/:id`). */
+export const REQUEST_KINDS = ["permission", "question", "plan"] as const;
+export type RequestKind = (typeof REQUEST_KINDS)[number];
+
+/** Section 14.3. */
+export const DECIDE_CHOICES = [
+  "allow_session",
+  "deny_ask_why",
+  "deny_stop",
+  "approve",
+  "approve_accept_edits",
+  "revise",
+  "decline",
+] as const;
+export type DecideChoice = (typeof DECIDE_CHOICES)[number];
+/** `dismiss.choice`: the decide choice, or `answered` for a question_response. */
+export type DismissChoice = DecideChoice | "answered";
+
+export const GRANT_MATCHES = ["exact", "prefix"] as const;
+export type GrantMatch = (typeof GRANT_MATCHES)[number];
+
 export const DISMISS_REASONS = ["answered", "cancelled", "timeout", "released"] as const;
 export type DismissReason = (typeof DISMISS_REASONS)[number];
 export type AnswerOutcome = "allow" | "deny";
@@ -76,6 +105,8 @@ export const REQUEST_ID_RE = /^[0-9a-f]{32}$/;
 export const SID_RE = /^[0-9a-f]{6}$/;
 export const ROOM_ID_RE = /^[0-9a-f]{12}$/;
 export const NOTIFY_EVENT_RE = /^[a-z0-9_]+$/;
+/** `telemetry.pet` (section 14.8). */
+export const PET_ID_RE = /^[a-z0-9]{1,8}$/;
 
 /** A consumer id accepted in `register.client.deviceId` (section 3.2). */
 export function isValidDeviceId(id: unknown): id is string {
@@ -99,7 +130,36 @@ export const LIMITS = {
   project: 32,
   source: 32,
   name: 24,
+  /** Section 14.10. */
+  cap: 16,
+  cmd: 600,
+  desc: 200,
+  riskReason: 40,
+  grantRule: 120,
+  questionText: 480,
+  header: 24,
+  label: 80,
+  optionDesc: 200,
+  planTitle: 80,
+  planStep: 120,
 } as const;
+
+export const MAX_CAPS = 8;
+export const MAX_QUESTIONS = 4;
+export const MIN_OPTIONS = 2;
+export const MAX_OPTIONS = 4;
+export const PLAN_MAX_STEPS = 12;
+export const GRANT_RULE_MIN_BYTES = 2;
+/** Section 14.6: an `extend` keeps a question or plan alive at least this long. */
+export const EXTEND_MS = 60_000;
+/** Section 14.6: a question or plan is never held longer than this after it was created. */
+export const REQUEST_MAX_HOLD_MS = 300_000;
+/** Section 14.6: a smaller move of the deadline sends no `deadline`. */
+export const DEADLINE_MIN_MOVE_MS = 1_000;
+/** Section 14.9: `time` is resent at least this often. */
+export const TIME_INTERVAL_MS = 60 * 60_000;
+export const UTC_OFFSET_MIN = -720;
+export const UTC_OFFSET_MAX = 840;
 
 export const MAX_URGENCY = 3;
 export const DEFAULT_URGENCY = 1;
@@ -169,6 +229,8 @@ export interface RegisterClient {
   model?: string;
   version?: string;
   project?: string;
+  /** Section 14.1: consumers only; known names, unknown entries dropped by the parser. */
+  caps?: Cap[];
 }
 
 export interface RegisterMessage {
@@ -188,6 +250,10 @@ export interface RegisterAckMessage {
   mode: RoomMode;
   peers: Peers;
   device?: { id: string; name: string };
+  /** Section 14.1: the server's features. */
+  caps?: Cap[];
+  /** Section 14.9: minutes east of UTC of the room's zone at `serverTime`. */
+  utcOffsetMin?: number;
 }
 
 export interface PingMessage {
@@ -241,13 +307,26 @@ export interface MoodMessage {
   timestamp?: string;
 }
 
+/** Section 14.2: the rule "Allow for this session" adds, as the consumer must show it. */
+export interface PermissionGrant {
+  rule: string;
+  match: GrantMatch;
+}
+
 export interface PermissionMessage {
   type: "permission";
   id: string;
   tool: string;
   summary: string;
+  /** Phase-1 consumers only (section 14.2). */
   details?: string;
   risk: Risk;
+  /** Section 14.2 card fields, for consumers with `decide`. */
+  cmd?: string;
+  cut?: true;
+  desc?: string;
+  reason?: string;
+  grant?: PermissionGrant;
   sid?: string;
   project?: string;
   /** Remaining hold time in ms when sent, always >= 1000. */
@@ -271,8 +350,76 @@ export interface PermissionDeferMessage {
   id: string;
 }
 
+export interface DecideMessage {
+  type: "decide";
+  id: string;
+  choice: DecideChoice;
+}
+
+export interface QuestionOption {
+  label: string;
+  desc?: string;
+}
+
+/** Section 14.4: one frame per question of an AskUserQuestion call. */
+export interface QuestionMessage {
+  type: "question";
+  id: string;
+  index: number;
+  count: number;
+  header?: string;
+  text: string;
+  multi: boolean;
+  options: QuestionOption[];
+  sid?: string;
+  project?: string;
+  timeout: number;
+  timestamp?: string;
+}
+
+/** One entry per question: option indexes, or null for "no preference". */
+export type QuestionAnswer = number[] | null;
+
+export interface QuestionResponseMessage {
+  type: "question_response";
+  id: string;
+  answers: QuestionAnswer[];
+}
+
+/** Section 14.5. */
+export interface PlanMessage {
+  type: "plan";
+  id: string;
+  title: string;
+  steps: string[];
+  more: number;
+  cut?: true;
+  sid?: string;
+  project?: string;
+  timeout: number;
+  timestamp?: string;
+}
+
+export interface ExtendMessage {
+  type: "extend";
+  id: string;
+}
+
+export interface DeadlineMessage {
+  type: "deadline";
+  id: string;
+  timeout: number;
+}
+
+/** Section 14.9. */
+export interface TimeMessage {
+  type: "time";
+  serverTime: number;
+  utcOffsetMin: number;
+}
+
 export type DismissMessage =
-  | { type: "dismiss"; id: string; reason: "answered"; outcome: AnswerOutcome; by: string }
+  | { type: "dismiss"; id: string; reason: "answered"; outcome: AnswerOutcome; by: string; choice?: DismissChoice }
   | { type: "dismiss"; id: string; reason: Exclude<DismissReason, "answered"> };
 
 export interface ModeMessage {
@@ -304,6 +451,8 @@ export interface TelemetryMessage {
   screen?: string;
   stage?: PowerStage;
   alert?: BatteryAlert;
+  /** Section 14.8: id of the pet on screen. */
+  pet?: string;
 }
 
 export interface IdentifyMessage {
@@ -320,6 +469,9 @@ export type ConsumerToServerMessage =
   | HoldingMessage
   | PermissionResponseMessage
   | PermissionDeferMessage
+  | DecideMessage
+  | QuestionResponseMessage
+  | ExtendMessage
   | SetModeMessage
   | TelemetryMessage;
 
@@ -333,6 +485,10 @@ export type ServerToConsumerMessage =
   | NotifyMessage
   | MoodMessage
   | PermissionMessage
+  | QuestionMessage
+  | PlanMessage
+  | DeadlineMessage
+  | TimeMessage
   | DismissMessage
   | ModeMessage
   | IdentifyMessage;
@@ -343,7 +499,19 @@ export type MessageType = ProtocolMessage["type"];
 /** Section 3.7: the types each role may send to the server. */
 export const INBOUND_TYPES: Readonly<Record<Role, readonly InboundMessage["type"][]>> = {
   producer: ["register", "ping", "pong", "status", "notify", "mood"],
-  consumer: ["register", "ping", "pong", "holding", "permission_response", "permission_defer", "set_mode", "telemetry"],
+  consumer: [
+    "register",
+    "ping",
+    "pong",
+    "holding",
+    "permission_response",
+    "permission_defer",
+    "decide",
+    "question_response",
+    "extend",
+    "set_mode",
+    "telemetry",
+  ],
 };
 
 // --- Notify reaction classes (section 5.2) ---

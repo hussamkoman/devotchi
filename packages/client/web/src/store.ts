@@ -221,6 +221,11 @@ function onFrame(state: State, msg: ServerToConsumerMessage, now: number): State
         msg.mode === "desk" ? "at desk: requests go to the terminal" : "ask: requests go to devices",
         now,
       );
+    // Sent only to consumers that declared the matching cap; this dashboard declares none.
+    case "question":
+    case "plan":
+    case "deadline":
+    case "time":
     case "identify":
     case "ping":
     case "pong":
