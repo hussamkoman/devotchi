@@ -406,6 +406,8 @@ typedef struct {
     uint8_t cursor;
     /** APPROVE's tab on the list ("Open", "Change"). */
     const char *approve;
+    /** REJECT's hold on the list ("Back", "Exit"); its click then moves up. NULL: a plain Back click. */
+    const char *reject_hold;
     /* Editor: the big figure and unit, the value's place among steps, the choices line and a hint. */
     char big[UI_SETTINGS_VALUE_SIZE];
     char unit[UI_SETTINGS_VALUE_SIZE];

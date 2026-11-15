@@ -155,6 +155,8 @@ btn_mode_t settings_menu_btn_mode(const settings_menu_t *m, btn_id_t id);
 /** Rows of list in screen order. */
 const settings_item_t *settings_list_items(settings_list_t list, size_t *count);
 const char *settings_list_title(settings_list_t list);
+/** True for a list without a parent (top, quick): holding Back there leaves Settings. */
+bool settings_list_is_root(settings_list_t list);
 const char *settings_list_key(settings_list_t list);
 
 settings_item_t settings_menu_item(const settings_menu_t *m);

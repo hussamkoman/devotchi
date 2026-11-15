@@ -115,8 +115,11 @@ static void apply_list(const ui_settings_t *s)
         ui_label_set(s_note, s->note);
     }
     strlcpy(s_approve, s->approve != NULL ? s->approve : "Open", sizeof(s_approve));
+    const ui_tab_t back = s->reject_hold != NULL
+                              ? (ui_tab_t){.state = UI_TAB_CLICK_AND_HOLD, .label = "Up", .hold = s->reject_hold}
+                              : (ui_tab_t){.state = UI_TAB_CLICK, .label = "Back"};
     const ui_tabs_t tabs = {.tab = {
-                               [UI_TAB_REJECT] = {.state = UI_TAB_CLICK, .label = "Back"},
+                               [UI_TAB_REJECT] = back,
                                [UI_TAB_ACTION] = {.state = UI_TAB_CLICK, .label = "Next"},
                                [UI_TAB_APPROVE] = {.state = s->muted[cursor] ? UI_TAB_INACTIVE : UI_TAB_CLICK,
                                                    .label = s_approve},

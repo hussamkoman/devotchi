@@ -448,6 +448,7 @@ static void render_list(ui_settings_t *ui)
     const settings_item_t *items = settings_list_items(s_menu.list, &count);
     ui->count = (uint8_t)count;
     ui->approve = "Open";
+    ui->reject_hold = settings_list_is_root(s_menu.list) ? "Exit" : "Back";
     for (size_t i = 0; i < count; i++) {
         const settings_item_t item = items[i];
         ui->icons[i] = ICONS[item];

@@ -208,7 +208,7 @@ class PetsRun(Run):
             if screen == "picker":
                 self.cmd("btn reject press")
             elif screen == "settings":
-                self.cmd("btn action long")
+                self.cmd("btn reject long")
             else:
                 return
             time.sleep(0.5)
@@ -255,7 +255,7 @@ class PetsRun(Run):
         check((scr.get("tabs") or {}).get("approve") is None, f"Use on More pets: {scr.get('tabs')}")
         self.cmd("btn reject press")
         self.wait_screen(lambda s: s.get("id") == "settings", 5, "back to settings")
-        self.cmd("btn reject press")
+        self.cmd("btn reject long")
         self.wait_pet(10)
         pose = self.board.json_command("pet pose")
         check(pose["pet"] == "ember", f"home draws {pose['pet']}")
