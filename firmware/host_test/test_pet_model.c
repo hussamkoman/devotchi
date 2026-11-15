@@ -79,6 +79,22 @@ static void test_notify_sets_mood_and_last_event(void)
     TEST_ASSERT_EQUAL(MOOD_SAD, m.mood);
 }
 
+static void test_usage_limit_sleeps_until_the_next_mood(void)
+{
+    pet_model_init(&m);
+    const proto_notify_t limit = notify("usage_limit", MOOD_SLEEPING, "Usage limit reached", "");
+    TEST_ASSERT_EQUAL(PET_EVENT_REST, pet_model_apply_notify(&m, &limit));
+    TEST_ASSERT_EQUAL(MOOD_SLEEPING, m.mood);
+
+    const proto_status_t quiet = status("Waiting", false, MOOD_IDLE, "");
+    pet_model_apply_status(&m, &quiet);
+    TEST_ASSERT_EQUAL(MOOD_SLEEPING, m.mood);
+
+    const proto_notify_t resumed = notify("usage_resumed", MOOD_WORKING, "Back to work", "");
+    TEST_ASSERT_EQUAL(PET_EVENT_WAKE, pet_model_apply_notify(&m, &resumed));
+    TEST_ASSERT_EQUAL(MOOD_WORKING, m.mood);
+}
+
 static void test_text_is_sanitised(void)
 {
     pet_model_init(&m);
@@ -110,6 +126,10 @@ static void test_event_class_table(void)
         {"task_complete", MOOD_SAD, PET_EVENT_COMPLETE},
         {"task_paused", MOOD_HAPPY, PET_EVENT_NONE},
         {"needs_input", MOOD_HAPPY, PET_EVENT_ATTENTION},
+        {"usage_limit", MOOD_SLEEPING, PET_EVENT_REST},
+        {"usage_limit", MOOD_SAD, PET_EVENT_REST},
+        {"usage_resumed", MOOD_WORKING, PET_EVENT_WAKE},
+        {"usage_resumed", MOOD_ANGRY, PET_EVENT_WAKE},
         /* A bare suffix is not an event with that suffix. */
         {"_failed", MOOD_HAPPY, PET_EVENT_POSITIVE},
         {"failed", MOOD_IDLE, PET_EVENT_NONE},
@@ -132,6 +152,8 @@ static void test_event_class_table(void)
     TEST_ASSERT_EQUAL(PET_EVENT_NONE, pet_event_class(NULL, MOOD_IDLE));
     TEST_ASSERT_EQUAL_STRING("attention", pet_event_class_name(PET_EVENT_ATTENTION));
     TEST_ASSERT_EQUAL_STRING("none", pet_event_class_name(PET_EVENT_NONE));
+    TEST_ASSERT_EQUAL_STRING("rest", pet_event_class_name(PET_EVENT_REST));
+    TEST_ASSERT_EQUAL_STRING("wake", pet_event_class_name(PET_EVENT_WAKE));
 }
 
 static void test_notify_text(void)
@@ -182,6 +204,7 @@ int main(void)
     RUN_TEST(test_init);
     RUN_TEST(test_status_without_mood_keeps_mood_of_last_mood_message);
     RUN_TEST(test_notify_sets_mood_and_last_event);
+    RUN_TEST(test_usage_limit_sleeps_until_the_next_mood);
     RUN_TEST(test_text_is_sanitised);
     RUN_TEST(test_event_class_table);
     RUN_TEST(test_notify_text);

@@ -34,6 +34,8 @@ export interface RoomSession {
   failures: number;
   /** A terminal permission dialog of this session may be on screen (protocol 8.4). */
   dialogMaybeOpen: boolean;
+  /** The last turn ended on the usage limit and nothing has run since (protocol 8.5). */
+  usageLimited: boolean;
 }
 
 export interface RoomDiagnosticsState {

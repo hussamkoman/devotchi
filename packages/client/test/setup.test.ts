@@ -97,7 +97,9 @@ describe("devotchi setup", () => {
       });
       expect(entry.group.matcher).toBe(spec.matcher);
     }
-    expect(hooks.find((h) => h.event === "Notification")!.group.matcher).toBe("idle_prompt|agent_needs_input|permission_prompt");
+    expect(hooks.find((h) => h.event === "Notification")!.group.matcher).toBe(
+      "idle_prompt|agent_needs_input|permission_prompt|quota_auto_resume_fired|quota_auto_resume_stale|quota_auto_resume_disabled",
+    );
     expect(hooks.find((h) => h.event === "PermissionRequest")!.hook.timeout).toBe(310);
     expect(hooks.find((h) => h.event === "SessionEnd")!.hook.timeout).toBe(2);
     const text = await readFile(settingsFile(), "utf8");
@@ -205,6 +207,15 @@ describe("devotchi setup", () => {
     expect(await setup({ check: true })).toBe(1);
     expect(lines[0]).toContain("out of date");
     expect(lines.join("\n")).toMatch(/missing PostToolBatch/);
+
+    await setup();
+    const oldMatcher = await readSettingsJson();
+    owned(oldMatcher).find((h) => h.event === "Notification")!.group.matcher = "idle_prompt|agent_needs_input|permission_prompt";
+    await writeSettingsJson(oldMatcher);
+    lines = [];
+    expect(await setup({ check: true })).toBe(1);
+    expect(lines[0]).toContain("out of date");
+    expect(lines.join("\n")).toContain('matcher "idle_prompt|agent_needs_input|permission_prompt"');
 
     await setup();
     await new ConfigStore(box.env).setCredentials(t.url, { token: "another-token", roomId });

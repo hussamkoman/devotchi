@@ -240,17 +240,78 @@ describe("event mapping", () => {
 
   it("StopFailure reports the error", async () => {
     const { t, token, c } = await setup();
-    await hook(t, token, hookInput("StopFailure", { error: "rate_limit", last_assistant_message: "API Error: private" }));
+    await hook(t, token, hookInput("StopFailure", { error: "overloaded", last_assistant_message: "API Error: private" }));
     expect(content(await c.awaitMessage("notify"))).toEqual({
       type: "notify",
       event: "error",
       mood: "sad",
-      detail: "rate_limit",
+      detail: "overloaded",
       urgency: 2,
       ...session,
     });
+    expect(JSON.stringify(c.received)).not.toContain("private");
     await hook(t, token, hookInput("StopFailure", { error: "x".repeat(500) }));
     expect(((await c.awaitMessage("notify")).detail as string).length).toBe(120);
+  });
+
+  it("StopFailure rate_limit puts the pet to rest and keeps idle prompts away until work resumes", async () => {
+    const { t, token, c } = await setup();
+    await hook(t, token, hookInput("StopFailure", { error: "rate_limit", last_assistant_message: "API Error: private" }));
+    expect(content(await c.awaitMessage("notify"))).toEqual({
+      type: "notify",
+      event: "usage_limit",
+      mood: "sleeping",
+      detail: "Usage limit reached",
+      urgency: 2,
+      ...session,
+    });
+    expect(JSON.stringify(c.received)).not.toContain("private");
+    await hook(t, token, hookInput("Notification", { notification_type: "idle_prompt" }));
+    await c.expectNoMessage("notify", 100);
+
+    await hook(t, token, hookInput("Notification", { notification_type: "quota_auto_resume_fired", message: "private" }));
+    expect(content(await c.awaitMessage("notify"))).toEqual({
+      type: "notify",
+      event: "usage_resumed",
+      mood: "working",
+      detail: "Back to work",
+      urgency: 2,
+      ...session,
+    });
+    await hook(t, token, hookInput("Notification", { notification_type: "idle_prompt" }));
+    expect(await c.awaitMessage("notify")).toMatchObject({ event: "needs_input", detail: "Claude is waiting" });
+  });
+
+  it("Notification maps the stale and disabled usage-limit auto-resume", async () => {
+    const { t, token, c } = await setup();
+    await hook(t, token, hookInput("Notification", { notification_type: "quota_auto_resume_disabled", title: "private" }));
+    expect(content(await c.awaitMessage("notify"))).toEqual({
+      type: "notify",
+      event: "usage_limit",
+      mood: "sleeping",
+      detail: "Continue in the terminal after the reset",
+      urgency: 2,
+      ...session,
+    });
+    await hook(t, token, hookInput("Notification", { notification_type: "agent_needs_input" }));
+    await c.expectNoMessage("notify", 100);
+
+    await hook(t, token, hookInput("Notification", { notification_type: "quota_auto_resume_stale", message: "private" }));
+    expect(content(await c.awaitMessage("notify"))).toEqual({
+      type: "notify",
+      event: "needs_input",
+      mood: "anxious",
+      detail: "Usage is back: press Enter in the terminal",
+      urgency: 3,
+      ...session,
+    });
+    expect(JSON.stringify(c.received)).not.toContain("private");
+
+    await hook(t, token, hookInput("StopFailure", { error: "rate_limit" }));
+    await c.awaitMessage("notify");
+    await hook(t, token, hookInput("UserPromptSubmit"));
+    await hook(t, token, hookInput("Notification", { notification_type: "idle_prompt" }));
+    expect(await c.awaitMessage("notify")).toMatchObject({ event: "needs_input", detail: "Claude is waiting" });
   });
 
   it("SessionEnd and 30 minutes of silence forget the session", async () => {

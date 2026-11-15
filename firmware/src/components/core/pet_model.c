@@ -17,6 +17,7 @@ static const event_rule_t EXACT[] = {
     {"build_failed", PET_EVENT_NEGATIVE},  {"deploy_failed", PET_EVENT_NEGATIVE},
     {"error", PET_EVENT_NEGATIVE},         {"task_complete", PET_EVENT_COMPLETE},
     {"task_paused", PET_EVENT_NONE},       {"needs_input", PET_EVENT_ATTENTION},
+    {"usage_limit", PET_EVENT_REST},       {"usage_resumed", PET_EVENT_WAKE},
 };
 
 static const event_rule_t SUFFIX[] = {
@@ -111,6 +112,10 @@ const char *pet_event_class_name(pet_event_class_t c)
         return "complete";
     case PET_EVENT_ATTENTION:
         return "attention";
+    case PET_EVENT_REST:
+        return "rest";
+    case PET_EVENT_WAKE:
+        return "wake";
     }
     return "";
 }

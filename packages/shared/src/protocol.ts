@@ -576,7 +576,7 @@ export const INBOUND_TYPES: Readonly<Record<Role, readonly InboundMessage["type"
 
 // --- Notify reaction classes (section 5.2) ---
 
-export type EventClass = "positive" | "negative" | "complete" | "none" | "attention";
+export type EventClass = "positive" | "negative" | "complete" | "none" | "attention" | "rest" | "wake";
 
 const POSITIVE_EVENTS = new Set(["tests_passed", "build_succeeded", "deploy_complete"]);
 const NEGATIVE_EVENTS = new Set(["tests_failed", "build_failed", "deploy_failed", "error"]);
@@ -588,6 +588,8 @@ export function eventClass(event: string, mood?: string): EventClass {
   if (event === "task_complete") return "complete";
   if (event === "task_paused") return "none";
   if (event === "needs_input") return "attention";
+  if (event === "usage_limit") return "rest";
+  if (event === "usage_resumed") return "wake";
   if (mood === "happy" || mood === "excited" || mood === "proud") return "positive";
   if (mood === "sad" || mood === "angry") return "negative";
   return "none";
@@ -598,6 +600,8 @@ export function defaultMoodForEvent(event: string): Mood {
   const cls = eventClass(event);
   if (cls === "positive") return "happy";
   if (cls === "negative") return "sad";
+  if (cls === "rest") return "sleeping";
+  if (cls === "wake") return "working";
   return "idle";
 }
 

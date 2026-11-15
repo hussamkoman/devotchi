@@ -939,6 +939,17 @@ PostToolUse hook -> POST /hook/event -> status{msg, mood:working, project} -> co
 MCP show_status  -> producer WebSocket -> status -> consumers
 ```
 
+The usage limit is shown as rest, not as an error (protocol 8.5):
+
+```
+StopFailure{error:rate_limit}        -> notify{usage_limit, mood:sleeping}  -> the pet yawns and sleeps
+Notification quota_auto_resume_fired -> notify{usage_resumed, mood:working} -> the pet wakes up
+Notification quota_auto_resume_stale -> notify{needs_input}                 -> press Enter in the terminal
+```
+
+While a session rests, its idle prompts are not forwarded. Devotchi only
+reacts; Claude Code itself decides whether and when the task continues.
+
 ### 5.3 First-time setup
 
 1. `devotchi start --local --lan` (or a running server) and `devotchi setup`.

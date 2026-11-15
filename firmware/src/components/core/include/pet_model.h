@@ -11,6 +11,10 @@ typedef enum {
     PET_EVENT_NEGATIVE,
     PET_EVENT_COMPLETE,
     PET_EVENT_ATTENTION,
+    /** The usage limit stopped the agent: a yawn into the sleeping mood. */
+    PET_EVENT_REST,
+    /** The agent resumed after the usage limit. */
+    PET_EVENT_WAKE,
 } pet_event_class_t;
 
 /** Home page 2 (recent activity) keeps this many status and notify lines. */

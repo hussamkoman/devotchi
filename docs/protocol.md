@@ -466,6 +466,8 @@ first, then by mood:
 | `task_complete` | complete |
 | `task_paused` | none (toast only) |
 | `needs_input` | attention |
+| `usage_limit` | rest: the pet yawns into the `sleeping` mood, a plain toast and at most one soft buzz |
+| `usage_resumed` | wake: the pet wakes up, a positive toast and a short buzz |
 | anything else | positive if mood is `happy`/`excited`/`proud`, negative if `sad`/`angry`, otherwise none |
 
 ---
@@ -671,7 +673,8 @@ one of `answered`, `no_consumer`, `no_ack`, `holder_lost`, `deferred`,
 | POST | `/api/notify` | cli | `{"event","mood"?,"detail"?,"source"?,"urgency"?}` | 202 `{"delivered":2}` (number of consumers it was sent to) |
 
 Fields follow `notify` (section 4.4). When `mood` is absent it defaults by
-event class (section 5.2): positive `happy`, negative `sad`, otherwise `idle`.
+event class (section 5.2): positive `happy`, negative `sad`, rest `sleeping`,
+wake `working`, otherwise `idle`.
 `source` is also copied into `project`. 30 requests per minute per token.
 
 ### 7.8 Rate limits
@@ -884,12 +887,16 @@ counter is evidence, not proof: a sandbox network prompt (which runs no
 | `PostToolUse` | Reset the session failure counter. Emit `status {msg:<tool summary>}`, coalesced to at most 2 per second per room (the latest wins). The status carries `mood:"working"` only when the room mood (section 4.5) is `thinking`, `idle` or `sleeping`; otherwise it carries no mood, so a mood set by the agent or by a notification stays. Cancels a matching request (8.3) |
 | `PostToolUseFailure` | Emit `status {msg:"<tool> failed"}` with no mood. On the 3rd consecutive failure in a session emit `notify {event:"error", mood:"angry", detail:"3 tool failures in a row", urgency:2}` and reset the counter. Cancels a matching request (8.3) |
 | `PostToolBatch` | No message. Cancels requests (8.3) |
-| `Notification`, `notification_type` `idle_prompt` or `agent_needs_input` | `notify {event:"needs_input", mood:"anxious", detail:"Claude is waiting", urgency:3}` |
+| `Notification`, `notification_type` `idle_prompt` or `agent_needs_input` | `notify {event:"needs_input", mood:"anxious", detail:"Claude is waiting", urgency:3}`, except while the session rests on the usage limit (the last event was a `StopFailure` with `rate_limit` or a `quota_auto_resume_disabled`): then nothing |
+| `Notification`, `notification_type` `quota_auto_resume_fired` | Claude Code continued the task after the usage limit reset: `notify {event:"usage_resumed", mood:"working", detail:"Back to work", urgency:2}` |
+| `Notification`, `notification_type` `quota_auto_resume_stale` | The limit reset while the computer slept and Claude Code waits for Enter: `notify {event:"needs_input", mood:"anxious", detail:"Usage is back: press Enter in the terminal", urgency:3}` |
+| `Notification`, `notification_type` `quota_auto_resume_disabled` | Claude Code stopped waiting for the reset: `notify {event:"usage_limit", mood:"sleeping", detail:"Continue in the terminal after the reset", urgency:2}` |
 | `Notification`, `notification_type` `permission_prompt` | If the session has a pending request in the room: no message; counts for the diagnosis in 8.4. Otherwise `notify {event:"needs_input", mood:"anxious", detail:"Permission needed in terminal", urgency:2}` |
 | `Notification`, other types | Nothing |
 | `Stop` with empty or absent `background_tasks` | `notify {event:"task_complete", mood:"sleeping", detail:<D>, urgency:2}`. Cancels requests (8.3) |
 | `Stop` with non-empty `background_tasks` | `notify {event:"task_paused", mood:"idle", detail:"<N> background tasks", urgency:1}`. Cancels requests (8.3) |
-| `StopFailure` | `notify {event:"error", mood:"sad", detail:<error, 120 bytes>, urgency:2}`. Cancels requests (8.3) |
+| `StopFailure` with `error` `rate_limit` (the claude.ai usage limit) | `notify {event:"usage_limit", mood:"sleeping", detail:"Usage limit reached", urgency:2}`. Cancels requests (8.3) |
+| `StopFailure`, other errors | `notify {event:"error", mood:"sad", detail:<error, 120 bytes>, urgency:2}`. Cancels requests (8.3) |
 | `SessionEnd` | Forget the session; cancel its pending requests |
 
 Devotchi's own MCP tools: for `PostToolUse` and `PostToolUseFailure` whose
@@ -927,7 +934,7 @@ All are `type: "http"`, URL `<server>/hook/event`, with headers
 | `PostToolUse` | none | 5 |
 | `PostToolUseFailure` | none | 5 |
 | `PostToolBatch` | none | 5 |
-| `Notification` | `idle_prompt\|agent_needs_input\|permission_prompt` | 5 |
+| `Notification` | `idle_prompt\|agent_needs_input\|permission_prompt\|quota_auto_resume_fired\|quota_auto_resume_stale\|quota_auto_resume_disabled` | 5 |
 | `UserPromptSubmit` | none | 5 |
 | `Stop` | none | 5 |
 | `StopFailure` | none | 5 |

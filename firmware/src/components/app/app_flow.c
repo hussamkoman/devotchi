@@ -570,7 +570,8 @@ static void on_notify(const proto_notify_t *n, uint32_t now)
     static const pet_react_t REACT[] = {
         [PET_EVENT_NONE] = PET_REACT_NONE,         [PET_EVENT_POSITIVE] = PET_REACT_POSITIVE,
         [PET_EVENT_NEGATIVE] = PET_REACT_NEGATIVE, [PET_EVENT_COMPLETE] = PET_REACT_COMPLETE,
-        [PET_EVENT_ATTENTION] = PET_REACT_ATTENTION,
+        [PET_EVENT_ATTENTION] = PET_REACT_ATTENTION, [PET_EVENT_REST] = PET_REACT_WAKE,
+        [PET_EVENT_WAKE] = PET_REACT_WAKE,
     };
     pet_mood_changed(before);
     char line[TOAST_SIZE];
@@ -597,7 +598,7 @@ static void on_notify(const proto_notify_t *n, uint32_t now)
     }
     char text[TOAST_SIZE];
     pet_notify_text(text, sizeof(text), n);
-    app_toast_kind(cls == PET_EVENT_POSITIVE || cls == PET_EVENT_COMPLETE ? UI_TOAST_POSITIVE
+    app_toast_kind(cls == PET_EVENT_POSITIVE || cls == PET_EVENT_COMPLETE || cls == PET_EVENT_WAKE ? UI_TOAST_POSITIVE
                    : cls == PET_EVENT_NEGATIVE                            ? UI_TOAST_NEGATIVE
                    : cls == PET_EVENT_ATTENTION                           ? UI_TOAST_ATTENTION
                                                                           : UI_TOAST_INFO,
@@ -617,6 +618,13 @@ static void on_notify(const proto_notify_t *n, uint32_t now)
         break;
     case PET_EVENT_ATTENTION:
         play(FB_SEQ_ATTENTION, ATTENTION_ONCE_MS);
+        break;
+    case PET_EVENT_WAKE:
+        play(FB_SEQ_POSITIVE, 0);
+        break;
+    case PET_EVENT_REST:
+        /* One soft buzz and no LED: the limit needs no action, it only explains why work stopped. */
+        play(FB_SEQ_TICK, 0);
         break;
     case PET_EVENT_NONE:
         break;
