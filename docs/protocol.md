@@ -1091,8 +1091,7 @@ the ESP-IDF certificate bundle.
 
 ## 14. Phase 2 additions (questions, plans, richer decisions, pets, time)
 
-Status: **specified, being implemented** (server/client packages T1..T3,
-firmware packages F1..F5). The protocol version stays **2**: everything here
+Status: **implemented** (server, client, dashboard, sim and firmware). The protocol version stays **2**: everything here
 is optional and negotiated per consumer, so a phase-1 device, dashboard or sim
 keeps working against a phase-2 server and the other way round. Where this
 section and sections 1..13 disagree about a phase-2 feature, this section wins.
@@ -1397,6 +1396,25 @@ for a pending request of the room, otherwise 404 in the REST error format of
 section 7 (`{"error":"…","code":"not_found"}`). `Room.pending`
 entries gain `kind`. Devices never call it.
 
+### 14.6b `GET /api/room` additions
+
+`Room` (7.6) gains, all optional for a reader:
+
+- `pending[].kind`: `permission`, `question` or `plan`.
+- `settings.timeZone` (14.9).
+- `lastRequest.choice`: the `dismiss.choice` of an answered request (14.3).
+- `features`: `{"questions":true,"plans":true,"sessionGrants":true}`, the
+  server's switches `DEVOTCHI_QUESTIONS`, `DEVOTCHI_PLANS` and
+  `DEVOTCHI_SESSION_GRANTS` (14.11).
+- `capableConsumers`: connected consumers per cap, for example
+  `{"decide":2,"ask":2,"plan":2,"pets":1}`; every cap of 14.1 is listed, with
+  0 when no consumer declared it. A cap the server does not offer (a switch is off) or
+  strips (dashboards never get `pets`) is not counted.
+
+A server without phase 2 sends none of them; `devotchi doctor` reports
+which switches are on and whether any live consumer can show questions and
+plans.
+
 ### 14.7 Showcase (demo) mode on a device
 
 The showcase is local to the device and has no wire representation:
@@ -1424,17 +1442,17 @@ use the REST format and the lowercase codes of `API_ERROR_CODES`
 
 | Method and path | Result |
 |---|---|
-| `GET /api/pets` | `{"pets":[{"id":"mochi","name":"Mochi","rev":1,"size":612,"crc32":"1a2b3c4d","source":"catalog"}]}`. `source` is `catalog` (shipped with the server) or `room` (uploaded) |
+| `GET /api/pets` | `{"pets":[{"id":"mochi","name":"Mochi","rev":1,"size":612,"crc32":"1a2b3c4d","source":"catalog","builtin":true}]}`. `source` is `catalog` (shipped with the server) or `room` (uploaded); `builtin: true` marks a catalog pet that the firmware of the same repository compiles in (`pets/builtin.txt`), informational only, since what a device has is the `builtin` flag of its own `pets` message |
 | `GET /api/pets/:id/pack` | The pack, `application/octet-stream`, `Content-Length` = `size`, `ETag: "<crc32>"`. 404 `not_found` (also for a pack of another room) |
-| `POST /api/pets` (`cli`) | Body: a pack (`application/octet-stream`, at most 2048 bytes) or its JSON source (`application/json`, at most 16 kB). Validated with the shared codec; stored for the room (at most 16). 201 with the list entry; 400 `invalid_request` (the `error` text carries the codec's message); 413 `payload_too_large`; 409 `conflict` when the id is a catalog id or the room already has 16 |
+| `POST /api/pets` (`cli`) | Body: a pack (`application/octet-stream`, at most 2048 bytes) or its JSON source (`application/json`, at most 16 kB). Validated with the shared codec; stored for the room (at most 16). 201 with the list entry; 200 when the room already has the same id with identical bytes (nothing changes); a changed pack under a stored id needs a higher `rev` (else 409 `conflict`) and replaces it without counting against the 16; 400 `invalid_request` (the `error` text carries the codec's message); 413 `payload_too_large`; 409 `conflict` when the id is a catalog id or the room already has 16 |
 | `DELETE /api/pets/:id` (`cli`) | Room packs only. 204; 404 `not_found`; 409 `conflict` for a catalog id |
-| `POST /api/devices/:id/pet` (`cli`) | Body `{"op":"install","pet":"mochi","select":true}`, `{"op":"select","pet":"devo"}` or `{"op":"remove","pet":"mochi"}`. Sends `pet_cmd` to the device. 202; 400 `invalid_request` (bad body, `pet` not `[a-z0-9]{1,8}`); 404 `not_found` (device, or pack for `install`); 409 `conflict` when the device is offline ("device offline"), has no `pets` cap ("device does not support pets") or reports the id as built-in for `install`/`remove` ("built-in pet") |
+| `POST /api/devices/:id/pet` (`cli`) | Body `{"op":"install","pet":"sprout","select":true}`, `{"op":"select","pet":"devo"}` or `{"op":"remove","pet":"sprout"}`. Sends `pet_cmd` to the device. 202; 400 `invalid_request` (bad body, `pet` not `[a-z0-9]{1,8}`); 404 `not_found` (device, or pack for `install`); 409 `conflict` when the device is offline ("device offline"), has no `pets` cap ("device does not support pets") or reports the id as built-in for `install`/`remove` ("built-in pet") |
 
 `GET /api/devices` entries gain `pets` (the device's last `pets` message
 without `result`).
 
 ```json
-{"type":"pet_cmd","op":"install","pet":"mochi","rev":1,"size":612,
+{"type":"pet_cmd","op":"install","pet":"sprout","rev":1,"size":612,
  "crc32":"1a2b3c4d","select":true}
 ```
 
@@ -1461,9 +1479,9 @@ it builds a URL or touches storage** and answers a malformed command with
 
 ```json
 {"type":"pets","selected":"devo","slots":8,"free":7,
- "installed":[{"id":"devo","rev":1,"builtin":true},{"id":"ember","rev":1,"builtin":true},
-              {"id":"mochi","rev":1}],
- "result":{"op":"install","pet":"mochi","ok":false,"error":"crc"}}
+ "installed":[{"id":"devo","rev":2,"builtin":true},{"id":"mochi","rev":1,"builtin":true},
+              {"id":"ember","rev":1,"builtin":true},{"id":"sprout","rev":1}],
+ "result":{"op":"install","pet":"twin","ok":false,"error":"crc"}}
 ```
 
 Device -> server, at most 700 bytes: once after `register_ack`, after every

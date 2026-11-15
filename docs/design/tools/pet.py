@@ -1,6 +1,6 @@
 """Pet rig for the design mockups only (v2): it draws Mochi and Ember by hand
-for pet-moods.html and the screen renders, and nothing else reads it. Devo is
-drawn from its golden pack by the dashboard's renderer (pack-svg.mjs, which
+for pet-moods.html and the screen renders, and nothing else reads it. Devo and
+Sprout are drawn from their golden packs by the dashboard's renderer (pack-svg.mjs, which
 needs the shared build). The preview of any pet from its pets/<id>.pet.json is
 `pnpm run pet-sheet`.
 The shared pose table mirrors firmware/src/components/core/pet_pose.c; the four
@@ -27,7 +27,7 @@ def mix(a, b, t):
 # ---- palettes ----------------------------------------------------------------
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 PETS_DIR = os.path.join(TOOLS, "..", "..", "..", "pets")
-PACK_PETS = ("devo",)  # drawn from pets/golden/<id>.pet
+PACK_PETS = ("devo", "sprout")  # drawn from pets/golden/<id>.pet
 
 
 def _source(pid):
@@ -59,6 +59,10 @@ def pet_color(kind, mood):
     if kind == "mochi":
         to, t = MOCHI_SHIFT[mood]
         return mix(MOCHI_BASE, to, t)
+    if kind in PACK_PETS:
+        pal = _source(kind)["palette"]
+        to, t = pal["moods"][mood]
+        return mix(pal["base"], to, t)
     to, t = EMBER_SHIFT[mood]
     return mix(JADE, to, t)
 

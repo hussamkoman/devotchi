@@ -48,6 +48,12 @@ Everything two packages must agree on lives here and is unit-tested:
   the risk rule table.
 - `pairing.ts`: pairing code alphabet, CSPRNG generator, validator.
 - `api.ts`: REST request/response types exactly as in the protocol document.
+- Phase 2 (section 7): `grant.ts` (`deriveGrant`, the session rule of
+  protocol 14.2), `requests.ts` (question and plan eligibility, frames,
+  answer strings, plan summary), `time.ts` (IANA zone validation and UTC
+  offset, 14.9), `server-messages.ts` (runtime guard for frames a consumer
+  receives), `petpack.ts` (pet pack codec, 7.2), `pet-render.ts`
+  (`renderPetSvg`) and `pet-sheet.ts` (a pet's preview sheet).
 
 ## 2. Server (`packages/server`)
 
@@ -93,7 +99,8 @@ place. Before the first migration of a v1 file the server copies it to
 | `devices` | Primary key (`room_id`, `id`); `token_id` (unique), `name`, `model`, `fw`, `adopt_id` (migrated rows only), `created_at`, `last_seen`, `last_hold_at`, `telemetry` (JSON), `telemetry_at` |
 | `pairings` | Flow B codes: `code`, `room_id`, `expires_at`, `claimed` |
 | `device_pairings` | Flow A: `code`, `secret_hash`, `device_id`, `model`, `fw`, `expires_at`, `state` (`pending`/`confirmed`/`delivered`), `room_id` and `confirmed_at` (set on confirm), `name` |
-| `room_settings` | `room_id`, `mode`, `hold_ms`, `share_text` |
+| `room_settings` | `room_id`, `mode`, `hold_ms`, `share_text`, `time_zone` |
+| `pets` | Room uploads (7.1): primary key (`room_id`, `id`); `rev`, `bytes` (the pack), `created_at` |
 | `users`, `sessions` | Multi-user accounts and login sessions |
 
 Migration from the v1 schema: tokens whose label is `device` become kind
@@ -212,10 +219,11 @@ One CLI, `devotchi`.
 | `devices [list] \| rename <id> <name> \| identify <id> \| rm <id>` | Device registry |
 | `status [--json]` | Server reachability, token, peers, mode, device liveness, last request outcome |
 | `doctor [--dir D] [--json]` | Ordered checks with a one-line fix each; non-zero exit on failure. Also reports whether Claude Code was seen showing its dialog while a request was pending (hold time advice) |
-| `mode [ask\|desk]` | Show or set the room mode |
+| `mode [ask\|desk]` / `hold [seconds]` | Show or set the room mode / the hold time (10..300 s) |
+| `pets [list] \| add <file> \| rm <id> \| send <id> [--device D] [--use] \| use <id>` | Pet gallery: catalog and room uploads, install or select a pet on a device (7.1) |
 | `notify <event> [detail] [--mood M] [--urgent]` | Send a notification from a script |
 | `run [--name L] -- <cmd...>` | Run a command, notify the device when it finishes, propagate the exit code |
-| `sim [--approve all\|none\|defer\|after=MS] [--name N]` | Headless virtual device speaking the real device protocol; prints one JSON line per event |
+| `sim [--approve all\|none\|defer\|after=MS\|manual] [--answer P] [--plan P] [--decide C] [--caps L] [--name N]` | Headless virtual device speaking the real device protocol (all phase-2 caps by default, built-in pets from the catalog); prints one JSON line per event |
 | `login` / `logout` | Multi-user account login; drop local credentials |
 | `config [get\|set\|path]` | Show or change configuration |
 
@@ -269,23 +277,58 @@ with the CLI's token. The dashboard process does not register as a producer.
 - Every page load embeds a per-launch random secret; `/api/*` requires it in
   `X-Devotchi-Session` and `/ws` in the `s` query parameter. `Origin` and
   `Host` must be `localhost` or `127.0.0.1` on the dashboard port.
-- `/ws` proxies to the server as a consumer of kind `dashboard`; `/api/*`
-  proxies the device, room, pairing and config endpoints.
+- `/ws` proxies to the server as a consumer of kind `dashboard` with caps
+  `decide`, `ask` and `plan` (protocol 14.1; never `pets`); `/api/*` proxies
+  the device, room, room settings, pairing, config and pets endpoints and
+  `GET /api/room/requests/:id` (14.6a), nothing else.
 
 Web UI (`web/src`), framework-free TypeScript, type-checked in the build:
 
 ```
-ws-client.ts     connect, backoff with jitter, heartbeat
-store.ts         pure reducer: protocol messages -> view state (unit-tested)
-views/           pet panel, request list, devices panel, event log, settings
-main.ts          wiring
+ws-client.ts       connect, backoff with jitter, heartbeat
+store.ts           pure reducer: protocol messages -> view state (unit-tested)
+views/requests.ts  request list; one card view per kind:
+  permission-card.ts, question-card.ts, plan-card.ts (card.ts, fulltext.ts)
+views/pets.ts      pet gallery and per-device pets
+views/             pet panel, header, devices panel, event log, settings
+main.ts            wiring: wire messages, full-text loading, extend, time zone
 ```
 
-The request list mirrors the device: a queue of pending requests with tool,
-summary, risk colour, details and a deadline-based countdown; a request leaves
-the list only on `dismiss`; the tab sends `holding` only while visible; the
-document title and a browser notification signal a new request in a background
-tab. The devices panel shows online state, last seen, last ack, battery, RSSI
+The request list mirrors the device: a queue of pending requests with a
+deadline-based countdown that follows `deadline`; a request leaves the list
+only on `dismiss`; the tab sends `holding` only while visible (a question is
+presented and held once all its frames arrived); the document title and a
+browser notification signal a new request in a background tab.
+
+- **Permission card:** the command first (mono; when `cut`, the full text
+  from `GET /api/room/requests/:id`, and Allow stays off until it is shown),
+  risk bars and words, the server's reason, `Claude: "…"` for Claude's
+  description, Allow / Deny and a "More" menu with the device's rows (Send to
+  terminal, Allow for this session with the rule and its match kind
+  verbatim, Deny, ask why, Deny and stop). High-risk Allow and every wider
+  grant need a second confirming click.
+- **Question card:** every question of the call on one card, radio or
+  checkbox options with the original descriptions, "None of these" for
+  multi-select and "No preference" for each; Send stays off until every
+  question is answered. Answer in terminal, Decline. Only indexes are sent.
+- **Plan card:** the whole Markdown plan as preformatted text (never HTML),
+  Approve (each edit still asks), Approve and accept edits, Revise, Stop,
+  Terminal. Without the full text the protocol 14.5 table for devices applies
+  to the frame.
+- Any click or key inside a question or plan card sends `extend` under the
+  rules of protocol 14.6. Receipts in the toasts and the log state
+  `dismiss.choice` in words.
+- **Pets:** a gallery of `GET /api/pets` (catalog first, built-ins tagged
+  "built in", room uploads tagged "this room"), each drawn as SVG by
+  `renderPetSvg` from `@devotchi/shared` with a mood preview; upload of a
+  `.pet` or `.pet.json`, delete of a room pet, "Send to device" (install and
+  select through `POST /api/devices/:id/pet`) and, per online device that
+  reports `pets`, its installed pets with "Use" and "Remove". One pet command
+  runs at a time.
+- Settings show the room time zone with "Use this browser's zone"; a room
+  whose zone is still `""` takes the browser's once per page load.
+
+The devices panel shows online state, last seen, last ack, battery, RSSI
 and firmware, with rename, identify and unpair. The dashboard is not a pixel
 simulator of the device; `devotchi sim` is the behavioural stand-in for
 hardware.
@@ -463,48 +506,67 @@ Reconnect delays come from `backoff`: WiFi 1, 2, 4 ... 30 s, WebSocket 1, 2, 4
 
 ### 4.5 Screens and buttons
 
-LVGL objects are created once per screen and updated in place. A 20 px status
-bar occupies the top of every screen except `splash`, `lowbatt`, `identify`;
-screens lay out below it. Toasts and banners live on the top layer.
+The look, the page map and the button table of every screen are
+`docs/design/ux-flows.md` 1 and 2 and `design-system.md` 4 and 5; the
+numbers in brackets are their mockups. LVGL objects are created once per
+screen and updated in place. A 20 px status bar occupies the top of every
+screen except `splash`, `lowbatt`, `identify` and `clock`; screens lay out
+below it. Toasts, banners, receipts and the button tabs live on the top
+layer.
 
 | Screen id | Content |
 |---|---|
-| `splash` | Name and firmware version |
-| `provisioning` | BLE service name `DEVOTCHI-XXXX` and the proof-of-possession code for this session |
-| `wifi` | "Connecting to WiFi", SSID, failure reason and retry countdown |
-| `connecting` | "Connecting to server", host, last error and retry countdown |
-| `pairing` | Pairing code in two groups, `devotchi pair <CODE>` hint, expiry bar, server host, error line |
-| `pet` | Page `pet`: project header, animated face, status line. Page `about`: firmware, device id, IP, RSSI, server, link state, last error, uptime, reset reason |
-| `approval` | Request card: tool chip coloured by risk, queue position `1/3`, project, summary, details page, countdown bar, button hints |
-| `settings` | Rows listed below |
-| `identify` | Device name, full screen |
-| `lowbatt` | "Battery empty, plug in USB-C" |
+| `splash` | Lock-up and firmware version (01) |
+| `provisioning` | Wi-Fi setup in two steps: QR code (02), then BLE service name `DEVOTCHI-XXXX` and the proof-of-possession code by hand (02b); ACTION toggles the steps |
+| `wifi` | "Joining Wi-Fi", SSID, failure reason and retry countdown (03); APPROVE "Set up" after repeated failures |
+| `connecting` | "Finding your server" or "Server unreachable", host, last error and retry countdown (04, 05). There is no retry action, so the offline screen has no Retry tab |
+| `pairing` | Pairing code in two groups, `devotchi pair <CODE>` hint, expiry bar, server host, error line (06) |
+| `pet` | Page `pet`: home (10-16), project header, animated pet, status line. Page `recent`: the last five status and notify lines with their time. Pages `about` and `about2` (70, 71, opened from Settings): firmware, device id, IP, RSSI, server, link state, last error, uptime, reset reason, frame times |
+| `approval` | Permission card (20-24) and its decision menu (25-27) |
+| `question` | Question read page, card, question menu and review (30-37) |
+| `plan` | Plan card and plan menu (29, 29b) |
+| `settings` | Quick menu (16b), Settings lists (50, 51), value editor (52), destructive confirm (53), showcase menu and pages (80-82) |
+| `picker` | Pet picker (60-62) |
+| `identify` | Device name, full screen (93); any button ends it |
+| `lowbatt` | "Battery empty, plug in USB-C" (92) |
+| `clock` | Clock face, day and night (40-42) |
+| `sleep` | Going to sleep (91) |
 
-Status bar, left to right: battery glyph with percent (plug glyph and `USB`
-when no battery is detected, bolt when charging), mode chip (`DESK`), RSSI bars
-(crossed out when WiFi is down), link dot (green registered, amber connecting,
-red offline).
+`state` and `screen` report these ids; telemetry reports `screen: "showcase"`
+while the showcase is on.
 
-A short press is delivered on **release** (click) and is suppressed when the
-press became a long press (`CONFIG_DEVOTCHI_LONG_PRESS_MS`, default 1000).
+Buttons follow the hold grammar of design-system 5: a click is delivered on
+**release**; an ACTION hold (navigation hold, 600 ms) fires at the
+threshold; a commit hold (APPROVE 1200 ms: high-risk allow, "Allow for this
+session", "Approve, accept all edits", the destructive confirm) shows its
+progress and fires at the end. `btn_fsm` applies, per button, the mode the
+current screen asks for (`app_flow_btn_mode`), so the tabs and the logic
+come from one table. In short:
 
-| Screen | APPROVE click | REJECT click | ACTION click | ACTION long | Other |
-|---|---|---|---|---|---|
-| `pet` | Pat | Poke | Next page | Settings | REJECT long: toggle `desk` mode |
-| `approval` | Allow (risk low/med); for `high` shows "Hold to approve" | Deny | Next details page | Send to terminal (`permission_defer`) | APPROVE long: allow (required for `high`) |
-| `settings` | Row down | Row up | Change / activate | Exit | |
-| `pairing` | | | New code | Settings | |
-| `wifi`, `connecting`, `provisioning` | (`wifi` after repeated failures: start WiFi setup) | | | Settings | |
+| Screen | REJECT click | ACTION click | APPROVE click | ACTION hold |
+|---|---|---|---|---|
+| Home | Poke (dizzy after a burst of pokes) | Recent activity page | Pat | Quick menu (Settings, Showcase, Desk mode) |
+| Permission card | Deny | Next page | Allow once (inactive until every page was shown; a nudge "Hold to allow" for `high`, which needs the APPROVE hold) | Decision menu: Send to terminal, Allow for this session (APPROVE hold), Deny, ask why, Deny and stop |
+| Question | First question: to terminal; later: back | Next option or page | Choose / tick | Question menu |
+| Plan card | Revise | Next page | Approve, manual edit approval | Plan menu (Approve, accept all edits by APPROVE hold) |
+| Settings lists | Back (top list: home) | Next row | Open / change | |
+| Value editor | Cancel and restore | Next value, previewed live | Save | |
+| `wifi`, `connecting`, `pairing`, `provisioning` | | (`pairing`: new code; `provisioning`: other step) | (`wifi` after failures: set up) | Settings |
+| `clock`, `sleep`, `identify` | Any button: wake to home / stay awake / dismiss; the press does nothing else | | | |
 
-Settings rows: Brightness (25/50/75/100), Screen timeout (15/30/60/120 s),
-Deep sleep (10/20/60 min/never), Haptics (off/gentle/full), LED (on/off), Mode
-(ask/desk), WiFi setup, Unpair, Factory reset, About. WiFi setup, Unpair and
-Factory reset need a second ACTION click on a confirmation row within 5 s.
-Unpair erases token and room id only. Factory reset erases the `devotchi`
-namespace and calls `esp_wifi_restore()`.
+Settings is a tree (`core/settings_menu`, host-tested). Top list: Pet,
+Display (Brightness, Screen timeout, Deep sleep), Clock (Show clock, Clock
+brightness, 12/24 h, Night dimming), Haptics and LED, Desk mode (toggles in
+place), Network (Wi-Fi setup, Unpair, Factory reset), Showcase, About. Unpair
+and Factory reset go through the destructive confirm (APPROVE hold, coral).
+Lists close after 60 s without a press, the editor cancels after 30 s, the
+confirm after 10 s. Unpair erases token and room id only; Factory reset
+erases the `devotchi` namespace and calls `esp_wifi_restore()`.
 
-A pending request takes over the screen from any state that can show it
-(`pet`, `settings`); requests are answered first-in first-out.
+A pending request takes over the screen from home, the clock, Settings and
+the showcase; requests are answered first-in first-out. When the queue
+empties, Settings returns to its top list and the showcase is left
+(ux-flows 8).
 
 ### 4.6 Networking
 
@@ -562,12 +624,13 @@ Namespace `devotchi`:
 | `bk_token`, `bk_room`, `bk_url` | string | new | Backup of the oldest known pairing (see below and 4.10). `bk_url` holds the raw `server_url` value; an empty string means the key was absent (Kconfig default in effect) |
 | `dev_name` | string | new | Device name from the server |
 | `s_bright` | u8 | new | Brightness percent, default 75 |
-| `s_dim_s` | u16 | new | Screen timeout base T in seconds, default 30 |
+| `s_dim_s` | u16 | new | Screen timeout base T in seconds, 0 = never, default 30 |
 | `s_deep_min` | u16 | new | Deep sleep after N minutes on battery, 0 = never, default 20 |
 | `s_haptic` | u8 | new | 0 off, 1 gentle, 2 full; default 2 |
 | `s_led` | u8 | new | 0/1, default 1 |
 | `s_batt` | u8 | new | Battery presence: 0 auto, 1 present, 2 absent; default 0 |
 | `prov_req` | u8 | new | 1 = enter provisioning on next boot; cleared when provisioning starts |
+| `s_pet`, `s_clock`, `s_clk_bri`, `s_24h`, `s_night` | | phase 2 | Selected pet and the clock settings (7.3) |
 
 Token and room id are written together, `room_id` first and `token` last.
 NVS has no multi-key transaction; `room_id` is informational and never used
@@ -591,17 +654,33 @@ conditions; the `power` component executes it.
 | Stage | Display | Radio / CPU |
 |---|---|---|
 | `active` | Backlight at the brightness setting | WiFi power save MIN_MODEM. CPU held at full speed |
-| `dim` | Backlight 10 % | same |
+| `dim` | Backlight 10 %, or the clock face at its own level (below) | same; the clock face releases the CPU lock |
 | `off` | Panel in sleep (SLPIN), backlight 0, LVGL task parked | Link kept alive. CPU may scale down. On battery: WiFi MAX_MODEM and automatic light sleep; on USB: MIN_MODEM, no light sleep |
 | deep sleep | Everything off | Wake on any of the three buttons (ext1, any low). Cold boot |
 
-Timeouts, with T = the Screen timeout setting (default 30 s):
+Timeouts, with T = the Screen timeout setting (15, 30 (default), 60, 120 s
+or Never; Never keeps the stage at `active`):
 
 | Transition | On battery | On external power |
 |---|---|---|
 | `active` -> `dim` | T | 2 x T |
 | -> `off` | 2 x T | 10 x T |
 | -> deep sleep | Deep sleep setting (default 20 min, or never) | `CONFIG_DEVOTCHI_PWR_USB_DEEP_MIN` (default 0 = never) |
+
+Resting face (ux-flows 5, `power_fsm` output `show_clock`): the clock face
+(40-42) replaces home in `dim` while the agent is idle (room mood `idle` or
+`sleeping`, or no agent traffic for 5 minutes), nothing is pending, no card
+is visible and Show clock is not Never; with Screen timeout Never it appears
+after 120 s idle in `active`. Show clock = Always on USB power keeps it in
+`dim` instead of `off` on external power. Its backlight is 10 % on battery
+by day, the Clock brightness setting on external power by day, and 5 % at
+night (22:00 to 07:00 with Night dimming on), when it draws the night
+palette. Any button wakes it to home and the press is swallowed; agent
+traffic turns a lit clock into home.
+
+Going to sleep (91) shows for the last 10 s before an idle deep sleep; any
+button cancels the sleep. Low-battery toasts (90) appear once each per
+discharge at 15 % and 8 %.
 
 Activity:
 
@@ -643,7 +722,8 @@ Rules:
   deep sleep) only wakes the screen. It is not delivered to the screen, and
   button events are ignored until 300 ms after the wake and until all buttons
   are released.
-- While the request queue is not empty the stage never goes beyond `dim`, and
+- While a card or one of its menus is visible the stage stays `active`;
+  while the request queue is not empty the stage never goes beyond `dim`, and
   the device never deep-sleeps.
 - No deep sleep and no light sleep while a USB host is connected
   (`usb_serial_jtag_is_connected()`), during provisioning, or within
@@ -661,7 +741,7 @@ Low battery protection (only when discharging and a battery is present):
 
 | Condition | Action |
 |---|---|
-| Filtered voltage below `CONFIG_DEVOTCHI_BATT_LOW_MV` (3500) | One toast, amber battery glyph, telemetry `alert: battery_low` |
+| Filtered voltage below `CONFIG_DEVOTCHI_BATT_LOW_MV` (3500) | Coral battery glyph, telemetry `alert: battery_low` (the toasts follow the percent, above) |
 | Below `CONFIG_DEVOTCHI_BATT_CRIT_MV` (3300) for 30 s | `lowbatt` screen for 5 s, final telemetry with `alert: battery_critical`, deep sleep, and a flag in RTC memory |
 
 A button wake from a battery-protection sleep (RTC flag set) takes a burst of
@@ -752,10 +832,11 @@ Commands:
 |---|---|
 | `help` | List commands |
 | `version` | `@@JSON {"fw","idf","proto","deviceId","model","built","reset","uptimeS"}` |
-| `state` | One `@@JSON` line: app state, screen, WiFi, WebSocket, server URL, pairing, mode, request queue, pet, power stage, battery, heap, UI frame times, NVS status, settings. Never contains the token or the passphrase |
-| `screen` | `@@JSON {"id","page","texts":[...],"mood","statusBar":{...},"request":{...}}`: the current screen in machine-readable form |
+| `state` | One `@@JSON` line: app state, screen, WiFi, WebSocket, server URL, pairing, mode, request queue, pet (selected, shown, source), stored pets (partition, slots, free), clock, power stage, battery, heap, UI frame times, NVS status, settings. Never contains the token or the passphrase |
+| `screen` | `@@JSON {"id","page","texts":[...],"mood","statusBar":{...},"tabs":{...},"request":{...}}`: the current screen in machine-readable form |
+| `ui demo <name> [variant]` / `ui demo off` / `ui tabs` | Show any screen or widget state with constant sample data without touching the app state (`ui demo help` lists the names); the button tabs |
 | `screenshot` | Screenshot block |
-| `btn <approve\|reject\|action> <press\|long>` | Inject a click or long press through the same path as a hardware button, including the wake rule |
+| `btn <approve\|reject\|action> <press\|long\|hold MS>` | Inject a click, a long press (1.3 s, past both hold thresholds) or a hold of MS through the same raw down/up path as a hardware button, including the wake rule |
 | `wake` | User activity without a button |
 | `msg <json>` | Handle a protocol message as if it had been received from the server |
 | `pair <CODE>` | Claim a flow B code on the configured server; stores token and room on success |
@@ -764,12 +845,16 @@ Commands:
 | `wifi-setup` | Reboot into BLE provisioning (old credentials are kept until new ones work) |
 | `reset-pairing` | Erase token and room id only |
 | `pair-backup [--force]` / `pair-restore` | Copy token, room id and server URL to / from the backup keys |
-| `preview <screen>\|off` | Show a screen with sample data without changing state: `pairing`, `provisioning`, `approval-low`, `approval-high`, `lowbatt`, `identify`, `settings` |
+| `preview <screen>\|off` | Show a screen with sample data without changing state: `pairing`, `provisioning`, `approval-low`, `approval-high`, `identify`, `settings` |
 | `set [<key> <value>]` | List or change a setting |
 | `fb list` / `fb play <pattern>` / `fb stop` | Feedback patterns; each step is reported as `@@EVT {"evt":"fb",...}` |
-| `pet mood <mood>` / `pet pose` / `pet freeze on\|off` | Pet rig control; `freeze` stops idle animation so screenshots are reproducible |
+| `pet mood\|pose\|freeze\|react\|aux\|scale\|outline ...` | Pet rig control; `freeze` stops idle animation so screenshots are reproducible (`pet help` lists the arguments) |
+| `pet list` / `pet use <id>` / `pet rm <id>` / `pet install <id> <rev> <size> <crc32> [select]` | Built-in and stored pets; `install` runs the checks of a server's `pet_cmd` and fetches the pack from the configured server |
+| `clock set <epoch_s> <offset_min>` / `clock show day\|night\|off` | Set the time; force the clock face |
+| `showcase on\|off\|<page>` | The showcase (refused while a request is waiting) |
+| `settings open top\|quick\|<list>[/<row>]` / `settings close` | Open a Settings view (`clock/clock_brightness` opens the editor, `network/factory_reset` the confirm) |
 | `batt` / `batt inject <mv> <chrg> <stdby>` / `batt inject off` / `batt present auto\|yes\|no` | Battery readings and overrides |
-| `power` / `power stage <active\|dim\|off>` / `power dry-run on\|off` / `power sleep deep <wakeS> --force` | Power stage inspection and control. With dry-run on (default while a USB host is connected) a deep sleep decision is reported instead of executed |
+| `power` / `power stage <active\|dim\|off>` / `power dry-run on\|off` / `power wake-test battery` / `power sleep deep <wakeS> --force` | Power stage inspection and control. With dry-run on (default while a USB host is connected) a deep sleep decision is reported instead of executed |
 | `log <none\|error\|warn\|info\|debug> [tag]` | Log level |
 | `tasks` | Stack high-water marks |
 | `reboot` | Restart |
@@ -791,16 +876,17 @@ option.
 | `nvs` | data/nvs | 0x9000 | 0x6000 |
 | `phy_init` | data/phy | 0xf000 | 0x1000 |
 | `factory` | app | 0x10000 | 3 MB |
+| `pets` | data/nvs | 0x3F2000 | 0xE000 |
 
-The table is unchanged. OTA is not implemented: two OTA slots in 4 MB allow at
-most 0x1F0000 (2 031 616 bytes) per image, and the update path, rollback and
-signing are a separate project. The application is built for size and kept at
-or below **0x1E0000 = 1 966 080 bytes** (`devotchi.bin`; a post-build check
-fails the build above it, see 7.3) so that a later move to `otadata + ota_0 + ota_1` (which keeps `nvs` and
-`phy_init` where they are and needs one USB flash) stays possible.
-
-Phase 2 adds a `pets` data partition at the end of the flash without moving
-anything: see 7.3.
+`nvs`, `phy_init` and `factory` are where phase 1 had them; phase 2 added
+the `pets` partition at the end of the flash without moving anything (7.3).
+OTA is not implemented: two OTA slots in 4 MB allow at most 0x1F0000
+(2 031 616 bytes) per image, and the update path, rollback and signing are
+a separate project. The application is built for size and kept at or below
+**0x1E0000 = 1 966 080 bytes** (`devotchi.bin`; every build checks it, see
+7.3) so that a later move to `otadata + ota_0 + ota_1` (which keeps `nvs`,
+`phy_init` and `pets` where they are and needs one USB flash) stays
+possible.
 
 Flashing writes the bootloader (0x0), the partition table (0x8000) and the
 application (0x10000). It never touches 0x9000..0xFFFF. `erase-flash` and
@@ -815,7 +901,13 @@ otherwise downloads pinned releases of both with CMake `FetchContent`, so it
 builds on a fresh clone and in CI without ESP-IDF. Everything with
 logic and no hardware lives in `core` so it is covered there: protocol,
 WebSocket reassembly, text, URL parsing, request queue, button logic,
-feedback sequencing, battery maths, power stages, pet poses, backoff.
+feedback sequencing, battery maths, power stages, pet poses, backoff, and for
+phase 2 the card state machine (permissions, questions, plans), the
+question/plan store, the clock, the Settings tree, the showcase, pairing
+codes, the pet pack validator and model, and the pet install steps.
+`test_pet_pack` compares the compiled-in packs with `pets/golden`, and
+`test_petpack` runs `petpack.py check` on every pet and the tool's own
+tests.
 
 ---
 
@@ -862,14 +954,13 @@ modes are not part of the system. They are tracked in `TODO.md` / `IDEAS.md`.
 
 ---
 
-## 7. Phase 2 (specified; implemented by packages F1..F5 and T1..T3)
+## 7. Phase 2
 
 Phase 2 adds questions, plans, richer decisions, a clock face, pet packs, a
 showcase mode and a redesigned device UI. The look and the flows are defined
 in `docs/design/` (`design-system.md`, `ux-flows.md`, `pet-animations.md`,
 renders in `docs/design/renders/`); the wire format in `docs/protocol.md` 14.
-This section records the engineering decisions. Until a package lands, the
-sections above describe what the code does.
+This section records the engineering decisions; all of it is implemented.
 
 ### 7.1 Server and client
 
@@ -893,17 +984,39 @@ sections above describe what the code does.
   needs the complete plan (protocol 14.5).
 - Switches: `DEVOTCHI_QUESTIONS`, `DEVOTCHI_PLANS`, `DEVOTCHI_SESSION_GRANTS`
   (all default on). Room setting `timeZone`.
-- Pets: catalog packs ship inside the server package (built from
-  `pets/*.pet.json` by the shared codec); room uploads live in a `pets` table
-  (`room_id`, `id`, `rev`, `bytes`). The codec (`packages/shared/src/petpack.ts`)
+- Pets: one source directory, `pets/` at the repository root, feeds both
+  the firmware and the server (how to add a pet: `pets/README.md`). The
+  server build runs `scripts/build-pets.mjs` after `tsc`: it encodes every
+  `pets/<id>.pet.json` (names starting with `_` are skipped) with the shared
+  codec into `dist/pets.json` (generated, not committed), the ids of
+  `pets/builtin.txt` first in the firmware's order and flagged `builtin`. The
+  Docker image copies `pets/` for this step. Room uploads live in the `pets`
+  table (schema version 4). The codec (`packages/shared/src/petpack.ts`)
   validates, encodes and decodes; it must reproduce the golden vectors in
-  `pets/golden/` that the firmware tool also produces.
-- `devotchi sim` declares all caps and can answer questions and plans
-  (`--answer first|none|terminal`, `--decide <choice>`), so server tests and
-  firmware-free end-to-end tests cover the flows.
+  `pets/golden/` that the firmware tool also produces, and a shared test
+  checks that its pose table matches `petpack.py`'s. `renderPetSvg`
+  (`pet-render.ts`) draws a pack as SVG for the dashboard and for
+  `pnpm run pet-sheet`.
+- Pet routes (protocol 14.8): `GET /api/pets` (catalog, then the room's),
+  `GET /api/pets/:id/pack`, `POST /api/pets` (pack or JSON source),
+  `DELETE /api/pets/:id`, `POST /api/devices/:id/pet` (sends `pet_cmd`).
+  Re-uploading identical bytes is a no-op (200); a changed pack under a
+  stored id needs a higher `rev` and does not count against the 16 per room.
+  Rate limits per token: 120 reads, 30 writes and device commands per
+  minute; `pets` messages 30 per minute per socket. A device's `pets` state
+  is kept in memory, so `GET /api/devices` shows it while the device is
+  online. The CLI's `devotchi pets` (list, add, rm, send, use) confirms
+  `send` and `use` by polling `GET /api/devices`, because REST does not carry
+  `pets.result`.
+- `devotchi sim` declares all caps by default (`--caps` narrows them), can
+  answer questions and plans (`--answer`, `--plan`, `--decide <choice>`,
+  `--extend`) and installs and selects pets like a device (its built-ins are
+  the catalog's `builtin` pets), so server tests and firmware-free
+  end-to-end tests cover the flows.
 - Dashboard: question and plan cards, the decision menu (same rows, plus the
-  full text from `GET /api/room/requests/:id`), a Pets page (catalog, room
-  uploads, per-device slots, "Send to device", "Use"), the time zone setting.
+  full text from `GET /api/room/requests/:id`), a Pets panel (catalog, room
+  uploads, per-device pets, "Send to device", "Use"), the time zone setting;
+  see 3.3.
 
 ### 7.2 Pet packs
 
@@ -914,8 +1027,15 @@ for the compiled-in pets, the stored pets and the transfer.
 `firmware/tools/petpack.py` (Python, no dependencies) and
 `packages/shared/src/petpack.ts` both turn it into the binary pack; the bytes
 must be identical (`pets/golden/<id>.pet` and its CRC are committed and both
-test suites compare against them). Compiled-in pets are committed C arrays
-generated by the Python tool (`core/pet_builtin_<id>.c`).
+test suites compare against them). The compiled-in pets are the ids of
+`pets/builtin.txt`, in picker order, the first the default. They are not
+committed as C: the CMake configure step (`firmware/tools/pet_builtins.cmake`,
+in the IDF build and the host tests) runs `petpack.py builtins` and compiles
+the generated `pet_builtins.c` / `.h` (`pet_builtins[]`, `PET_BUILTIN_COUNT`,
+`PET_BUILTIN_DEFAULT`, each pack with the source's optional `tagline` for
+the picker) from the build directory. `petpack.py check` validates a source,
+compares it with its golden pack and lints it (contrast and mood colours).
+Recipe: `pets/README.md`.
 
 **Binary layout, format 1** (little endian; coordinates are int8 body units at
 rig scale 16/16 with the body centre at 0,0; at most 2048 bytes):
@@ -954,21 +1074,22 @@ scan, accessories, the five reactions) is drawn by the shared rig for every
 pet. Small bitmaps are not part of format 1; a later format number adds them,
 and a device rejects formats it does not know (`error: "format"`).
 
-F4 owns the final layout: if the rig needs a field changed it changes this
-table, the Python tool and the golden vectors in the same commit, before T3
-implements the TypeScript codec from them.
+A change to this table changes the Python tool, the TypeScript codec and
+the golden vectors in the same commit.
 
 This replaces the storage note in `pet-animations.md` 2 (four slots as blobs
 in the main NVS, 1.4 kB per pack, one protocol frame): packs travel over
 HTTP, may be 2048 bytes, and live in their own partition.
 
-**Which pets a device has.** Devo (signature pet, the default) and Ember are
-compiled in (about 0.4 and 0.8 kB). Up to **8 more** live in the `pets`
-partition; the dashboard holds any number and sends one with "Send to device"
-(protocol 14.8). Settings > Pet lists built-ins, stored pets and a "More
+**Which pets a device has.** Devo (the ghost, signature pet and default),
+Mochi (the square pet with an antenna) and Ember (a small dragon) are
+compiled in (410, 344 and 546 bytes); Sprout is a catalog pet a dashboard
+can send. Up to **8 more** live in the `pets`
+partition; the server offers its catalog plus up to 16 uploads per room, and
+the dashboard sends one with "Send to device" (protocol 14.8). Settings > Pet lists built-ins, stored pets and a "More
 pets" page that points to the dashboard. The selected id is the NVS key
-`s_pet` (string, default `devo`); a stored pet that fails validation at boot
-is skipped and Devo is used.
+`s_pet` (string, default `PET_BUILTIN_DEFAULT`, `devo`); a stored pet that
+fails validation at boot is skipped and the default is used.
 
 **Install order (crash safety).** 1) download into RAM and run every check of
 protocol 14.8; 2) write the blob (`nvs_set_blob` + `nvs_commit`; NVS keeps the
@@ -1020,9 +1141,9 @@ Decisions:
 - **Size limit, enforced.** `DEVOTCHI_APP_MAX_BYTES` = 0x1E0000 =
   **1 966 080 bytes** (64 kB of headroom under the slot). A post-build step
   of the firmware project (`firmware/tools/check_app_size.cmake`, run by a
-  `POST_BUILD` custom command on the app target, added by package F1)
-  compares the size of `build/devotchi.bin` with it, prints both numbers and
-  fails the build above the limit. Phase 1 ends at 1 597 136 bytes.
+  custom target `check_app_size` in `ALL` that depends on
+  `gen_project_binary`) compares the size of `build/devotchi.bin` with it, prints both numbers and
+  fails the build above the limit.
 
 Other NVS keys added in namespace `devotchi` (all optional, defaults apply
 when absent): `s_pet` (string), `s_clock` (u8: 0 when resting, 1 always on
@@ -1071,10 +1192,15 @@ USB power, 2 never; default 0), `s_clk_bri` (u8 percent, default 30),
   33 ms with Ember (else its wing flap runs at 15 fps). LVGL heap stays at
   64 kB; the internal heap low-water mark must not fall below 40 kB with all
   screens created.
-- **Pet rig.** `pet_view` draws from a decoded pack: one `lv_obj` per rrect,
-  `lv_line` per line, triangles in the layer's draw event; geometry is
-  multiplied by the rig scale n/16 when the view is built (15 home, 12
-  picker, 10 start-up screens, 9 clock); outline mode for the night clock.
+- **Pet rig.** `pet_view` draws from a decoded pack: every part is an item
+  (filled or ringed rounded rect, polyline, triangle) drawn back to front in
+  the draw event of one object per pet; each frame rebuilds the item list
+  from the pack, the pose and the aux channels and invalidates only the
+  items that changed, as at most a few merged rectangles. One object per pet
+  instead of one per part keeps Ember (about 60 shapes) inside the LVGL heap
+  and lets outline mode restyle every shape. Geometry is multiplied by the
+  rig scale n/16 (15 home, 12 picker, 10 going to sleep, 9 clock); outline
+  mode for the night clock.
   The pose table, tween, blink, glance and scan stay in `core/pet_pose`,
   extended by the channels of pet-animations 1 and the per-pet overrides.
 

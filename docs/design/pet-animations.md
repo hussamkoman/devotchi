@@ -94,21 +94,21 @@ pet
   off-screen layer.
 - **Outline mode** (night clock): rounded rects become border-only objects
   (2 px `ember` border, black fill), lines keep their path at 2 px, triangles
-  become closed 3-point `lv_line` polylines (`lv_draw_triangle` cannot
+  are stroked as closed 3-point polylines (`lv_draw_triangle` cannot
   stroke). Parts are still drawn back to front so nearer parts cover farther
   outlines. No accessories except Zzz.
-- **Size:** Mochi is 12 parts, Devo 16, Ember 27. With palette, poses and
-  reaction overrides a pack is about 300 B (Sprout) to 550 B (Ember). **Limit: 1.4 kB**,
-  so that a pack fits one protocol frame as base64 (1 868 characters plus the
-  envelope, under 2 048 bytes).
+- **Size:** Sprout is 8 parts, Mochi 12, Devo 16, Ember 27. With palette,
+  poses and reaction overrides a pack is 298 B (Sprout) to 546 B (Ember).
+  **Limit: 2048 bytes** per pack (format 1, `docs/architecture.md` 7.2).
 
-**Storage and loading (design decision):** every finished pet is compiled
-into the firmware (each costs under 1 kB). On top of that the device has
-**four dashboard slots**: the dashboard's Pets page lists further pets and
-"send to device" writes one pack into a slot (one NVS blob each, 5.6 kB of
-the 24 kB NVS partition at most; they survive reboot). Settings > Pet shows
-the built-ins, the filled slots and a "More pets" page (`mockups/60..62`).
-The transfer (one frame as above, or HTTPS fetch) is for the protocol plan.
+**Storage and loading:** the pets listed in `pets/builtin.txt` (Devo, Mochi,
+Ember) are compiled into the firmware. On top of that the device has **eight
+slots** in its own `pets` flash partition (one NVS blob each; they survive
+reboot and a normal flash): the dashboard's Pets panel lists the catalog
+(every `pets/*.pet.json`, Sprout included) and the room's uploads, and "Send
+to device" makes the device fetch the pack over HTTP and store it
+(protocol 14.8). Settings > Pet shows the built-ins, the stored pets and a
+"More pets" page (`mockups/60..62`).
 
 ## 3. Devo, the signature pet
 
@@ -327,6 +327,20 @@ Budget note: Ember moves more area than Devo (two wings and a tail outside the
 body). Its parts are invalidated one by one; if it still misses the frame
 budget of design-system 9 on hardware, its wing flap runs at 15 fps.
 
+### Sprout, a catalog pet
+
+An egg with a sprouting leaf (`pets/sprout.pet.json`, 8 parts, 298 bytes):
+two stacked rounded rects for the shell over a ground shadow, small feet, a
+stem line and a triangular leaf, a sheen and cheeks. Dot eyes with brows and the plain mouth set. One pink hue
+(`#F2B8C6`) that a mood shifts (sleeping towards night blue, angry towards
+deep rose, excited brighter pink, focused and thinking towards violet); the
+leaf stays green (`#7DBE6A`). Its second face is the leaf: aux 0 tilts it,
+aux 1 droops it (up when happy, proud or alert, hanging when sad or asleep);
+it sways when idle, follows the scan when working, trembles when anxious and
+waves on a pat. Sprout is not compiled in: it is the catalog's example of a
+pet that a dashboard sends to a device, and the result of the recipe in
+`pets/README.md` without any code.
+
 ## 5. Rules for designing another pet
 
 1. Everything within 220x190 body units (the mockup box) so the status line
@@ -342,8 +356,7 @@ budget of design-system 9 on hardware, its wing flap runs at 15 fps.
    jade, wings and fire).
 5. Its silhouette must differ from every other pet's: check the night
    outline first.
-6. It must read at 9/16 scale (clock) and 10/16 (connecting screens).
+6. It must read at 9/16 scale (clock) and 10/16 (going to sleep).
 7. All 11 moods and 5 reactions must be distinguishable without colour:
    check the sheet in greyscale (both checks are on the pet's preview sheet,
-   `pnpm run pet-sheet <id>`, and for Devo, Mochi and Ember also in
-   `pet-moods.html`). `petpack.py check` lints rules 1, 2, 4, 5 and 7.
+   `pnpm run pet-sheet <id>`, and for every pet also in `pet-moods.html`). `petpack.py check` lints rules 1, 2, 4, 5 and 7.

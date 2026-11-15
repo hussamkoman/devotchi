@@ -83,6 +83,8 @@ Pet colour belongs to the pet, not to the UI (see `pet-animations.md` 2):
 - **Mochi** has one hue, apricot `#F0C594`, that a mood only shifts.
 - **Ember** has one hue, jade `#2FAE9C`, an ember-orange accent `#FF8A3D` and
   cream `#F6E7C1`; a mood only shifts the jade lighter, darker or paler.
+- **Sprout** (catalog pet) has one hue, pink `#F2B8C6`, that a mood shifts,
+  and a green leaf `#7DBE6A`.
 - Shades are derived: `dark` = 28 % towards pet ink `#1A1D26`, `light` = 40 %
   towards white, `cheek` = 42 % towards coral.
 - Semantic UI colour always wins: a pet never appears on a request card, and
@@ -362,6 +364,9 @@ Per element:
 
 Both reviews said "revise". Every major issue is addressed; the table lists
 what was done and the points where the design differs from the suggestion.
+Later decisions replace two of the rows: pet packs may be 2048 bytes and
+travel over HTTP (`docs/architecture.md` 7.2), and the device has eight
+stored-pet slots in its own `pets` partition instead of four NVS slots.
 
 | Review point | Decision |
 |---|---|

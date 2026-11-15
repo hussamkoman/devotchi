@@ -12,6 +12,10 @@
 - MCP server with lazy provisioning and `get_device_state`
 - Dashboard: loopback only, per-launch session secret, Host/Origin checks, path containment; web UI with request queue, holding, reconnect, devices panel with liveness and battery
 - Installable client tarball (bundled with esbuild, workspace packages inlined); CI workflow incl. firmware host tests without ESP-IDF
+- Phase 2 (protocol 14, architecture 7), server and client: questions (`AskUserQuestion`), plans (`ExitPlanMode`), the richer decision menu (send to terminal, allow for this session with a narrow derived rule, deny and ask why, deny and stop), `extend`, full text for dashboards, room time zone and device time, switches `DEVOTCHI_QUESTIONS` / `DEVOTCHI_PLANS` / `DEVOTCHI_SESSION_GRANTS`, `doctor` checks for them
+- Phase 2 dashboard: permission, question and plan cards, Pets panel (gallery drawn by `renderPetSvg`, upload, send, use, remove), time zone setting
+- Pets as data: one `pets/<id>.pet.json` per pet, shared codec and `petpack.py` with golden packs, lint, generated firmware built-ins from `pets/builtin.txt`, server catalog, room uploads, `devotchi pets`, `pnpm run pet-sheet`; Devo (ghost, default), Mochi, Ember built in, Sprout in the catalog
+- Phase 2 firmware: design-system UI port (fonts, theme, tabs with hold grammar), permission / question / plan cards and menus (`card_fsm`), quick menu and Settings tree, pet picker and stored pets in the `pets` partition, clock face as the resting face, going-to-sleep screen, low-battery toasts, showcase mode, app size check in every build
 
 ## Open
 
@@ -25,24 +29,40 @@
 - [ ] Decide whether to publish `devotchi` to npm (the package is `private: true`; the tarball installs)
 - [ ] Run the CI workflow on GitHub once (written and syntax-checked only)
 - [ ] Case: back cover, USB opening, print front and back
+- [ ] Run the checks in docs/phase2-manual-tests.md on a real Claude Code session (session grants, compound commands, interrupt, plan modes, answers) before a release
 - [ ] Investigate the Claude Code Buddy system and whether Devotchi can integrate with it
 
-## Phase 2 (planned)
+### Hardware checks only the owner can do (phase 2)
 
-- Answer Claude Code questions (AskUserQuestion) on the device with the buttons
-- [ ] Run the checks in docs/phase2-manual-tests.md on a real Claude Code session (session grants, compound commands, interrupt, plan modes, answers) before a release
-- Richer, safe decisions on permission requests beyond approve/reject
-- Clock face with a sleeping pet when idle
-- Pet system: a signature pet plus selectable pet packs (on-device picker; more packs loaded from the dashboard)
-- Demo/showcase mode: trigger moods, animations, a sample question and a sample permission request by hand
-- Professional UI redesign: design system and mockups first (docs/design/), then the LVGL port
+- [ ] Buttons by hand: a high-risk APPROVE click only nudges, a 1.2 s hold allows; the short-long haptic when the next card replaces one; the press that wakes the screen (dim, off, clock, deep sleep) does nothing else
+- [ ] Haptic pulse on a new question or plan with haptics on (e2e runs used haptics off because of the USB brownout)
+- [ ] Clock face on the panel: day and night backlight levels on battery and USB, night palette and outline pet readable
+- [ ] Battery with a real cell: percent, charging and full detection, the 15 % and 8 % toasts, the `lowbatt` sleep and the battery-protection wake
+- [ ] Visual review against the renders: clock face without link dot and battery (40, 41: brief or render, pick one), destructive confirm warning icon smaller than 53, going-to-sleep shows the plain sleeping pet instead of the drowsy one (91), value editor bar wider than 52, compact review wells for 3-4 answers and the left-aligned "Send n selected" row (35)
+
+### Open minor issues (phase 2)
+
+- [ ] Firmware: in the decision menu the APPROVE mode is fixed at press-down, so APPROVE pressed on one row, ACTION moving the cursor, then APPROVE released decides the newly focused row (never an allow); cancel the APPROVE press when the cursor moves (`core/card_fsm.c`)
+- [ ] Firmware: `pet_install_commit` returns `storage` when the select step fails after a good write and read-back, but leaves the new pack stored (protocol 14.8 says nothing changes on failure)
+- [ ] Firmware: a pet fetch requested while Wi-Fi is down has no deadline; further installs answer `busy` until the fetch runs (`app/app_pets.c`)
+- [ ] Firmware: `power_fsm` sets `show_clock` from power state only, so with Settings or the showcase open when the screen dims the backlight uses clock levels and the CPU lock is released; pass "home visible" into `power_fsm`
+- [ ] Firmware: `clock set <epoch>` without an offset is accepted as offset 0 instead of a usage error (`app/app_clock.c`)
+- [ ] Firmware: the connecting, offline and splash screens have no pet; the offline screen has no Retry tab because there is no retry action
+- [ ] Firmware: `power_fsm_output_t.low_toast` (the voltage-based toast) is computed but not used by the app; the toasts follow the percent
+- [ ] Firmware: `ui_demo_active()` (lock held) and `ui_demo_is_active()` (takes the lock) are easy to confuse
+- [ ] Firmware: the caps helper upper-cases Latin-1 letters (é becomes É); the design brief asked to leave non-ASCII letters as they are; owner to decide
+- [ ] Pets: `petpack.py check` warns that Ember's spade reaches outside the 220x190 mockup box
+- [ ] Shared: a command containing a tab or any non-ASCII character is always `cut`, so a device cannot allow it and it gets no session grant (safe, but stricter than "shortened to fit")
+- [ ] Client: `CHOICE_WORDS` (src/format.ts) and the dashboard's `CHOICE_TEXT` (web/src/store.ts) word `dismiss.choice` differently; move one table to `@devotchi/shared`
+- [ ] Client: no automated test for the dashboard adopting the browser's time zone (`adoptBrowserTimeZone`)
+- [ ] Client: re-uploading an unchanged pack (server 200) still prints "Added" in `devotchi pets add`, and the dashboard proxy always answers 201
+- [ ] Client: `devotchi pets send` returns at once when the same rev is already on the device even if the re-install fails, and waits the whole `--wait` on a device error, because REST does not carry `pets.result`
 
 ## Backlog (not approved or deferred)
 
 One line each; none of these is planned until approved.
 
 - delight-3: result animations on the device (pass/fail reactions beyond the toast)
-- delight-4: clock face while idle
 - delight-5: XP and levels for the pet
 - delight-7: battery personality (the pet reacts to low battery)
 - delight-8: speech bubble for status text
@@ -50,7 +70,6 @@ One line each; none of these is planned until approved.
 - delight-10: hatching and pet identity
 - delight-11: screen transitions
 - delight-12: activity timeline
-- workflow-5: always-allow / deny-with-reason from the device
 - workflow-7: multi-session board (all sessions and projects at once)
 - workflow-8: `ask_user` tool (free-form question to the device)
 - workflow-9: work journal
