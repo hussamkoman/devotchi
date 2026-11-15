@@ -132,7 +132,7 @@ void screen_sleep_demo(void);
 /** Caller holds the ui lock; the screen is the loaded one. */
 void screen_clock_set_shown(bool shown);
 void screen_sleep_set_shown(bool shown);
-/** 0 Devo in use, 1 Ember, 2 More pets. */
+/** 0 Devo (the default, in use), 1 Ember, 2 More pets, 3 Mochi; pages follow pets/builtin.txt. */
 void screen_picker_demo(int variant);
 /** Caller holds the ui lock; the picker is the loaded screen. */
 void screen_picker_set_shown(bool shown);

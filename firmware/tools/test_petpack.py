@@ -72,8 +72,25 @@ class Builtins(unittest.TestCase):
             with open(os.path.join(PETS, "golden", pid + ".pet"), "rb") as fh:
                 pack = fh.read()
             self.assertIn("static const uint8_t PACK_%s[%d] = {" % (pid.upper(), len(pack)), c)
-            self.assertIn('{"%s", PACK_%s, sizeof(PACK_%s)},' % (pid, pid.upper(), pid.upper()), c)
+            tagline = source(pid).get("tagline", "")
+            self.assertIn('{"%s", PACK_%s, sizeof(PACK_%s), "%s"},' % (pid, pid.upper(), pid.upper(), tagline), c)
         self.assertLess(c.index('{"%s",' % ids[0]), c.index('{"%s",' % ids[-1]))
+
+    def test_escapes_the_tagline_and_refuses_a_bad_one(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = source("sprout")
+            src["tagline"] = 'a "quoted" \\ pet'
+            with open(os.path.join(d, "sprout.pet.json"), "w", encoding="utf-8") as fh:
+                json.dump(src, fh)
+            with open(os.path.join(d, "builtin.txt"), "w", encoding="utf-8") as fh:
+                fh.write("sprout\n")
+            _, c = petpack.builtins_c(d)
+            self.assertIn('sizeof(PACK_SPROUT), "a \\"quoted\\" \\\\ pet"},', c)
+        for bad in ("x" * 33, "caf\u00e9", 7):
+            src = source("sprout")
+            src["tagline"] = bad
+            with self.assertRaisesRegex(petpack.PackError, "tagline"):
+                petpack.encode(src)
 
     def test_refuses_a_list_without_its_source_or_with_a_repeat(self):
         with tempfile.TemporaryDirectory() as d:
@@ -88,7 +105,7 @@ class Builtins(unittest.TestCase):
 
 
 class Lint(unittest.TestCase):
-    def lint(self, src, others=("devo", "ember", "sprout")):
+    def lint(self, src, others=("devo", "mochi", "ember", "sprout")):
         return petpack.lint(petpack.lint_input(src), len(petpack.encode(src)),
                             [petpack.lint_input(source(o)) for o in others if o != src["id"]])
 
@@ -114,11 +131,13 @@ class Lint(unittest.TestCase):
         mint["palette"]["base"] = "#5FD38D"
         errors, _ = self.lint(mint, others=())
         self.assertTrue(any("from the UI's mint" in e for e in errors), errors)
-        _, warnings = self.lint(source("devo"), others=())
+        near = source("devo")
+        near["palette"]["moods"]["happy"] = "#FFB84D"
+        _, warnings = self.lint(near, others=())
         self.assertTrue(any("#FFB84D (happy" in w and "amber" in w for w in warnings), warnings)
 
     def test_the_pets_of_pets_dir_pass(self):
-        for pid in ("devo", "ember", "sprout"):
+        for pid in ("devo", "mochi", "ember", "sprout"):
             errors, _ = self.lint(source(pid))
             self.assertEqual(errors, [], pid)
 

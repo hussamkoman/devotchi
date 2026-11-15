@@ -5,6 +5,7 @@
 #include "display.h"
 #include "fb_seq.h"
 #include "feedback.h"
+#include "pet_builtin.h"
 #include "proto.h"
 #include "settings_menu.h"
 #include "storage.h"
@@ -234,10 +235,11 @@ static const pet_def_t *picker_page(ui_picker_t *out)
     bool builtin = false;
     const pet_def_t *def = s_picker_page < n ? app_pets_load(s_picker_page, &builtin) : NULL;
     if (def != NULL) {
-        if (strcmp(def->id, "devo") == 0) {
-            snprintf(s_picker_line, sizeof(s_picker_line), "Built in \xC2\xB7 changes colour with its mood");
-        } else if (strcmp(def->id, "ember") == 0) {
-            snprintf(s_picker_line, sizeof(s_picker_line), "Built in \xC2\xB7 a small jade dragon");
+        const pet_builtin_t *b = builtin ? pet_builtin_at((unsigned)s_picker_page) : NULL;
+        if (b != NULL && b->tagline[0] != '\0') {
+            snprintf(s_picker_line, sizeof(s_picker_line), "Built in \xC2\xB7 %s", b->tagline);
+        } else if (b != NULL) {
+            snprintf(s_picker_line, sizeof(s_picker_line), "Built in");
         } else {
             snprintf(s_picker_line, sizeof(s_picker_line), "From the dashboard \xC2\xB7 rev %u", def->rev);
         }

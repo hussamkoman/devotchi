@@ -208,16 +208,16 @@ static proto_pet_cmd_t raw(proto_pet_op_t op, const char *pet, int32_t rev, int3
 static void test_cmd_check(void)
 {
     pet_cmd_t c;
-    proto_pet_cmd_t r = raw(PROTO_PET_OP_INSTALL, "mochi", 1, 612, "1a2b3c4d");
+    proto_pet_cmd_t r = raw(PROTO_PET_OP_INSTALL, "pixie", 1, 612, "1a2b3c4d");
     r.select = true;
     TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_cmd_check(&r, &c));
-    TEST_ASSERT_EQUAL_STRING("mochi", c.id);
+    TEST_ASSERT_EQUAL_STRING("pixie", c.id);
     TEST_ASSERT_EQUAL(1, c.rev);
     TEST_ASSERT_EQUAL(612, c.size);
     TEST_ASSERT_EQUAL_HEX32(0x1a2b3c4d, c.crc32);
     TEST_ASSERT_TRUE(c.select);
 
-    const char *const BAD_IDS[] = {"../x", "Mochi", "abcdefghi", "", "mo chi", "mochi\n", "a/b", "%2e%2e"};
+    const char *const BAD_IDS[] = {"../x", "Pixie", "abcdefghi", "", "pi xie", "pixie\n", "a/b", "%2e%2e"};
     for (size_t i = 0; i < sizeof(BAD_IDS) / sizeof(BAD_IDS[0]); i++) {
         r = raw(PROTO_PET_OP_INSTALL, BAD_IDS[i], 1, 612, "1a2b3c4d");
         TEST_ASSERT_EQUAL_MESSAGE(PET_RESULT_UNKNOWN, pet_cmd_check(&r, &c), BAD_IDS[i]);
@@ -237,10 +237,10 @@ static void test_cmd_check(void)
         {1, 612, "1a2b3c4d5"},  {1, 612, "1a2b3c4g"},   {1, 612, NULL},
     };
     for (size_t i = 0; i < sizeof(BAD) / sizeof(BAD[0]); i++) {
-        r = raw(PROTO_PET_OP_INSTALL, "mochi", BAD[i].rev, BAD[i].size, BAD[i].crc);
+        r = raw(PROTO_PET_OP_INSTALL, "pixie", BAD[i].rev, BAD[i].size, BAD[i].crc);
         TEST_ASSERT_EQUAL(PET_RESULT_UNKNOWN, pet_cmd_check(&r, &c));
     }
-    r = raw(PROTO_PET_OP_INSTALL, "mochi", 255, 2048, "00000000");
+    r = raw(PROTO_PET_OP_INSTALL, "pixie", 255, 2048, "00000000");
     TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_cmd_check(&r, &c));
     r = raw(PROTO_PET_OP_INSTALL, "devo", 1, 612, "1a2b3c4d");
     TEST_ASSERT_EQUAL(PET_RESULT_BUILTIN, pet_cmd_check(&r, &c));
@@ -248,9 +248,9 @@ static void test_cmd_check(void)
     TEST_ASSERT_EQUAL(PET_RESULT_BUILTIN, pet_cmd_check(&r, &c));
     r = raw(PROTO_PET_OP_SELECT, "ember", -1, -1, NULL);
     TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_cmd_check(&r, &c));
-    r = raw(PROTO_PET_OP_REMOVE, "mochi", -1, -1, NULL);
+    r = raw(PROTO_PET_OP_REMOVE, "pixie", -1, -1, NULL);
     TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_cmd_check(&r, &c));
-    r = raw(PROTO_PET_OP_UNKNOWN, "mochi", 1, 612, "1a2b3c4d");
+    r = raw(PROTO_PET_OP_UNKNOWN, "pixie", 1, 612, "1a2b3c4d");
     TEST_ASSERT_EQUAL(PET_RESULT_UNKNOWN, pet_cmd_check(&r, &c));
     TEST_ASSERT_EQUAL_STRING("mismatch", pet_result_name(PET_RESULT_MISMATCH));
     TEST_ASSERT_EQUAL_STRING("builtin", pet_result_name(PET_RESULT_BUILTIN));
@@ -260,12 +260,12 @@ static void test_cmd_check(void)
 static void test_proto_pet_cmd(void)
 {
     proto_msg_t m;
-    const char *ok = "{\"type\":\"pet_cmd\",\"op\":\"install\",\"pet\":\"mochi\",\"rev\":1,\"size\":612,"
+    const char *ok = "{\"type\":\"pet_cmd\",\"op\":\"install\",\"pet\":\"pixie\",\"rev\":1,\"size\":612,"
                      "\"crc32\":\"1a2b3c4d\",\"select\":true}";
     TEST_ASSERT_TRUE(proto_parse(ok, strlen(ok), &m));
     TEST_ASSERT_EQUAL(PROTO_PET_CMD, m.type);
     TEST_ASSERT_EQUAL(PROTO_PET_OP_INSTALL, m.u.pet_cmd.op);
-    TEST_ASSERT_EQUAL_STRING("mochi", m.u.pet_cmd.pet);
+    TEST_ASSERT_EQUAL_STRING("pixie", m.u.pet_cmd.pet);
     TEST_ASSERT_TRUE(m.u.pet_cmd.select);
     const char *bad = "{\"type\":\"pet_cmd\",\"op\":\"zap\",\"pet\":7,\"rev\":1.5,\"size\":\"x\"}";
     TEST_ASSERT_TRUE(proto_parse(bad, strlen(bad), &m));
@@ -281,12 +281,12 @@ static void test_proto_pet_cmd(void)
 
     char buf[PROTO_PETS_MAX_BYTES + 1];
     proto_pets_t p = {.selected = "devo", .slots = 8, .free = 7, .n_installed = 3,
-                      .installed = {{"devo", 1, true}, {"ember", 1, true}, {"mochi", 2, false}},
-                      .result_op = "install", .result_pet = "mochi", .result_ok = false, .result_error = "crc"};
+                      .installed = {{"devo", 1, true}, {"ember", 1, true}, {"pixie", 2, false}},
+                      .result_op = "install", .result_pet = "pixie", .result_ok = false, .result_error = "crc"};
     TEST_ASSERT_TRUE(proto_write_pets(buf, sizeof(buf), &p) > 0);
     TEST_ASSERT_EQUAL_STRING("{\"type\":\"pets\",\"selected\":\"devo\",\"slots\":8,\"free\":7,\"installed\":["
                              "{\"id\":\"devo\",\"rev\":1,\"builtin\":true},{\"id\":\"ember\",\"rev\":1,\"builtin\":true},"
-                             "{\"id\":\"mochi\",\"rev\":2}],\"result\":{\"op\":\"install\",\"pet\":\"mochi\","
+                             "{\"id\":\"pixie\",\"rev\":2}],\"result\":{\"op\":\"install\",\"pet\":\"pixie\","
                              "\"ok\":false,\"error\":\"crc\"}}",
                              buf);
     /* The largest message (10 pets, longest ids, a result) stays under 700 bytes. */
@@ -304,8 +304,8 @@ static void test_proto_pet_cmd(void)
 
 static void test_download_check_order(void)
 {
-    s_pack_len = make_pack(s_pack, "mochi", 1);
-    pet_cmd_t c = install_cmd("mochi", 1, s_pack, s_pack_len, false);
+    s_pack_len = make_pack(s_pack, "pixie", 1);
+    pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, false);
     pet_download_t dl = {.status = 200, .content_length = (int32_t)s_pack_len, .body = s_pack,
                          .received = s_pack_len, .complete = true};
     TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_download_check(&c, &dl));
@@ -336,7 +336,7 @@ static void test_download_check_order(void)
     /* fmt 2 with a correct CRC is a format error. */
     s_pack[4] = 2;
     reseal(s_pack, s_pack_len);
-    c2 = install_cmd("mochi", 1, s_pack, s_pack_len, false);
+    c2 = install_cmd("pixie", 1, s_pack, s_pack_len, false);
     TEST_ASSERT_EQUAL(PET_RESULT_FORMAT, pet_download_check(&c2, &dl));
     s_pack[4] = 1;
     reseal(s_pack, s_pack_len);
@@ -344,7 +344,7 @@ static void test_download_check_order(void)
     /* Header id or rev not the command's. */
     c2 = install_cmd("other", 1, s_pack, s_pack_len, false);
     TEST_ASSERT_EQUAL(PET_RESULT_MISMATCH, pet_download_check(&c2, &dl));
-    c2 = install_cmd("mochi", 2, s_pack, s_pack_len, false);
+    c2 = install_cmd("pixie", 2, s_pack, s_pack_len, false);
     TEST_ASSERT_EQUAL(PET_RESULT_MISMATCH, pet_download_check(&c2, &dl));
 }
 
@@ -353,15 +353,15 @@ static void test_download_check_order(void)
 static void test_install_and_select(void)
 {
     fake_reset();
-    s_pack_len = make_pack(s_pack, "mochi", 1);
-    pet_cmd_t c = install_cmd("mochi", 1, s_pack, s_pack_len, true);
+    s_pack_len = make_pack(s_pack, "pixie", 1);
+    pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
     bool sel;
     TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
     TEST_ASSERT_TRUE(sel);
-    TEST_ASSERT_EQUAL_STRING("mochi", s_fake.selected);
+    TEST_ASSERT_EQUAL_STRING("pixie", s_fake.selected);
     const uint8_t *bytes;
     size_t len;
-    TEST_ASSERT_EQUAL(PET_SOURCE_STORED, pet_install_resolve(&OPS, "mochi", s_scratch, sizeof(s_scratch), &bytes, &len));
+    TEST_ASSERT_EQUAL(PET_SOURCE_STORED, pet_install_resolve(&OPS, "pixie", s_scratch, sizeof(s_scratch), &bytes, &len));
     TEST_ASSERT_EQUAL_MEMORY(s_pack, bytes, len);
     TEST_ASSERT_EQUAL(PET_SOURCE_BUILTIN, pet_install_resolve(&OPS, "ember", s_scratch, sizeof(s_scratch), &bytes, &len));
     TEST_ASSERT_EQUAL(PET_SOURCE_FALLBACK, pet_install_resolve(&OPS, "nope", s_scratch, sizeof(s_scratch), &bytes, &len));
@@ -372,15 +372,15 @@ static void test_install_and_select(void)
     TEST_ASSERT_EQUAL_STRING("ember", s_fake.selected);
     TEST_ASSERT_EQUAL(PET_RESULT_UNKNOWN, pet_install_select(&OPS, "nope", s_scratch, sizeof(s_scratch)));
     TEST_ASSERT_EQUAL_STRING("ember", s_fake.selected);
-    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_select(&OPS, "mochi", s_scratch, sizeof(s_scratch)));
+    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_select(&OPS, "pixie", s_scratch, sizeof(s_scratch)));
 
     bool re;
-    TEST_ASSERT_EQUAL(PET_RESULT_BUILTIN, pet_install_remove(&OPS, "devo", "mochi", &re));
-    TEST_ASSERT_EQUAL(PET_RESULT_UNKNOWN, pet_install_remove(&OPS, "nope", "mochi", &re));
-    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_remove(&OPS, "mochi", "mochi", &re));
+    TEST_ASSERT_EQUAL(PET_RESULT_BUILTIN, pet_install_remove(&OPS, "devo", "pixie", &re));
+    TEST_ASSERT_EQUAL(PET_RESULT_UNKNOWN, pet_install_remove(&OPS, "nope", "pixie", &re));
+    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_remove(&OPS, "pixie", "pixie", &re));
     TEST_ASSERT_TRUE(re);
     TEST_ASSERT_EQUAL_STRING("devo", s_fake.selected);
-    TEST_ASSERT_FALSE(f_has(&s_fake, "mochi"));
+    TEST_ASSERT_FALSE(f_has(&s_fake, "pixie"));
 }
 
 static void test_full_and_failures(void)
@@ -395,8 +395,8 @@ static void test_full_and_failures(void)
         TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
         TEST_ASSERT_FALSE(sel);
     }
-    s_pack_len = make_pack(s_pack, "mochi", 1);
-    pet_cmd_t c = install_cmd("mochi", 1, s_pack, s_pack_len, true);
+    s_pack_len = make_pack(s_pack, "pixie", 1);
+    pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
     TEST_ASSERT_EQUAL(PET_RESULT_FULL, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
     TEST_ASSERT_EQUAL_STRING("devo", s_fake.selected);
     /* Replacing a stored id needs no free slot. */
@@ -407,22 +407,22 @@ static void test_full_and_failures(void)
     /* A fresh install whose read-back fails is removed again. */
     fake_reset();
     s_fake.corrupt_reads = true;
-    s_pack_len = make_pack(s_pack, "mochi", 1);
-    c = install_cmd("mochi", 1, s_pack, s_pack_len, true);
+    s_pack_len = make_pack(s_pack, "pixie", 1);
+    c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
     TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
-    TEST_ASSERT_FALSE(f_has(&s_fake, "mochi"));
+    TEST_ASSERT_FALSE(f_has(&s_fake, "pixie"));
     TEST_ASSERT_EQUAL_STRING("devo", s_fake.selected);
 
     /* A replace whose read-back fails reports storage and is not removed. */
     fake_reset();
-    s_pack_len = make_pack(s_pack, "mochi", 1);
-    c = install_cmd("mochi", 1, s_pack, s_pack_len, true);
+    s_pack_len = make_pack(s_pack, "pixie", 1);
+    c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
     TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
     s_fake.corrupt_reads = true;
-    s_pack_len = make_pack(s_pack, "mochi", 2);
-    c = install_cmd("mochi", 2, s_pack, s_pack_len, false);
+    s_pack_len = make_pack(s_pack, "pixie", 2);
+    c = install_cmd("pixie", 2, s_pack, s_pack_len, false);
     TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
-    TEST_ASSERT_TRUE(f_has(&s_fake, "mochi"));
+    TEST_ASSERT_TRUE(f_has(&s_fake, "pixie"));
 
     /* A failing put keeps the old value (NVS replaces atomically). */
     fake_reset();
@@ -445,7 +445,7 @@ static void test_full_and_failures(void)
     TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&none, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
 }
 
-/* After any reboot: s_pet names a pet that loads, and the stored mochi is rev 1 or rev 2, never broken. */
+/* After any reboot: s_pet names a pet that loads, and the stored pixie is rev 1 or rev 2, never broken. */
 static void check_after_reboot(uint8_t old_rev, uint8_t new_rev, const char *old_sel)
 {
     const uint8_t *bytes;
@@ -453,13 +453,13 @@ static void check_after_reboot(uint8_t old_rev, uint8_t new_rev, const char *old
     const pet_source_t src = pet_install_resolve(&OPS, s_fake.selected, s_scratch, sizeof(s_scratch), &bytes, &len);
     TEST_ASSERT_TRUE(src != PET_SOURCE_FALLBACK);
     TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_validate(bytes, len));
-    TEST_ASSERT_TRUE(strcmp(s_fake.selected, old_sel) == 0 || strcmp(s_fake.selected, "mochi") == 0);
-    const fake_key_t *k = find(&s_fake, "mochi");
+    TEST_ASSERT_TRUE(strcmp(s_fake.selected, old_sel) == 0 || strcmp(s_fake.selected, "pixie") == 0);
+    const fake_key_t *k = find(&s_fake, "pixie");
     if (k != NULL) {
         TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_validate(k->bytes, k->len));
         TEST_ASSERT_TRUE(k->bytes[5] == old_rev || k->bytes[5] == new_rev);
     }
-    if (strcmp(s_fake.selected, "mochi") == 0) {
+    if (strcmp(s_fake.selected, "pixie") == 0) {
         TEST_ASSERT_NOT_NULL(k);
         TEST_ASSERT_EQUAL(new_rev, k->bytes[5]);
     }
@@ -473,8 +473,8 @@ static void test_power_loss_at_every_step(void)
             fake_reset();
             s_fake.crash_at = at;
             s_fake.crash_lands = lands;
-            s_pack_len = make_pack(s_pack, "mochi", 1);
-            pet_cmd_t c = install_cmd("mochi", 1, s_pack, s_pack_len, true);
+            s_pack_len = make_pack(s_pack, "pixie", 1);
+            pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
             bool sel;
             pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel);
             fake_reboot();
@@ -482,31 +482,31 @@ static void test_power_loss_at_every_step(void)
 
             /* Replace rev 1 (selected) by rev 2. */
             fake_reset();
-            c = install_cmd("mochi", 1, s_pack, s_pack_len, true);
+            c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
             pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel);
             s_fake.steps = 0;
             s_fake.crash_at = at;
             s_fake.crash_lands = lands;
-            s_pack_len = make_pack(s_pack, "mochi", 2);
-            c = install_cmd("mochi", 2, s_pack, s_pack_len, true);
+            s_pack_len = make_pack(s_pack, "pixie", 2);
+            c = install_cmd("pixie", 2, s_pack, s_pack_len, true);
             pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel);
             fake_reboot();
-            TEST_ASSERT_EQUAL_STRING("mochi", s_fake.selected);
-            const fake_key_t *k = find(&s_fake, "mochi");
+            TEST_ASSERT_EQUAL_STRING("pixie", s_fake.selected);
+            const fake_key_t *k = find(&s_fake, "pixie");
             TEST_ASSERT_NOT_NULL(k);
             TEST_ASSERT_TRUE(k->bytes[5] == 1 || k->bytes[5] == 2);
             TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_validate(k->bytes, k->len));
 
             /* Remove of the selected pet. */
             fake_reset();
-            s_pack_len = make_pack(s_pack, "mochi", 1);
-            c = install_cmd("mochi", 1, s_pack, s_pack_len, true);
+            s_pack_len = make_pack(s_pack, "pixie", 1);
+            c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
             pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel);
             s_fake.steps = 0;
             s_fake.crash_at = at;
             s_fake.crash_lands = lands;
             bool re;
-            pet_install_remove(&OPS, "mochi", "mochi", &re);
+            pet_install_remove(&OPS, "pixie", "pixie", &re);
             fake_reboot();
             check_after_reboot(1, 1, "devo");
         }
@@ -520,13 +520,13 @@ static void test_power_loss_between_blob_and_selection(void)
     snprintf(s_fake.selected, sizeof(s_fake.selected), "ember");
     s_fake.crash_at = 2; /* step 1 is the put, step 2 the select */
     s_fake.crash_lands = false;
-    s_pack_len = make_pack(s_pack, "mochi", 1);
-    pet_cmd_t c = install_cmd("mochi", 1, s_pack, s_pack_len, true);
+    s_pack_len = make_pack(s_pack, "pixie", 1);
+    pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
     bool sel;
     TEST_ASSERT_EQUAL(PET_RESULT_STORAGE,
                       pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
     fake_reboot();
-    TEST_ASSERT_TRUE(f_has(&s_fake, "mochi"));
+    TEST_ASSERT_TRUE(f_has(&s_fake, "pixie"));
     TEST_ASSERT_EQUAL_STRING("ember", s_fake.selected);
 }
 

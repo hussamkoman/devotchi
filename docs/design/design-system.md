@@ -63,7 +63,7 @@ Any 14 px text a person needs (page marks, counts, time left, captions) is
 | `coral` | `#FF6B5E` | Deny, failure, high risk, destructive commit, link down | cross / three bars / warning triangle / `HIGH RISK` |
 | `sky` | `#6CC4FF` | Questions, plans, names the user must match (SSID, host, BLE name) | `Question` / `Plan` chip |
 | `violet` | `#B592FF` | Showcase (demo) only: 2 px frame and one tag (`DEMO` or `SAMPLE`) | the words |
-| `mango` | `#FFB84D` | Brand colour (lock-up, the happy Devo) | |
+| `mango` | `#FFB84D` | Brand colour (lock-up, the antenna tip of the wordmark) | |
 
 Risk is said three ways on a request card: the chip colour, the **risk bars**
 (three rising bars, one, two or three lit: a shape, readable without colour)
@@ -75,10 +75,12 @@ with the warning triangle, and turns the right tab into a hold.
 
 Pet colour belongs to the pet, not to the UI (see `pet-animations.md` 2):
 
-- **Devo** has eleven mood colours. None sits on a semantic hue: working is
-  lime `#B4D455` (not mint), angry crimson `#D4366B` (not coral), focused
-  cobalt `#5B82F0` (not sky), excited pink `#FF8DB4` (not amber), idle a warm
-  apricot `#F0C594` (grey is not a mood). Full table in `pet-moods.html`.
+- **Devo** (the ghost) has eleven mood colours. None sits on a semantic hue:
+  working is lime `#B4D455` (not mint), angry crimson `#D4366B` (not coral),
+  focused cobalt `#5B82F0` (not sky), excited pink `#FF8DB4` (not amber),
+  happy a pale gold `#FFD98C` (not amber), idle a ghost lilac `#D9D3F5`
+  (grey is not a mood). Full table in `pet-moods.html`.
+- **Mochi** has one hue, apricot `#F0C594`, that a mood only shifts.
 - **Ember** has one hue, jade `#2FAE9C`, an ember-orange accent `#FF8A3D` and
   cream `#F6E7C1`; a mood only shifts the jade lighter, darker or paler.
 - Shades are derived: `dark` = 28 % towards pet ink `#1A1D26`, `light` = 40 %
@@ -151,7 +153,7 @@ Rules:
 - Three bands: **status bar** y 0-19, **content** y 20-215, **button tabs**
   y 218-239. Full-bleed screens (splash, clock, battery empty) drop both bars.
 - Radii: 4 (tags), 8 (rows, wells), 12 (toasts), 11 (chips: full pill),
-  10 on the top corners of button tabs. Devo's body is 46.
+  10 on the top corners of button tabs. Mochi's body is 46, Devo's dome 54.
 - Row heights: list row 25 + 2 gap (settings 29 + 2); a focused row grows by
   its description (17 px per line, at most three). Lists show whole rows only.
 - A code well is as tall as its content (one to three lines, plus a footer

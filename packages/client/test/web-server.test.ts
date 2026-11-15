@@ -373,12 +373,13 @@ describe("REST proxy", () => {
 
   it("proxies the pets routes, binary packs included", async () => {
     const list = await apiFetch("/api/pets");
-    expect(((await list.json()) as { pets: { id: string }[] }).pets.map((p) => p.id)).toEqual(["devo", "ember", "sprout"]);
+    const { pets } = (await list.json()) as { pets: { id: string; size: number }[] };
+    expect(pets.map((p) => p.id)).toEqual(["devo", "mochi", "ember", "sprout"]);
     const pack = await apiFetch("/api/pets/devo/pack");
     expect(pack.status).toBe(200);
     expect(pack.headers.get("content-type")).toBe("application/octet-stream");
     const bytes = new Uint8Array(await pack.arrayBuffer());
-    expect(bytes.length).toBe(344);
+    expect(bytes.length).toBe(pets[0].size);
     // A copy of Devo under another id and name, re-sealed.
     const copy = bytes.slice();
     copy.set(new TextEncoder().encode("viaproxy"), 8);

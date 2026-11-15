@@ -1,10 +1,17 @@
-"""Pet rig for the design mockups only (v2): it draws Devo and Ember by hand
-for pet-moods.html and the screen renders, and nothing else reads it. The
-preview of any pet from its pets/<id>.pet.json is `pnpm run pet-sheet`.
+"""Pet rig for the design mockups only (v2): it draws Mochi and Ember by hand
+for pet-moods.html and the screen renders, and nothing else reads it. Devo is
+drawn from its golden pack by the dashboard's renderer (pack-svg.mjs, which
+needs the shared build). The preview of any pet from its pets/<id>.pet.json is
+`pnpm run pet-sheet`.
 The shared pose table mirrors firmware/src/components/core/pet_pose.c; the four
 everyday moods (focused, working, thinking, idle) are re-tuned for warmth.
 See pet-animations.md."""
+import functools
+import itertools
+import json
 import math
+import os
+import subprocess
 
 INK = "#0C0E14"
 PET_INK = "#1A1D26"
@@ -18,14 +25,24 @@ def mix(a, b, t):
 
 
 # ---- palettes ----------------------------------------------------------------
-# Devo owns eleven mood colours. None of them sits on a semantic UI hue
-# (mint, amber, coral, sky): working is lime, angry crimson, focused cobalt, excited pink.
-DEVO_COLOR = {
-    "focused": "#5B82F0", "working": "#B4D455", "thinking": "#9A8AE0", "idle": "#F0C594",
-    "happy": "#FFB84D", "sad": "#7E9BC8", "anxious": "#C4A0D8", "excited": "#FF8DB4",
-    "proud": "#3CBFB4", "angry": "#D4366B", "sleeping": "#7377CF",
-}
-MOOD_COLOR = DEVO_COLOR  # kept for the builder
+TOOLS = os.path.dirname(os.path.abspath(__file__))
+PETS_DIR = os.path.join(TOOLS, "..", "..", "..", "pets")
+PACK_PETS = ("devo",)  # drawn from pets/golden/<id>.pet
+
+
+def _source(pid):
+    with open(os.path.join(PETS_DIR, pid + ".pet.json"), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+# Devo owns eleven mood colours (pets/devo.pet.json). None of them sits on a semantic
+# UI hue (mint, amber, coral, sky): working is lime, angry crimson, focused cobalt, excited pink.
+DEVO_COLOR = _source("devo")["palette"]["moods"]
+
+# Mochi owns one hue (apricot); a mood only shifts it (pets/mochi.pet.json).
+_MOCHI_PALETTE = _source("mochi")["palette"]
+MOCHI_BASE = _MOCHI_PALETTE["base"]
+MOCHI_SHIFT = {m: tuple(v) for m, v in _MOCHI_PALETTE["moods"].items()}
 
 # Ember owns one hue (jade) and an ember-orange accent; a mood only shifts the jade.
 JADE, EMBER_ACCENT, EMBER_CREAM = "#2FAE9C", "#FF8A3D", "#F6E7C1"
@@ -39,6 +56,9 @@ EMBER_SHIFT = {
 def pet_color(kind, mood):
     if kind == "devo":
         return DEVO_COLOR[mood]
+    if kind == "mochi":
+        to, t = MOCHI_SHIFT[mood]
+        return mix(MOCHI_BASE, to, t)
     to, t = EMBER_SHIFT[mood]
     return mix(JADE, to, t)
 
@@ -61,8 +81,8 @@ POSE = {
     "thinking": dict(eo=92, es=24, ps=45, dx=60, dy=-60, brow=(-4, -16, 0, 5), curve=-4, opened=0, acc="dots", mw=8, mdx=9),
 }
 
-# Devo aux channels: antenna tip dx, tip dy (0 = upright), stem style, cheeks
-DEVO_AUX = {
+# Mochi aux channels: antenna tip dx, tip dy (0 = upright), stem style, cheeks
+MOCHI_AUX = {
     "happy": (12, 0, "curve", 1), "sad": (30, 26, "curve", 0), "excited": (0, -6, "curve", 1),
     "anxious": (6, 4, "zig", 0), "sleeping": (26, 20, "curve", 1), "angry": (-10, 2, "zig", 0),
     "proud": (4, -6, "curve", 1), "idle": (10, 3, "curve", 1), "focused": (0, -4, "straight", 0),
@@ -196,11 +216,11 @@ def _accessory(acc, kind, eye_y, ex):
             return "".join(f'<circle cx="{58 + i * 13}" cy="{-40 - i * 19}" r="{4 + i * 2.5}" fill="none" stroke="#A7AEBB" stroke-width="2.5"/>' for i in range(3))
         return _zzz("#A7AEBB")
     if acc == "sweat":
-        return _drop(64 if kind == "devo" else 62, -46 if kind == "devo" else -64, 8, "#B3E5FC")
+        return _drop(64 if kind == "mochi" else 62, -46 if kind == "mochi" else -64, 8, "#B3E5FC")
     if acc == "tear":
         return _drop(-ex, eye_y + 26, 6, "#B3E5FC")
     if acc == "sparkles":
-        c = "#FFE9A8" if kind == "devo" else "#FFB454"
+        c = "#FFE9A8" if kind == "mochi" else "#FFB454"
         return _star(-88, -44, 9, c) + _star(88, -58, 11, c) + _star(96, 0, 6, c)
     if acc == "dots":
         return "".join(f'<circle cx="{64 + i * 13}" cy="{-66 - i * 9}" r="{3 + i}" fill="#F3EEE3"/>' for i in range(3))
@@ -217,13 +237,15 @@ def _accessory(acc, kind, eye_y, ex):
 
 
 FACE = {
-    "devo": dict(eye="round", sclera=WHITE, brows=True, ex=27, eye_y=-8, mouth_y=30, hw=18, sagk=11),
+    "mochi": dict(eye="round", sclera=WHITE, brows=True, ex=27, eye_y=-8, mouth_y=30, hw=18, sagk=11),
     "ember": dict(eye="slit", sclera="#FFF3C4", brows=False, ex=27, eye_y=-43, mouth_y=-7, hw=15, sagk=7),
 }
 
 
 def pet_svg(kind="devo", mood="idle", react=None, scale=1.0, look=(0, 0), night=None, shadow=True, w=220, h=190, gray=False):
     """Returns an <svg> of w*scale x h*scale; the body centre is at the svg centre + 12 px down."""
+    if kind in PACK_PETS:
+        return _pack_svg(kind, react or mood, scale, night is not None, gray, w, h)
     face = FACE[kind]
     p = dict(POSE[mood])
     if kind == "ember":
@@ -246,16 +268,16 @@ def pet_svg(kind="devo", mood="idle", react=None, scale=1.0, look=(0, 0), night=
     fill = (lambda c: f'fill="#000000" stroke="{night}" stroke-width="2" stroke-linejoin="round"') if stroke_only else (lambda c: f'fill="{c}"')
     out = []
     if mood == "sleeping" and not react:
-        squish = 10 if kind == "devo" else 7
+        squish = 10 if kind == "mochi" else 7
 
-    if kind == "devo":
+    if kind == "mochi":
         bw, bh = 140, 116
         top = -bh / 2 + squish - hop
         eye_y = face["eye_y"] + squish * 0.6 - hop
         mouth_y = face["mouth_y"] + squish * 0.3 - hop
         if shadow and not stroke_only:
             out.append(f'<rect x="{-62 + hop * 2}" y="{bh / 2 + 4}" width="{124 - hop * 4}" height="12" rx="6" fill="#161A22"/>')
-        adx, ady, astyle, cheeks = DEVO_AUX[mood]
+        adx, ady, astyle, cheeks = MOCHI_AUX[mood]
         if react == "attention":
             adx, ady, astyle = 0, -2, "straight"
         if react == "poke":
@@ -377,3 +399,19 @@ def pet_svg(kind="devo", mood="idle", react=None, scale=1.0, look=(0, 0), night=
     flt = ' style="filter:grayscale(1)"' if gray else ""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w * scale:.0f}" height="{h * scale:.0f}" '
             f'viewBox="{-w / 2} {-h / 2 - 12} {w} {h}"{flt}>{"".join(out)}</svg>')
+
+
+@functools.lru_cache(maxsize=None)
+def _pack_frames(pid):
+    out = subprocess.run(["node", os.path.join(TOOLS, "pack-svg.mjs"), pid], check=True, capture_output=True)
+    return json.loads(out.stdout)
+
+
+_clip_ids = itertools.count()
+
+
+def _pack_svg(pid, frame, scale, outline, gray, w, h):
+    """A frame of the pack (a reaction is drawn on idle, without glances), with unique clip ids."""
+    svg = _pack_frames(pid)[frame]["outline" if outline else "gray" if gray else "plain"]
+    svg = svg.replace("XPFX", "pk%d" % next(_clip_ids))
+    return svg.replace('width="220" height="190"', f'width="{w * scale:.0f}" height="{h * scale:.0f}"', 1)

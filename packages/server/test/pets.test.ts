@@ -57,7 +57,8 @@ const PETS_STATE = {
   slots: 8,
   free: 8,
   installed: [
-    { id: "devo", rev: 1, builtin: true },
+    { id: "devo", rev: 2, builtin: true },
+    { id: "mochi", rev: 1, builtin: true },
     { id: "ember", rev: 1, builtin: true },
   ],
 };
@@ -68,10 +69,11 @@ describe("GET /api/pets", () => {
     const res = await t.fetch("/api/pets", { token });
     expect(res.status).toBe(200);
     const { pets } = (await res.json()) as { pets: Json[] };
-    expect(pets.map((p) => p.id)).toEqual(["devo", "ember", "sprout"]);
-    expect(pets[0]).toEqual({ id: "devo", name: "Devo", rev: 1, size: 344, crc32: goldenCrc("devo"), source: "catalog", builtin: true });
-    expect(pets[1]).toMatchObject({ id: "ember", crc32: goldenCrc("ember"), source: "catalog", builtin: true });
-    expect(pets[2]).toEqual({ id: "sprout", name: "Sprout", rev: 1, size: encodePet(sproutSource()).length, crc32: goldenCrc("sprout"), source: "catalog" });
+    expect(pets.map((p) => p.id)).toEqual(["devo", "mochi", "ember", "sprout"]);
+    expect(pets[0]).toEqual({ id: "devo", name: "Devo", rev: 2, size: golden("devo").length, crc32: goldenCrc("devo"), source: "catalog", builtin: true });
+    expect(pets[1]).toEqual({ id: "mochi", name: "Mochi", rev: 1, size: golden("mochi").length, crc32: goldenCrc("mochi"), source: "catalog", builtin: true });
+    expect(pets[2]).toMatchObject({ id: "ember", crc32: goldenCrc("ember"), source: "catalog", builtin: true });
+    expect(pets[3]).toEqual({ id: "sprout", name: "Sprout", rev: 1, size: encodePet(sproutSource()).length, crc32: goldenCrc("sprout"), source: "catalog" });
     const device = t.deviceToken(roomId);
     expect((await t.fetch("/api/pets", { token: device.token })).status).toBe(200);
     await expectError(await t.fetch("/api/pets"), 401, "unauthorized");
@@ -135,7 +137,7 @@ describe("POST /api/pets", () => {
     expect(fromJson.status).toBe(201);
     expect(await fromJson.json()).toMatchObject({ id: "sprout2", source: "room" });
     const { pets } = (await (await t.fetch("/api/pets", { token })).json()) as { pets: Json[] };
-    expect(pets.map((p) => `${p.id}:${p.source}`)).toEqual(["devo:catalog", "ember:catalog", "sprout:catalog", "copy:room", "sprout2:room"]);
+    expect(pets.map((p) => `${p.id}:${p.source}`)).toEqual(["devo:catalog", "mochi:catalog", "ember:catalog", "sprout:catalog", "copy:room", "sprout2:room"]);
   });
 
   it("answers every error of the 14.8 table with its code", async () => {
@@ -253,7 +255,7 @@ describe("POST /api/devices/:id/pet", () => {
     const device = t.deviceToken(roomId);
     // `pet` is checked before the device is looked up.
     await expectError(await command("dv-ffffff", { op: "install", pet: "../x" }), 400, "invalid_request", /\[a-z0-9\]/);
-    await expectError(await command(device.deviceId, { op: "install", pet: "Mochi" }), 400, "invalid_request");
+    await expectError(await command(device.deviceId, { op: "install", pet: "Sprout" }), 400, "invalid_request");
     await expectError(await command(device.deviceId, { op: "install", pet: "toolongpet" }), 400, "invalid_request");
     await expectError(await command(device.deviceId, { op: "wear", pet: "sprout" }), 400, "invalid_request", /op/);
     await expectError(await command(device.deviceId, { op: "install", pet: "sprout", select: "yes" }), 400, "invalid_request");

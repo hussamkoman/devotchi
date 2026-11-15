@@ -25,8 +25,8 @@ and everything else is generated from it.
 
 1. **Copy the template**: `cp pets/_template.pet.json pets/<id>.pet.json`,
    then set `id` (`[a-z0-9]{1,8}`, the file name), `name` and the design:
-   palette, face, parts, aux rows (fields below; Devo, Ember and Sprout are
-   worked examples).
+   palette, face, parts, aux rows (fields below; Devo, Mochi, Ember and
+   Sprout are worked examples).
 2. **Render the preview sheet**: `pnpm run pet-sheet <id> [--png]` writes
    `<tmp>/devotchi-pet-sheets/<id>.svg` (`--out DIR` to change it): the 11
    moods and 5 reactions, the night outline at clock size and every frame in
@@ -69,6 +69,7 @@ coordinate is an integer in -128..127.
 | `id` | string | `[a-z0-9]{1,8}` |
 | `name` | string | 1..12 printable ASCII characters |
 | `rev` | integer | 1..255; a changed pack needs a higher `rev` |
+| `tagline` | string | 0..32 printable ASCII characters; the device picker shows a built-in pet as "Built in · <tagline>" (not encoded in the pack) |
 | `palette` | object | see below |
 | `face` | object | see below |
 | `aux` | object | mood or reaction name -> 4 integers (-128..127); missing rows are 0 |

@@ -389,7 +389,7 @@ static const demo_entry_t DEMOS[] = {
     {"showcase", "menu|moods|reactions|sample|real", UI_SCREEN_SETTINGS},
     {"clock", "day|night|notime", UI_SCREEN_CLOCK},
     {"sleep", NULL, UI_SCREEN_SLEEP},
-    {"picker", "devo|ember|more", UI_SCREEN_PICKER},
+    {"picker", "devo|ember|more|mochi", UI_SCREEN_PICKER},
     {"identify", NULL, UI_SCREEN_IDENTIFY},
     {"lowbatt", NULL, UI_SCREEN_LOWBATT},
 };
@@ -401,7 +401,7 @@ const char *ui_demo_usage(void)
            "approval[low|med|details|long|high|clicked|holding|sent|next] menu[terminal|session|high|locked] "
            "tabs[hold|nudge|any|inactive] question[single|second|back|read|scroll|multi|send|menu|review|accents|"
            "accents-review] plan[card|menu|cut|more|accents] settings[top|display|editor|confirm|quick] "
-           "showcase[menu|moods|reactions|sample|real] clock[day|night|notime] sleep recent picker[devo|ember|more] "
+           "showcase[menu|moods|reactions|sample|real] clock[day|night|notime] sleep recent picker[devo|ember|more|mochi] "
            "identify lowbatt | off";
 }
 

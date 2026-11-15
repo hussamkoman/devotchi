@@ -2,6 +2,7 @@
   "id": "sprout",
   "name": "Sprout",
   "rev": 1,
+  "tagline": "an egg with a sprouting leaf",
   "palette": {
     "mode": "shift",
     "base": "#F2B8C6",
