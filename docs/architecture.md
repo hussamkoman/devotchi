@@ -1107,8 +1107,10 @@ fails validation at boot is skipped and the default is used.
 protocol 14.8; 2) write the blob (`nvs_set_blob` + `nvs_commit`; NVS keeps the
 old value of the key until the new one is complete, so a reset here leaves
 either the old pack or the new one); 3) read the blob back and validate it
-again; if that fails, remove the key (a fresh install) or report `storage`;
-4) only then write `s_pet` when the command asked to select. A reset between
+again; 4) only then write `s_pet` when the command asked to select. If step 3
+or 4 fails the store goes back to how it was (a fresh id is removed, an
+existing pack is written back from a copy taken before step 2) and the device
+reports `storage`, so a failed install changes nothing. A reset between
 2 and 4 leaves the new pet installed and the old selection in force. `s_pet`
 never names a pack that was not read back successfully. A `pets` partition
 that fails `nvs_flash_init_partition` (for example random bytes) is erased by
