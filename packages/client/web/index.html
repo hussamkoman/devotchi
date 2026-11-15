@@ -26,7 +26,7 @@
     </section>
     <section class="panel requests" aria-labelledby="requests-heading">
       <h2 id="requests-heading">Requests</h2>
-      <p class="hint">Keys: <kbd>A</kbd> approve, <kbd>R</kbd> reject, <kbd>T</kbd> send to terminal (first request). High-risk hints need a 1 s hold.</p>
+      <p class="hint">Keys for the first permission: <kbd>A</kbd> allow, <kbd>R</kbd> deny, <kbd>T</kbd> send to terminal. A high-risk allow needs a second click (or a second <kbd>A</kbd>), and so do "Allow for this session" and "Approve and accept edits".</p>
       <div id="request-list" class="request-list"></div>
       <p id="requests-empty" class="empty">No pending requests.</p>
     </section>
@@ -52,6 +52,10 @@
       <label for="hold-time">Hold time</label>
       <select id="hold-time" disabled></select>
       <p id="hold-hint" class="hint"></p>
+      <div class="row">
+        <span>Time zone for the device clock: <span id="tz-current"></span></span>
+        <button id="tz-browser" type="button" disabled>Use this browser's zone</button>
+      </div>
       <div class="row">
         <span>Browser notifications: <span id="notify-state"></span></span>
         <button id="notify-optin" type="button" hidden>Enable</button>

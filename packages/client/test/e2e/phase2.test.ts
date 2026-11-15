@@ -231,4 +231,27 @@ describe("permission frames for a phase-2 sim", () => {
       risk: "high",
     });
   });
+
+  it("status shows pending kinds and the last choice; doctor reports the switches and ask consumers", async () => {
+    world = await makeWorld({ server: { features: { sessionGrants: false } } });
+    const sim = await startSim(world, { policy: { kind: "manual" } });
+    const pending = world.hook(questionHook());
+    await sim.next("request", (e) => e.kind === "question");
+    const busy = await world.cli(["status"]);
+    expect(busy.stdout).toMatch(/^Pending: {2}1 \(1 question\)$/m);
+    expect(JSON.parse((await world.cli(["status", "--json"])).stdout)).toMatchObject({ pending: 1, pendingKinds: ["question"] });
+    sim.sim.decide("decline");
+    expect(await pending).toMatchObject({ hookSpecificOutput: { decision: { behavior: "deny" } } });
+    const done = await world.cli(["status"]);
+    expect(done.stdout).toMatch(/^Pending: {2}none$/m);
+    expect(done.stdout).toMatch(/Last request: AskUserQuestion: deny \(answered, declined to answer\) by sim-a/);
+
+    const doctor = await world.cli(["doctor", "--dir", world.box.dir]);
+    expect(doctor.stdout).toMatch(/^INFO {2}features {2}questions on, plans on, session grants off \(DEVOTCHI_SESSION_GRANTS=0\)$/m);
+    expect(doctor.stdout).toMatch(/^PASS {2}questions 1 consumer\(s\) online can answer questions, 1 can approve plans$/m);
+    await sim.sim.stop();
+    const alone = await world.cli(["doctor", "--dir", world.box.dir, "--json"]);
+    const checks = (JSON.parse(alone.stdout) as { checks: Json[] }).checks;
+    expect(checks.find((c) => c.id === "questions")).toMatchObject({ level: "WARN", message: expect.stringContaining("go straight to the terminal") });
+  });
 });

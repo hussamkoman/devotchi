@@ -2,20 +2,37 @@
 // reducer must not do itself (holding frames, title, notifications, REST).
 
 import {
+  buildDecide,
+  buildExtend,
   buildHolding,
   buildPermissionDefer,
   buildPermissionResponse,
+  buildQuestionResponse,
   parseServerMessage,
   serialize,
+  type ConsumerToServerMessage,
   type Device,
   type PairConfirmResponse,
   type Room,
+  type RoomRequestDetail,
   type RoomSettings,
 } from "@devotchi/shared";
 import { api, sessionSecret } from "./api.js";
 import { byId, h, setText } from "./dom.js";
 import { HoldingDriver } from "./holding.js";
-import { initialState, reduce, type Action, type Answer, type DashboardConfig, type State, type Toast } from "./store.js";
+import {
+  extendDue,
+  initialState,
+  isPresentable,
+  needsFullText,
+  reduce,
+  type Action,
+  type DashboardConfig,
+  type Reply,
+  type RequestCard,
+  type State,
+  type Toast,
+} from "./store.js";
 import { DevicesPanel } from "./views/devices.js";
 import { updateHeader } from "./views/header.js";
 import { updateLog } from "./views/log.js";
@@ -50,7 +67,7 @@ const client = new WsClient({
   },
 });
 
-const requests = new RequestList(byId("request-list"), byId("requests-empty"), { answer });
+const requests = new RequestList(byId("request-list"), byId("requests-empty"), { reply, touch });
 const devices = new DevicesPanel(byId("device-list"), byId("devices-empty"), {
   rename: async (id, name) => {
     await api<Device>("PATCH", `/api/devices/${encodeURIComponent(id)}`, { name });
@@ -68,6 +85,7 @@ const settings = new SettingsPanel({
   update: async (changes) => {
     dispatch({ type: "settings", settings: await api<RoomSettings>("PUT", "/api/room/settings", changes) });
   },
+  browserTimeZone,
   enableNotifications: async () => {
     if (!("Notification" in window)) return;
     await Notification.requestPermission();
@@ -76,9 +94,14 @@ const settings = new SettingsPanel({
 });
 
 function dispatch(action: Action): void {
+  const before = new Set(state.requests.filter(isPresentable).map((r) => r.id));
   state = reduce(state, action);
-  holding.sync(state.requests.map((r) => r.id));
+  const shown = state.requests.filter(isPresentable);
+  holding.sync(shown.map((r) => r.id));
+  for (const card of state.requests) if (needsFullText(card) && card.full.state === "idle") loadFullText(card.id);
   render();
+  for (const card of shown) if (!before.has(card.id) && action.type === "frame") attention(card);
+  if (action.type === "room" || action.type === "settings") adoptBrowserTimeZone();
 }
 
 function onFrame(raw: string): void {
@@ -87,26 +110,81 @@ function onFrame(raw: string): void {
     console.debug("devotchi: ignored an invalid frame", raw.slice(0, 200));
     return;
   }
-  const isNew = msg.type === "permission" && !state.requests.some((r) => r.id === msg.id);
   dispatch({ type: "frame", msg, now: Date.now() });
-  if (msg.type === "permission" && isNew) attention(msg.tool, msg.summary, msg.id);
   if (msg.type === "register_ack" || msg.type === "peers") void refreshRoom();
 }
 
-function answer(id: string, choice: Answer): void {
-  const frame = choice === "defer" ? buildPermissionDefer(id) : buildPermissionResponse(id, choice === "allow");
-  if (client.send(serialize(frame))) dispatch({ type: "send", id, answer: choice, now: Date.now() });
+function wire(id: string, choice: Reply): ConsumerToServerMessage {
+  switch (choice.kind) {
+    case "allow":
+    case "deny":
+      return buildPermissionResponse(id, choice.kind === "allow");
+    case "defer":
+      return buildPermissionDefer(id);
+    case "decide":
+      return buildDecide(id, choice.choice);
+    case "answers":
+      return buildQuestionResponse(id, choice.answers);
+  }
+}
+
+function reply(id: string, choice: Reply): void {
+  if (client.send(serialize(wire(id, choice)))) dispatch({ type: "send", id, reply: choice, now: Date.now() });
   else dispatch({ type: "toast", text: "Not connected; the answer was not sent", now: Date.now() });
 }
 
-function attention(tool: string, summary: string, id: string): void {
-  setText(byId("announcer"), `New ${tool} request: ${summary}`);
+/** Protocol 14.6: a person working on a question or plan keeps it alive. */
+function touch(id: string): void {
+  const card = state.requests.find((r) => r.id === id);
+  const now = Date.now();
+  if (card === undefined || !extendDue(card, now)) return;
+  if (client.send(serialize(buildExtend(id)))) dispatch({ type: "extend", id, now });
+}
+
+function loadFullText(id: string): void {
+  state = reduce(state, { type: "detail", id, full: { state: "loading" } });
+  api<RoomRequestDetail>("GET", `/api/room/requests/${encodeURIComponent(id)}`)
+    .then((detail) => dispatch({ type: "detail", id, full: { state: "loaded", toolInput: detail.toolInput } }))
+    .catch(() => dispatch({ type: "detail", id, full: { state: "failed" } }));
+}
+
+function describe(card: RequestCard): string {
+  switch (card.kind) {
+    case "permission":
+      return card.cmd ?? card.summary;
+    case "question":
+      return card.questions[0]?.text ?? "";
+    case "plan":
+      return card.title;
+  }
+}
+
+function attention(card: RequestCard): void {
+  const what = describe(card);
+  setText(byId("announcer"), `New ${card.label} request: ${what}`);
   if (document.visibilityState === "visible") return;
   unseen += 1;
   document.title = `(${unseen}) ${TITLE}`;
   if ("Notification" in window && Notification.permission === "granted") {
-    new Notification(`${TITLE}: ${tool}`, { body: summary, tag: id });
+    new Notification(`${TITLE}: ${card.label}`, { body: what, tag: card.id });
   }
+}
+
+function browserTimeZone(): string {
+  return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+let zoneAdopted = false;
+
+/** Protocol 14.9: a room without a time zone takes this browser's, once per page load. */
+function adoptBrowserTimeZone(): void {
+  if (zoneAdopted || state.settings?.timeZone !== "") return;
+  zoneAdopted = true;
+  const timeZone = browserTimeZone();
+  if (timeZone === "") return;
+  api<RoomSettings>("PUT", "/api/room/settings", { timeZone })
+    .then((settings) => dispatch({ type: "settings", settings }))
+    .catch(() => undefined);
 }
 
 async function refreshRoom(): Promise<void> {
@@ -163,7 +241,6 @@ document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || target?.closest("input, select, textarea") != null) return;
   if (requests.keydown(e)) e.preventDefault();
 });
-document.addEventListener("keyup", (e) => requests.keyup(e));
 document.addEventListener("visibilitychange", () => {
   holding.visibilityChanged();
   if (document.visibilityState === "visible") {

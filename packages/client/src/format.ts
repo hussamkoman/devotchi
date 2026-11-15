@@ -1,7 +1,7 @@
 // Human-readable liveness and battery text shared by status, devices,
 // doctor and the MCP device summary.
 
-import type { Device, LastRequest } from "@devotchi/shared";
+import type { Device, DismissChoice, LastRequest, PendingRequestInfo } from "@devotchi/shared";
 
 export function secondsSince(iso: string | null | undefined, now: number): number | null {
   if (iso === null || iso === undefined) return null;
@@ -64,5 +64,30 @@ export function deviceLine(device: Device, now: number): string {
 export function lastRequestLine(last: LastRequest | null, now: number): string {
   if (last === null) return "none yet";
   const by = last.by !== undefined ? ` by ${last.by}` : "";
-  return `${last.tool}: ${last.outcome} (${last.detail})${by}, ${ago(secondsSince(last.at, now))}`;
+  const choice = last.choice !== undefined ? `, ${CHOICE_WORDS[last.choice] ?? last.choice}` : "";
+  return `${last.tool}: ${last.outcome} (${last.detail}${choice})${by}, ${ago(secondsSince(last.at, now))}`;
+}
+
+/** `dismiss.choice` / `lastRequest.choice` in words (protocol 14.3). */
+export const CHOICE_WORDS: Record<DismissChoice, string> = {
+  allow_session: "allowed for this session",
+  deny_ask_why: "denied, asked why",
+  deny_stop: "denied and stopped",
+  approve: "plan approved, edits still asked",
+  approve_accept_edits: "plan approved, edits accepted",
+  revise: "plan sent back for changes",
+  decline: "declined to answer",
+  answered: "answers sent",
+};
+
+/** "2 (1 permission, 1 question)" for the pending requests of a room. */
+export function pendingLine(pending: readonly PendingRequestInfo[]): string {
+  if (pending.length === 0) return "none";
+  const counts = new Map<string, number>();
+  for (const p of pending) {
+    // A server without phase 2 sends no kind: all its requests are permissions.
+    const kind = p.kind ?? "permission";
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return `${pending.length} (${[...counts].map(([kind, n]) => `${n} ${kind}`).join(", ")})`;
 }

@@ -5,6 +5,7 @@ import { ApiError } from "../api.js";
 import { connectServer, printJson, type Io } from "../context.js";
 import { CliError, UsageError } from "../errors.js";
 import { deviceLine, deviceLiveness } from "../format.js";
+import { adoptTimeZone } from "../timezone.js";
 
 interface ServerOption {
   server?: string;
@@ -75,6 +76,8 @@ export async function pair(code: string | undefined, options: PairOptions, io: I
     if (normalised === null) throw new UsageError(`"${code}" is not a pairing code (6 letters and digits, e.g. K7M2QX)`);
   }
   const { api } = await connectServer(options.server, io);
+  const zone = await adoptTimeZone(api).catch(() => null);
+  if (zone !== null && options.json !== true) io.out(`Room time zone: ${zone} (from this PC)`);
   if (normalised === null) {
     const created = await api.createPairCode();
     if (options.json === true) printJson(io, created);

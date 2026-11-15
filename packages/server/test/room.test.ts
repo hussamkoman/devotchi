@@ -150,7 +150,20 @@ describe("GET /api/room", () => {
       lastRequest: null,
       diagnostics: { dialogWhilePending: { count: 0, lastSeenAt: null } },
       devices: [],
+      features: { questions: true, plans: true, sessionGrants: true },
+      capableConsumers: { decide: 0, ask: 0, plan: 0, pets: 0 },
     });
+  });
+
+  it("reports the feature switches and counts consumers per cap", async () => {
+    const t = await start({ features: { plans: false } });
+    const { token } = await t.mintToken();
+    await track(consumer(t, token, { kind: "dashboard", caps: ["decide", "ask", "plan"] }));
+    await track(consumer(t, token, { kind: "sim", deviceId: "sim-ask", caps: ["ask"] }));
+    await track(consumer(t, token));
+    const room = await roomState(t, token);
+    expect(room.features).toEqual({ questions: true, plans: false, sessionGrants: true });
+    expect(room.capableConsumers).toEqual({ decide: 1, ask: 2, plan: 0, pets: 0 });
   });
 
   it("lists peers and pending requests with their holders", async () => {
@@ -187,6 +200,8 @@ describe("GET /api/room", () => {
       lastRequest: null,
       diagnostics: { dialogWhilePending: { count: 0, lastSeenAt: null } },
       devices: [],
+      features: { questions: true, plans: true, sessionGrants: true },
+      capableConsumers: { decide: 0, ask: 0, plan: 0, pets: 0 },
     });
     expect(room.pending[0].ageMs + room.pending[0].remainingMs).toBe(30000);
     c.send({ type: "permission_defer", id: held.id });

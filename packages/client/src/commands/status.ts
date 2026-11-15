@@ -4,7 +4,7 @@
 import type { HealthResponse, MeResponse, Room } from "@devotchi/shared";
 import { ApiClient } from "../api.js";
 import { connectServer, printJson, type Io } from "../context.js";
-import { deviceLine, deviceLiveness, lastRequestLine } from "../format.js";
+import { deviceLine, deviceLiveness, lastRequestLine, pendingLine } from "../format.js";
 import { ConfigStore } from "../config.js";
 
 export interface StatusOptions {
@@ -25,8 +25,9 @@ export async function runStatus(options: StatusOptions, io: Io): Promise<number>
       server: { url, version: health.version, proto: health.proto, mode: health.mode, uptimeS: health.uptimeS },
       token: { valid: true, kind: me.kind, roomId: me.roomId, source: ctx.creds.source },
       peers: room.peers,
-      room: { mode: room.settings.mode, holdMs: room.settings.holdMs, shareText: room.settings.shareText },
+      room: { mode: room.settings.mode, holdMs: room.settings.holdMs, shareText: room.settings.shareText, timeZone: room.settings.timeZone },
       pending: room.pending.length,
+      pendingKinds: room.pending.map((p) => p.kind),
       devices: room.devices.map((device) => deviceLiveness(device, now)),
       lastRequest: room.lastRequest,
       diagnostics: room.diagnostics,
@@ -40,7 +41,8 @@ export async function runStatus(options: StatusOptions, io: Io): Promise<number>
     `Peers:    ${room.peers.consumers} consumer(s) incl. ${room.peers.devices} device(s), ${room.peers.producers} producer(s)`,
   );
   io.out(`Mode:     ${room.settings.mode}, hold time ${room.settings.holdMs / 1000} s`);
-  io.out(`Pending:  ${room.pending.length} request(s)`);
+  io.out(`Time zone: ${room.settings.timeZone === "" ? "server default" : room.settings.timeZone}`);
+  io.out(`Pending:  ${pendingLine(room.pending)}`);
   io.out(`Last request: ${lastRequestLine(room.lastRequest, now)}`);
   if (room.devices.length === 0) io.out("Devices:  none paired (devotchi pair <CODE>)");
   else {

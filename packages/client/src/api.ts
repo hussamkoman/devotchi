@@ -13,6 +13,7 @@ import {
   type NotifyResponse,
   type PairConfirmResponse,
   type Room,
+  type RoomRequestDetail,
   type RoomSettings,
   type UpdateRoomSettingsRequest,
 } from "@devotchi/shared";
@@ -143,6 +144,11 @@ export class ApiClient {
 
   room(): Promise<Room> {
     return this.request("GET", "/api/room");
+  }
+
+  /** Protocol 14.6a: the full tool input of a pending request. */
+  roomRequest(id: string): Promise<RoomRequestDetail> {
+    return this.request("GET", `/api/room/requests/${encodeURIComponent(id)}`);
   }
 
   updateRoomSettings(changes: UpdateRoomSettingsRequest): Promise<RoomSettings> {

@@ -275,6 +275,29 @@ describe("WebSocket proxy", () => {
     expect((await apiFetch("/api/room/settings", { method: "PUT", json: { mode: "ask" } })).status).toBe(200);
   });
 
+  it("registers with the dashboard caps and proxies the full text of a pending request", async () => {
+    const { ws } = await openWs(`/ws?s=${dash.secret}`);
+    const ack = await nextMessage(ws, "register_ack");
+    expect(ack.caps).toEqual(expect.arrayContaining(["decide", "ask", "plan"]));
+    const room = (await (await apiFetch("/api/room")).json()) as { capableConsumers: Record<string, number> };
+    expect(room.capableConsumers).toMatchObject({ decide: 1, ask: 1, plan: 1, pets: 0 });
+
+    const reply = t.fetch("/hook/event", {
+      method: "POST",
+      token,
+      json: { hook_event_name: "PermissionRequest", session_id: "s", cwd: "/tmp", tool_name: "ExitPlanMode", tool_input: { plan: "# Plan\n- one" } },
+    });
+    const plan = await nextMessage(ws, "plan");
+    const detail = await apiFetch(`/api/room/requests/${String(plan.id)}`);
+    expect(await detail.json()).toMatchObject({ id: plan.id, kind: "plan", tool: "ExitPlanMode", toolInput: { plan: "# Plan\n- one" } });
+    expect((await apiFetch(`/api/room/requests/${"0".repeat(32)}`)).status).toBe(404);
+    expect((await apiFetch("/api/room/requests/not-an-id")).status).toBe(404);
+    expect((await apiFetch(`/api/room/requests/${String(plan.id)}`, { secret: null })).status).toBe(403);
+    ws.send(JSON.stringify({ type: "permission_defer", id: plan.id }));
+    expect(await (await reply).json()).toEqual({});
+    ws.close();
+  });
+
   it("maps an upstream 401 to close 4003", async () => {
     const bad = await startWebServer({ serverUrl: t.url, token: "00000000-0000-4000-8000-000000000000", port: 0, local: false, webDir });
     try {

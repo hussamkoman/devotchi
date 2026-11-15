@@ -1,7 +1,8 @@
 // REST request and response types (protocol section 7) and hook replies
 // (section 8.3).
 
-import type { DismissChoice, Mood, Peers, RequestKind, Risk, RoomMode, TelemetryMessage, TokenKind } from "./protocol.js";
+import type { ServerFeatures } from "./config.js";
+import type { Cap, DismissChoice, Mood, Peers, RequestKind, Risk, RoomMode, TelemetryMessage, TokenKind } from "./protocol.js";
 
 export type ServerMode = "single-user" | "multi-user";
 
@@ -280,6 +281,10 @@ export interface Room {
   lastRequest: LastRequest | null;
   diagnostics: RoomDiagnostics;
   devices: Device[];
+  /** The server's switches of protocol 14.11; absent from servers without phase 2. */
+  features?: ServerFeatures;
+  /** Connected consumers per cap they declared and the server offers. */
+  capableConsumers?: Partial<Record<Cap, number>>;
 }
 
 // --- Notifications from scripts (7.7) ---

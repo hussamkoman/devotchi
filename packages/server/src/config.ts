@@ -191,6 +191,15 @@ function envEnum<T extends string>(env: Env, name: string, values: readonly T[],
   return raw as T;
 }
 
+/** Protocol 14.11 switches; also read by the server embedded in `devotchi start --local`. */
+export function featuresFromEnv(env: Env = process.env): ServerFeatures {
+  return {
+    questions: envSwitch(env, "DEVOTCHI_QUESTIONS", DEFAULT_SERVER_FEATURES.questions),
+    plans: envSwitch(env, "DEVOTCHI_PLANS", DEFAULT_SERVER_FEATURES.plans),
+    sessionGrants: envSwitch(env, "DEVOTCHI_SESSION_GRANTS", DEFAULT_SERVER_FEATURES.sessionGrants),
+  };
+}
+
 /** Reads the environment table of architecture 2.6. Throws ConfigError. */
 export function loadConfig(env: Env = process.env): EnvConfig {
   const warnings: string[] = [];
@@ -236,11 +245,7 @@ export function loadConfig(env: Env = process.env): EnvConfig {
     inviteCode,
     logLevel: envEnum<LogLevel>(env, "DEVOTCHI_LOG_LEVEL", LOG_LEVELS, "info"),
     timing,
-    features: {
-      questions: envSwitch(env, "DEVOTCHI_QUESTIONS", DEFAULT_SERVER_FEATURES.questions),
-      plans: envSwitch(env, "DEVOTCHI_PLANS", DEFAULT_SERVER_FEATURES.plans),
-      sessionGrants: envSwitch(env, "DEVOTCHI_SESSION_GRANTS", DEFAULT_SERVER_FEATURES.sessionGrants),
-    },
+    features: featuresFromEnv(env),
   });
   return { config, warnings };
 }

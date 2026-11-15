@@ -17,8 +17,10 @@ import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
   API_BODY_LIMIT_BYTES,
   HARD_FRAME_BYTES,
+  REQUEST_ID_RE,
   buildRegister,
   serialize,
+  type Cap,
   type ServerMode,
   type UpdateRoomSettingsRequest,
 } from "@devotchi/shared";
@@ -34,6 +36,8 @@ export const SESSION_META = "devotchi-session";
 /** Close code the proxy uses when the server refused the CLI token (protocol 3.6). */
 const CLOSE_TOKEN_REJECTED = 4003;
 const CLOSE_UPSTREAM_FAILED = 1011;
+/** The dashboard shows card fields, questions and plans (protocol 14.1); pets are device-only. */
+export const DASHBOARD_CAPS: readonly Cap[] = ["decide", "ask", "plan"];
 /** Frames a browser may send before the upstream socket is registered. */
 const MAX_QUEUED_FRAMES = 32;
 
@@ -232,13 +236,21 @@ export async function startWebServer(options: DashboardOptions): Promise<Dashboa
         throw new HttpError(400, "invalid_request", "malformed device id");
       }
     }
-    const route = `${method} ${deviceMatch === null ? path : deviceMatch[2] === undefined ? "/api/devices/:id" : "/api/devices/:id/identify"}`;
+    const requestMatch = /^\/api\/room\/requests\/([^/]{1,64})$/.exec(path);
+    const requestId = requestMatch?.[1] ?? "";
+    const route =
+      requestMatch !== null
+        ? `${method} /api/room/requests/:id`
+        : `${method} ${deviceMatch === null ? path : deviceMatch[2] === undefined ? "/api/devices/:id" : "/api/devices/:id/identify"}`;
 
     switch (route) {
       case "GET /api/config":
         return sendJson(res, 200, { serverUrl: options.serverUrl, serverVersion: health.version, mode: serverMode, local: options.local }, headers);
       case "GET /api/room":
         return sendJson(res, 200, await api.room(), headers);
+      case "GET /api/room/requests/:id":
+        if (!REQUEST_ID_RE.test(requestId)) throw new HttpError(404, "not_found", "No such pending request");
+        return sendJson(res, 200, await api.roomRequest(requestId), headers);
       case "PUT /api/room/settings":
         return sendJson(res, 200, await api.updateRoomSettings((await readJsonBody(req)) as UpdateRoomSettingsRequest), headers);
       case "GET /api/devices":
@@ -331,7 +343,7 @@ export async function startWebServer(options: DashboardOptions): Promise<Dashboa
       else closeBrowser(CLOSE_UPSTREAM_FAILED, `the server refused the WebSocket (HTTP ${status})`);
     });
     upstream.on("open", () => {
-      upstream.send(serialize(buildRegister({ role: "consumer", client: { kind: "dashboard", version: CLIENT_VERSION } })));
+      upstream.send(serialize(buildRegister({ role: "consumer", client: { kind: "dashboard", version: CLIENT_VERSION, caps: [...DASHBOARD_CAPS] } })));
     });
     upstream.on("message", (data: RawData) => {
       const text = data.toString();

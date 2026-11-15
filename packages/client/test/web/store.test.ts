@@ -57,14 +57,14 @@ describe("store reducer", () => {
     );
     expect(s.requests.map((r) => r.id)).toEqual([id(4)]);
     const notes = s.toasts.map((t) => t.text);
-    expect(notes).toEqual(["Bash: approved, answered on desk", "Bash: handled in terminal", "Bash: timed out"]);
+    expect(notes).toEqual(["Bash: allowed, answered on desk", "Bash: handled in terminal", "Bash: time ran out, sent to terminal"]);
     s = run(s, frame({ type: "dismiss", id: id(4), reason: "released" }), frame({ type: "dismiss", id: id(9), reason: "released" }));
     expect(s.requests).toEqual([]);
     expect(s.toasts.at(-1)?.text).toBe("Bash: handed to the terminal");
   });
 
   it("an error with id UNKNOWN_REQUEST removes that request; INVALID_MESSAGE re-enables it", () => {
-    let s = run(open(), frame(permission(1)), frame(permission(2)), { type: "send", id: id(1), answer: "allow", now: T0 }, { type: "send", id: id(2), answer: "deny", now: T0 });
+    let s = run(open(), frame(permission(1)), frame(permission(2)), { type: "send", id: id(1), reply: { kind: "allow" }, now: T0 }, { type: "send", id: id(2), reply: { kind: "deny" }, now: T0 });
     expect(s.requests.every((r) => r.sending !== null)).toBe(true);
     s = run(
       s,
@@ -77,7 +77,7 @@ describe("store reducer", () => {
   });
 
   it("drops a request at its local deadline and flags a send without a dismiss after 3 s", () => {
-    let s = run(open(), frame(permission(1, { timeout: 2000 })), frame(permission(2)), { type: "send", id: id(2), answer: "defer", now: T0 + 100 });
+    let s = run(open(), frame(permission(1, { timeout: 2000 })), frame(permission(2)), { type: "send", id: id(2), reply: { kind: "defer" }, now: T0 + 100 });
     s = run(s, { type: "tick", now: T0 + 1999 });
     expect(s.requests).toHaveLength(2);
     s = run(s, { type: "tick", now: T0 + 2000 });

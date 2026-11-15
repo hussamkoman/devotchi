@@ -15,6 +15,7 @@ import type { LocalServer } from "./local.js";
 import { startMcpServer } from "./mcp.js";
 import { runSetup } from "./setup.js";
 import { CLIENT_VERSION } from "./version.js";
+import { adoptTimeZone } from "./timezone.js";
 import { startWebServer } from "./web-server.js";
 
 const SERVER_OPTION = ["--server <url>", "Devotchi server URL (default: DEVOTCHI_SERVER_URL or the configured server)"] as const;
@@ -105,7 +106,13 @@ program
 
     let dashboard;
     try {
-      const { url, creds } = await connectServer(local?.url ?? opts.server, io);
+      const { url, creds, api } = await connectServer(local?.url ?? opts.server, io);
+      try {
+        const zone = await adoptTimeZone(api);
+        if (zone !== null) say(`Room time zone: ${zone} (from this PC)`);
+      } catch (err) {
+        note(`could not set the room time zone: ${errorMessage(err)}`);
+      }
       const config = await store.load();
       dashboard = await startWebServer({
         serverUrl: url,

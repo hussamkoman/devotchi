@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ApiClient } from "../src/api.js";
 import { ConfigStore } from "../src/config.js";
 import { ServerCredentialSource } from "../src/credentials.js";
-import { CliError } from "../src/errors.js";
+import { CliError, UsageError } from "../src/errors.js";
 import { lanAddresses, startLocalServer, type LocalServer } from "../src/local.js";
 import { makeSandbox, requireBuiltCli, startCli, waitForExit, type Sandbox } from "./helpers.js";
 
@@ -98,6 +98,18 @@ describe("--local", () => {
     }
   });
 
+  it("reads the phase-2 switches from the environment, and refuses a bad value", async () => {
+    local = await startLocalServer({ store, lan: false, port: 0, logSink: () => undefined, env: { DEVOTCHI_SESSION_GRANTS: "0" } });
+    const source = new ServerCredentialSource(store, local.url);
+    const creds = await source.verify(await source.get());
+    const room = await new ApiClient(local.url, { token: creds.token }).room();
+    expect(room.features).toEqual({ questions: true, plans: true, sessionGrants: false });
+    await local.server.close();
+    local = null;
+    const err = await startLocalServer({ store, lan: false, port: 0, env: { DEVOTCHI_PLANS: "yes" } }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UsageError);
+  });
+
   it("listens on all interfaces with --lan", async () => {
     local = await startLocalServer({ store, lan: true, port: 0, logSink: () => undefined });
     expect((local.server.internals.http.address() as net.AddressInfo).address).toBe("0.0.0.0");
@@ -123,7 +135,7 @@ describe("--local", () => {
     requireBuiltCli();
     const started = await startCli(
       ["start", "--local", "--server-port", "0", "--port", "0", "--no-open"],
-      box.env,
+      { ...box.env, TZ: "Asia/Tokyo" },
       /Dashboard: http:\/\/localhost:(\d+)/,
     );
     try {
@@ -134,6 +146,8 @@ describe("--local", () => {
       const creds = (await store.getCredentials(serverUrl))!;
       const room = await new ApiClient(serverUrl, { token: creds.token }).room();
       expect(room.peers.producers).toBe(0);
+      expect(room.settings.timeZone).toBe("Asia/Tokyo");
+      expect(started.stdout()).toContain("Room time zone: Asia/Tokyo (from this PC)");
       const page = await fetch(`http://127.0.0.1:${started.match[1]}/`);
       expect(page.status).toBe(200);
       expect(started.stderr()).not.toContain("ExperimentalWarning");

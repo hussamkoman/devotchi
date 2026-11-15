@@ -31,7 +31,7 @@ import { tokenRoutes } from "./routes/tokens.js";
 import { StartupError } from "./startup-error.js";
 import { WsServer } from "./ws/server.js";
 
-export { ConfigError, loadConfig, resolveConfig, type ServerConfigInput, type ResolvedConfig } from "./config.js";
+export { ConfigError, featuresFromEnv, loadConfig, resolveConfig, type ServerConfigInput, type ResolvedConfig } from "./config.js";
 export { DatabaseError } from "./db/index.js";
 export { StartupError } from "./startup-error.js";
 export { SERVER_VERSION } from "./version.js";
