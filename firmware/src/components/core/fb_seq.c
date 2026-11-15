@@ -49,6 +49,12 @@ static const fb_seq_step_t CLICK[] = {
     {100, 0, 40},
 };
 
+/* Motor 60 x35 with the click's LED flash, so the press's own click adds nothing. */
+static const fb_seq_step_t PRESS[] = {
+    {100, 60, 35},
+    {100, 0, 5},
+};
+
 static const fb_seq_step_t PENDING[] = {
     {0, 0, 250}, {25, 0, 250}, {50, 0, 250}, {75, 0, 250},
     {100, 0, 250}, {75, 0, 250}, {50, 0, 250}, {25, 0, 250},
@@ -69,6 +75,7 @@ static const fb_seq_pattern_t PATTERNS[FB_SEQ_COUNT] = {
     [FB_SEQ_POSITIVE] = {"positive", POSITIVE, COUNT_OF(POSITIVE), 0, false, 1},
     [FB_SEQ_TICK] = {"tick", TICK, COUNT_OF(TICK), 0, false, 0},
     [FB_SEQ_CLICK] = {"click", CLICK, COUNT_OF(CLICK), 0, false, 0},
+    [FB_SEQ_PRESS] = {"press", PRESS, COUNT_OF(PRESS), 0, false, 1},
     [FB_SEQ_PENDING] = {"pending", PENDING, COUNT_OF(PENDING), 0, true, 0},
     [FB_SEQ_NEXT] = {"next", NEXT, COUNT_OF(NEXT), 0, false, 1},
 };
@@ -95,6 +102,7 @@ void fb_seq_init(fb_seq_t *s, uint8_t motor_max_pct)
         .id = FB_SEQ_COUNT,
         .haptic = FB_SEQ_HAPTIC_FULL,
         .led_enabled = true,
+        .clicks_enabled = true,
         .motor_max_pct = motor_max_pct > 100 ? 100 : motor_max_pct,
     };
 }
@@ -103,6 +111,11 @@ void fb_seq_set_output(fb_seq_t *s, fb_seq_haptic_t haptic, bool led_enabled)
 {
     s->haptic = haptic;
     s->led_enabled = led_enabled;
+}
+
+void fb_seq_set_clicks(fb_seq_t *s, bool enabled)
+{
+    s->clicks_enabled = enabled;
 }
 
 bool fb_seq_running(const fb_seq_t *s)
@@ -147,6 +160,9 @@ static uint8_t scale_motor(const fb_seq_t *s, uint8_t pct)
         [FB_SEQ_HAPTIC_GENTLE] = 50,
         [FB_SEQ_HAPTIC_FULL] = 100,
     };
+    if (!s->clicks_enabled && (s->id == FB_SEQ_PRESS || s->id == FB_SEQ_TICK)) {
+        return 0;
+    }
     const uint32_t haptic = s->haptic <= FB_SEQ_HAPTIC_FULL ? HAPTIC_PCT[s->haptic] : 0;
     return (uint8_t)((pct * haptic * s->motor_max_pct + 5000U) / 10000U);
 }

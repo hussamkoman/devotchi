@@ -45,6 +45,7 @@ static const item_def_t ITEMS[SETTINGS_ITEM_COUNT] = {
     [SETTINGS_ITEM_NIGHT] = {"night", "Night dimming", SETTINGS_KIND_VALUE, CHOICES(ON_OFF), 0},
     [SETTINGS_ITEM_HAPTICS] = {"haptics", "Haptics", SETTINGS_KIND_VALUE, CHOICES(HAPTICS), 0},
     [SETTINGS_ITEM_LED] = {"led", "LED", SETTINGS_KIND_VALUE, CHOICES(ON_OFF), 0},
+    [SETTINGS_ITEM_CLICKS] = {"clicks", "Button clicks", SETTINGS_KIND_VALUE, CHOICES(ON_OFF), 0},
     [SETTINGS_ITEM_WIFI_SETUP] = {"wifi_setup", "Wi-Fi setup", SETTINGS_KIND_ACTION, NULL, 0, 0},
     [SETTINGS_ITEM_UNPAIR] = {"unpair", "Unpair", SETTINGS_KIND_DESTRUCTIVE, NULL, 0, 0},
     [SETTINGS_ITEM_FACTORY_RESET] = {"factory_reset", "Factory reset", SETTINGS_KIND_DESTRUCTIVE, NULL, 0, 0},
@@ -60,7 +61,7 @@ static const settings_item_t DISPLAY[] = {SETTINGS_ITEM_BRIGHTNESS, SETTINGS_ITE
                                           SETTINGS_ITEM_DEEP_SLEEP};
 static const settings_item_t CLOCK[] = {SETTINGS_ITEM_SHOW_CLOCK, SETTINGS_ITEM_CLOCK_BRIGHTNESS, SETTINGS_ITEM_H24,
                                         SETTINGS_ITEM_NIGHT};
-static const settings_item_t HAPTICS_LED[] = {SETTINGS_ITEM_HAPTICS, SETTINGS_ITEM_LED};
+static const settings_item_t HAPTICS_LED[] = {SETTINGS_ITEM_HAPTICS, SETTINGS_ITEM_CLICKS, SETTINGS_ITEM_LED};
 static const settings_item_t NETWORK[] = {SETTINGS_ITEM_WIFI_SETUP, SETTINGS_ITEM_UNPAIR,
                                           SETTINGS_ITEM_FACTORY_RESET};
 
@@ -191,6 +192,7 @@ void settings_value_parts(settings_item_t item, uint16_t value, char num[SETTING
         break;
     case SETTINGS_ITEM_NIGHT:
     case SETTINGS_ITEM_LED:
+    case SETTINGS_ITEM_CLICKS:
     case SETTINGS_ITEM_DESK:
         snprintf(num, SETTINGS_VALUE_TEXT_SIZE, "%s", value != 0 ? "On" : "Off");
         break;

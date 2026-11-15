@@ -33,6 +33,8 @@ typedef enum {
     STORAGE_SETTING_CLOCK_BRI,
     STORAGE_SETTING_H24,
     STORAGE_SETTING_NIGHT,
+    /** A short buzz on every button press (gated by the Haptics level too). */
+    STORAGE_SETTING_CLICKS,
     STORAGE_SETTING_COUNT,
 } storage_setting_t;
 

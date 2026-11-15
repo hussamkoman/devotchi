@@ -53,6 +53,7 @@ static const setting_def_t SETTINGS[] = {
     {"clock_bri", STORAGE_SETTING_CLOCK_BRI, SETTINGS_ITEM_CLOCK_BRIGHTNESS},
     {"h24", STORAGE_SETTING_H24, SETTINGS_ITEM_H24},
     {"night", STORAGE_SETTING_NIGHT, SETTINGS_ITEM_NIGHT},
+    {"clicks", STORAGE_SETTING_CLICKS, SETTINGS_ITEM_CLICKS},
 };
 
 static const uint16_t *setting_values(const setting_def_t *def, size_t *count)

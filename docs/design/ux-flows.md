@@ -19,7 +19,7 @@ boot splash (01)
       │           ├─ Pet ─────────> pet picker (60-62)
       │           ├─ Display ─────> sub-list (51) ─> value editor (52)
       │           ├─ Clock ───────> sub-list: Show clock, Clock brightness, 12/24 h, Night dimming, Night hours
-      │           ├─ Haptics and LED ─> sub-list: Haptics off/gentle/full, LED on/off
+      │           ├─ Haptics and LED ─> sub-list: Haptics off/gentle/full, Button clicks on/off, LED on/off
       │           ├─ Desk mode ───> toggles in place (toast 19)
       │           ├─ Network ─────> sub-list: Wi-Fi setup, Unpair, Factory reset ─> confirm (53)
       │           ├─ Showcase ────> SHOWCASE menu (80) ─> moods (81), reactions (82),

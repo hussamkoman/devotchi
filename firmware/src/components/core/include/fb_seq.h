@@ -17,6 +17,8 @@ typedef enum {
     FB_SEQ_PENDING,
     /** Short-long buzz: a request card replaced the one just answered (28b). */
     FB_SEQ_NEXT,
+    /** The buzz of a button press (Settings > Button clicks); above tick and click so the press's own one-shot cannot cut it. */
+    FB_SEQ_PRESS,
     FB_SEQ_COUNT,
 } fb_seq_id_t;
 
@@ -67,6 +69,8 @@ typedef struct {
     uint32_t duration_ms;
     fb_seq_haptic_t haptic;
     bool led_enabled;
+    /** False mutes the motor of the button patterns (press, tick). */
+    bool clicks_enabled;
     uint8_t motor_max_pct;
 } fb_seq_t;
 
@@ -80,6 +84,8 @@ void fb_seq_init(fb_seq_t *s, uint8_t motor_max_pct);
 
 /** Changes the output scaling; takes effect at the next poll. */
 void fb_seq_set_output(fb_seq_t *s, fb_seq_haptic_t haptic, bool led_enabled);
+/** Turns the button buzz (press and tick patterns) on or off. */
+void fb_seq_set_clicks(fb_seq_t *s, bool enabled);
 
 /**
  * Starts a pattern unless a running one has a higher priority; returns false

@@ -157,10 +157,12 @@ void feedback_reload_settings(void)
 {
     const uint16_t haptic = storage_get_setting(STORAGE_SETTING_HAPTIC);
     const bool led = storage_get_setting(STORAGE_SETTING_LED) != 0;
+    const bool clicks = storage_get_setting(STORAGE_SETTING_CLICKS) != 0;
     if (s_lock == NULL || xSemaphoreTake(s_lock, pdMS_TO_TICKS(LOCK_TIMEOUT_MS)) != pdTRUE) {
         return;
     }
     fb_seq_set_output(&s_seq, haptic <= FB_SEQ_HAPTIC_FULL ? (fb_seq_haptic_t)haptic : FB_SEQ_HAPTIC_FULL, led);
+    fb_seq_set_clicks(&s_seq, clicks);
     reports_t r = {0};
     if (fb_seq_running(&s_seq)) {
         run_step(&r);

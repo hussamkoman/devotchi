@@ -168,8 +168,9 @@ protocol message locally), `wake`, `reboot`, and for the screens below
   Console paths: `top`, `quick`, a list (`display`, `clock`, `haptics_led`,
   `network`) or `<list>/<row>` (`clock/clock_brightness` opens the editor,
   `network/factory_reset` the confirm). New NVS keys (all optional):
-  `s_clock`, `s_clk_bri`, `s_24h`, `s_night`; `set clock|clock_bri|h24|night`
-  writes them.
+  `s_clock`, `s_clk_bri`, `s_24h`, `s_night`, `s_clicks`;
+  `set clock|clock_bri|h24|night|clicks` writes them. Button clicks (on by
+  default) plays the `press` buzz on every press; Haptics Off silences it too.
 - **Time.** `register_ack` (`serverTime`, `utcOffsetMin`) and `time` set the
   system clock and the offset; the offset lives in RTC memory, so time
   survives deep sleep and a power-on shows none until the next registration.

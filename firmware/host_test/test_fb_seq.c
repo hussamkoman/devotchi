@@ -326,6 +326,33 @@ static void test_scaling(void)
     TEST_ASSERT_EQUAL_UINT8(0, out.led_pct);
 }
 
+static void test_press_and_clicks_switch(void)
+{
+    static const timed_t press[] = {{0, 100, 60}, {35, 100, 0}};
+    play_once(FB_SEQ_PRESS, press, 2, 40);
+
+    fb_seq_t s;
+    fb_seq_out_t out;
+    fb_seq_init(&s, 100);
+    /* The press outranks the click and tick its own handler plays. */
+    TEST_ASSERT_TRUE(fb_seq_start(&s, FB_SEQ_PRESS, 0, 0));
+    TEST_ASSERT_FALSE(fb_seq_start(&s, FB_SEQ_CLICK, 0, 1));
+    TEST_ASSERT_FALSE(fb_seq_start(&s, FB_SEQ_TICK, 0, 1));
+    /* Button clicks off: press and tick lose the motor, the LED and other patterns stay. */
+    fb_seq_set_clicks(&s, false);
+    fb_seq_poll(&s, 2, &out);
+    TEST_ASSERT_EQUAL_UINT8(0, out.motor_pct);
+    TEST_ASSERT_EQUAL_UINT8(100, out.led_pct);
+    fb_seq_stop(&s);
+    fb_seq_start(&s, FB_SEQ_TICK, 0, 100);
+    fb_seq_poll(&s, 100, &out);
+    TEST_ASSERT_EQUAL_UINT8(0, out.motor_pct);
+    fb_seq_stop(&s);
+    fb_seq_start(&s, FB_SEQ_NAG, 0, 200);
+    fb_seq_poll(&s, 200, &out);
+    TEST_ASSERT_EQUAL_UINT8(100, out.motor_pct);
+}
+
 static void test_wraparound(void)
 {
     fb_seq_t s;
@@ -356,6 +383,7 @@ int main(void)
     RUN_TEST(test_loop_stop);
     RUN_TEST(test_late_poll_keeps_schedule);
     RUN_TEST(test_scaling);
+    RUN_TEST(test_press_and_clicks_switch);
     RUN_TEST(test_wraparound);
     return UNITY_END();
 }

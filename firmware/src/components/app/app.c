@@ -372,6 +372,11 @@ static void on_button(const btn_fsm_out_t *out, uint32_t now_ms)
         console_evt(evt);
     }
     if (!out->swallowed) {
+        /* Every press the user means to count gets a buzz; a richer pattern the press triggers overrides it. */
+        if ((out->kind == BTN_CLICK || out->kind == BTN_HOLD || out->kind == BTN_COMMIT) &&
+            storage_get_setting(STORAGE_SETTING_CLICKS) != 0) {
+            feedback_play(FB_SEQ_PRESS);
+        }
         app_link_on_button(out);
     }
 }
@@ -503,6 +508,7 @@ void app_apply_setting(storage_setting_t id)
         break;
     case STORAGE_SETTING_HAPTIC:
     case STORAGE_SETTING_LED:
+    case STORAGE_SETTING_CLICKS:
         feedback_reload_settings();
         break;
     case STORAGE_SETTING_BATT:
