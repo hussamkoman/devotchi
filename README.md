@@ -111,8 +111,9 @@ time; the dashboard settings change it.
 
 Pets are data ([pets/README.md](pets/README.md)): every `pets/*.pet.json` is
 in the server's catalog, and the ones listed in `pets/builtin.txt` (Devo, the
-white ghost from the PCB silkscreen whose circuit traces glow in the mood
-colour, and the default; Mochi, the square pet with an
+ghost from the PCB silkscreen, dark with a white outline and white circuit
+traces, its antenna ball and chip light in the mood colour, and the default;
+Mochi, the square pet with an
 antenna; Ember, a small dragon) are also built into the firmware. Sprout, an
 egg with a sprouting leaf, is in the catalog only. Adding a pet is a JSON
 file, its preview sheet (`pnpm run pet-sheet <id>`) and `petpack.py check`, no

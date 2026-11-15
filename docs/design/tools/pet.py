@@ -35,8 +35,8 @@ def _source(pid):
         return json.load(fh)
 
 
-# Devo's body stays ghost white; its traces own eleven mood colours (pets/devo.pet.json). None of them
-# sits on a semantic UI hue (mint, amber, coral, sky): working is green, angry crimson, focused cobalt.
+# Devo's body stays dark and its traces white; the antenna ball and the chip light own eleven mood colours
+# (pets/devo.pet.json). None sits on a semantic UI hue (mint, amber, coral, sky).
 DEVO_COLOR = _source("devo")["palette"]["moods"]
 
 # Mochi owns one hue (apricot); a mood only shifts it (pets/mochi.pet.json).

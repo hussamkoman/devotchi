@@ -547,7 +547,7 @@ def build():
     screen("06-pairing", "Start-up", "Pairing code in two groups of three at display size, the exact command to type, expiry, and the server host on one mono line (default port hidden, long hosts cut in the middle).", b)
 
     # --- home ---
-    screen("10-home-idle", "Home", "Home, idle, no project label. Devo, the white ghost, idles with a smile and its traces glowing lilac. No button tabs: the pet owns the screen.", home("idle", "Waiting for an agent"))
+    screen("10-home-idle", "Home", "Home, idle, no project label. Devo, the dark PCB ghost with its white outline and traces, idles with a smile, ball and chip light lilac. No button tabs: the pet owns the screen.", home("idle", "Waiting for an agent"))
     screen("11-home-working", "Home", "Home, working, with project label: pupils on the work, tongue out, antenna sways with the scan.", home("working", "Edit src/routes/hooks.ts", "devotchi", look=(-55, 0)))
     screen("12-home-thinking", "Home", "Home, thinking: one brow up, mouth off-centre, dots rising, chip light pulsing.", home("thinking", "Planning the settings menu", "devotchi"))
     screen("13-home-happy", "Home", "Home, happy, after a positive notification.", home("happy", "47 tests passed", "devotchi"))
@@ -735,7 +735,7 @@ def build():
         b += a(0, 205, 320, 8, dots(pages, idx), "c", "line-height:8px")
         b += H([("click", "Back")], [("click", "Next")], None if current else [("click", "Use")])
         return b
-    screen("60-pet-picker", "Pets", "Pet picker: a live, animated preview per pet; the one in use is tagged. Page dots only: ACTION is the one way to move.", picker("devo", "Devo", "Built in · traces glow with its mood", 0, True))
+    screen("60-pet-picker", "Pets", "Pet picker: a live, animated preview per pet; the one in use is tagged. Page dots only: ACTION is the one way to move.", picker("devo", "Devo", "Built in · antenna glows with its mood", 0, True))
     screen("60b-pet-picker-mochi", "Pets", "The next built-in pet: Mochi, the soft square with an antenna. APPROVE switches.", picker("mochi", "Mochi", "Built in · a soft square with an antenna", 1, False))
     screen("61-pet-picker-ember", "Pets", "A pet with its own body, face and colours. APPROVE switches; the change shows everywhere at once.", picker("ember", "Ember", "Built in · a small jade dragon", 2, False))
     b = sb(left="Pet")
@@ -817,7 +817,7 @@ def pet_sheet():
         "happy": "big smile, perky antenna, hem ripples", "sad": "low gaze, tear, antenna droops, chip light off",
         "anxious": "pin pupils, sweat, chip light flickers", "excited": "open smile, fast bob, sparkles, chip light pulses",
         "proud": "eyes half shut looking up, sparkles", "angry": "brows down, frown, antenna bent back",
-        "sleeping": "lids closed, body settles, traces dim, Zzz",
+        "sleeping": "lids closed, body settles, lights out, Zzz",
     }
     notes = {
         "focused": "flat half lids, small smile, antenna straight and still", "working": "eyes on the work, tongue out, antenna wags",
@@ -851,7 +851,9 @@ def pet_sheet():
     gray = "".join(tile(pet_svg(k, m, scale=.45, gray=True), m, "", SURF, 100) for k in ("devo", "mochi", "ember", "sprout") for m in MOODS)
     onex = "".join(tile(pet_svg(k, m, scale=.46), m, "", BG, 100) for k in ("devo", "mochi", "ember", "sprout") for m in ("focused", "working", "thinking", "idle"))
     devo_body = pet_source("devo")["palette"]["base"]
-    sw = f'<span class="sw" style="background:{devo_body}">body<br>{devo_body}</span>'
+    devo_line = pet_source("devo")["palette"]["cream"]
+    sw = f'<span class="sw" style="background:{devo_body};color:{devo_line}">body<br>{devo_body}</span>'
+    sw += f'<span class="sw" style="background:{devo_line}">lines<br>{devo_line}</span>'
     sw += "".join(f'<span class="sw" style="background:{DEVO_COLOR[m]}">{m}<br>{DEVO_COLOR[m]}</span>' for m in MOODS)
     sw1 = "".join(f'<span class="sw" style="background:{pet_color("mochi", m)}">{m}<br>{pet_color("mochi", m)}</span>' for m in MOODS)
     sw2 = "".join(f'<span class="sw" style="background:{pet_color("ember", m)}">{m}<br>{pet_color("ember", m)}</span>' for m in MOODS)
@@ -869,7 +871,7 @@ figure svg{{margin:0 auto}} figcaption b{{display:block;font:700 16px/20px Figtr
 </style></head><body>
 <h1>Devotchi pets</h1>
 <p>A pet is data: its own palette, body parts, face style and four auxiliary channels, posed by the shared channel table of the firmware rig (pet_pose.c). Everything is rounded rectangles, circles, short polylines and a few triangles. See pet-animations.md.</p>
-<h2>Devo, the signature pet: 11 moods</h2><p>The ghost from the PCB silkscreen: a dome, straight sides and a three-bump hem, with the antenna and ball of the small logo. Ring eyes, a small smile, circuit traces with vias and two chips. Devo stays ghost white: its mood is the colour its traces, vias, chips and antenna ball glow in (dim grey asleep), with the face and the antenna. It floats over a soft shadow while its hem ripples; the light in the big chip pulses while it thinks, flickers when anxious and is off when sad or asleep, and the antenna ball is the on-screen twin of the device LED. Drawn here from its pack by the dashboard's renderer.</p>
+<h2>Devo, the signature pet: 11 moods</h2><p>The ghost from the PCB silkscreen: a dome, straight sides and a three-bump hem, with the antenna and ball of the small logo. It has the board's look: a dark body with a white outline and white circuit traces, vias and chips, round eyes with a glint and a small smile. The body and the traces never change: the mood colour shows on the antenna ball and on the light in the big chip (grey asleep), with the face and the antenna. It floats over a soft shadow while its hem ripples; the light in the big chip pulses while it thinks, flickers when anxious and is off when sad or asleep, and the antenna ball is the on-screen twin of the device LED. Drawn here from its pack by the dashboard's renderer.</p>
 <div class="grid">{devo}</div>
 <h2>Devo: reactions</h2><div class="grid">{react}</div>
 <h2>Mochi: 11 moods</h2><p>A soft square with an antenna, in one apricot hue that a mood only shifts lighter, darker or paler. The antenna is its second face: it wags, droops, kinks and curls.</p>
@@ -884,7 +886,7 @@ figure svg{{margin:0 auto}} figcaption b{{display:block;font:700 16px/20px Figtr
 <h2>Night outline (clock face at night)</h2><div class="grid">{night}</div>
 <h2>Check 1: greyscale (every mood must be told apart without colour)</h2><div class="grid">{gray}</div>
 <h2>Check 2: the everyday moods at the size they have on the clock and going-to-sleep screens (about half scale)</h2><div class="grid">{onex}</div>
-<h2>Devo palette (white body; eleven trace colours)</h2><div>{sw}</div>
+<h2>Devo palette (dark body, white lines; eleven colours for the ball and the chip light)</h2><div>{sw}</div>
 <h2>Mochi palette (one hue {MOCHI_BASE}, shifted by mood)</h2><div>{sw1}</div>
 <h2>Ember palette (one hue, shifted by mood, plus accent and cream)</h2><div>{sw2}</div>
 <h2>Sprout palette (one hue, shifted by mood)</h2><div>{sw3}</div>
@@ -928,7 +930,7 @@ def gallery():
         figs = "".join(f'<figure><a href="mockups/{n}.html"><img src="renders/{n}.png" width="320" height="240" alt="{n}"></a><figcaption><b>{n}</b>{html.escape(c)}</figcaption></figure>' for n, c in items)
         sec += f"<h2>{g}</h2><div class=grid>{figs}</div>"
     changes = [
-        "Pets own their identity: Devo is the white ghost of the PCB silkscreen, its traces glowing in the mood colour; Ember is a jade dragon with its own body, face and palette.",
+        "Pets own their identity: Devo is the ghost of the PCB silkscreen, dark with white traces, the mood on its antenna ball and chip light; Ember is a jade dragon with its own body, face and palette.",
         "Request cards put the exact command first and Claude's description second; a long command must be paged through before Allow works.",
         "Every hold says what it does (Hold: Allow, Hold: Erase), and shows the outcome while held (Allowing…).",
         "The session grant shows the rule the server will send, word for word; wide grants are amber or absent.",

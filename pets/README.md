@@ -93,8 +93,16 @@ working thinking`. Reaction names (rows of `aux`, keys of `overrides`,
 `dark`, `light` and `cheek` are derived from the body colour of the moment
 (design-system 2.3); `accent-dark` is the accent 25 % towards pet ink. In a
 glow palette the body colour of the moment is always `base`, so these three
-and the eyelids stay put and only `mood` parts change colour (Devo: a white
-ghost whose circuit traces glow).
+and the eyelids stay put and only `mood` parts change colour (Devo: a dark
+ghost with the mood on its antenna ball and chip light).
+
+On a dark body (luma under a quarter) the rig draws the face lines (mouth,
+brows, closed eyes, dot pupils) in `cream` instead of pet ink and the lid
+edge in `light`, so give a dark pet a light `cream`. A white outline around
+a dark pet is every body shape twice: once in `cream`, then a few units
+smaller in `body` on top (Devo). Put each skirt after the dome and bumps it
+overlaps: the rig skips the rows of a shape that a later fill covers from
+edge to edge.
 
 ### face
 
