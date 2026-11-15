@@ -354,6 +354,12 @@ static uint32_t role_color(const pet_view_t *v, uint8_t role)
     }
 }
 
+/* Colour of the face lines: pet ink, or the pack's cream on a body too dark for ink. */
+static uint32_t face_ink(const pet_view_t *v)
+{
+    return pet_pack_dark(pet_pack_body_color(&v->def, v->col_cur)) ? v->def.cream : UI_PET_INK;
+}
+
 /* ---- frame state ---- */
 
 typedef struct {
@@ -482,7 +488,7 @@ static void build_eye(pet_view_t *v, const frame_t *f, int side, item_t **its)
     const int32_t y = face->eye_y * Q + f->head_dy - f->lift;
     const int32_t w = f->p.eye_size * Q;
     const int32_t hf = w * 6 / 5;
-    const uint32_t ink = v->outline ? UI_PET_NIGHT : UI_PET_INK;
+    const uint32_t ink = v->outline ? UI_PET_NIGHT : face_ink(v);
     for (int i = 0; i < 7; i++) {
         hide(its[i]);
     }
@@ -564,7 +570,7 @@ static void build_eye(pet_view_t *v, const frame_t *f, int side, item_t **its)
         const int32_t tx = (w / 2 - pr - edge) * look_x / 100;
         int32_t room = vis_h / 2 - pr - edge;
         const int32_t ty = (room > 0 ? room : 0) * look_y / 100;
-        circle_q(v, pupil, x + tx, vis_cy + ty, dot ? w / 2 : pr, UI_PET_INK);
+        circle_q(v, pupil, x + tx, vis_cy + ty, dot ? w / 2 : pr, dot ? ink : UI_PET_INK);
         if (!ringed) {
             int32_t gr = pr * 28 / 100;
             if (gr < 3 * Q / 2) {
@@ -592,7 +598,8 @@ static void build_eye(pet_view_t *v, const frame_t *f, int side, item_t **its)
         tri_q(v, lid_a, a, body);
         tri_q(v, lid_b, b, body);
         const int32_t e[2][2] = {{xi, yi}, {xo, yo}};
-        line_q(v, edge, e, 2, 4 * Q, shade(body, UI_PET_INK, UI_PET_DARK_T));
+        line_q(v, edge, e, 2, 4 * Q,
+               pet_pack_dark(body) ? shade(body, UI_PET_WHITE, UI_PET_LIGHT_T) : shade(body, UI_PET_INK, UI_PET_DARK_T));
     }
 }
 
@@ -614,7 +621,7 @@ static void build_brow(pet_view_t *v, const frame_t *f, int side, item_t *it)
     const int32_t dx = pet_sin(ang + 90, 11 * Q);
     const int32_t dy = pet_sin(ang, 11 * Q);
     const int32_t pts[2][2] = {{x - dx, by - dy}, {x + dx, by + dy}};
-    line_q(v, it, pts, 2, 4 * Q, UI_PET_INK);
+    line_q(v, it, pts, 2, 4 * Q, face_ink(v));
 }
 
 /* Mouth: 10 items (tongue, line, 3 open-mouth triangles, a spare, hole, open tongue, 2 fangs). */
@@ -631,7 +638,7 @@ static void build_mouth(pet_view_t *v, const frame_t *f, item_t **its)
     const int32_t y = face->mouth_y * Q + f->mouth_dy - f->lift;
     const int32_t sag = curve * hw * 6 / 1000;
     const int32_t y0 = y - sag / 2;
-    const uint32_t ink = v->outline ? UI_PET_NIGHT : UI_PET_INK;
+    const uint32_t ink = v->outline ? UI_PET_NIGHT : face_ink(v);
     const int32_t sw = (v->outline ? 2 : 4) * Q;
     if (opened > 5) {
         if (curve > 40 && !v->outline) {
@@ -642,14 +649,14 @@ static void build_mouth(pet_view_t *v, const frame_t *f, item_t **its)
             /* The open smile: a fan from the left corner between the curve and the chord. */
             for (int i = 1; i < 4; i++) {
                 const int32_t t[3][2] = {{pts[0][0], pts[0][1]}, {pts[i][0], pts[i][1]}, {pts[i + 1][0], pts[i + 1][1]}};
-                tri_q(v, its[1 + i], t, UI_PET_INK);
+                tri_q(v, its[1 + i], t, ink);
             }
             rect_q(v, its[7], cx, y0 + hh - Q, 14 * Q, 7 * Q, 7 * Q / 2, UI_PET_TONGUE);
             return;
         }
         const int32_t mh = 6 * Q + opened * Q / 5;
         const int32_t mw = 14 * Q + opened * Q / 10;
-        rect_q(v, its[6], cx, y, mw, mh, mh / 2 < 7 * Q ? mh / 2 : 7 * Q, UI_PET_INK);
+        rect_q(v, its[6], cx, y, mw, mh, mh / 2 < 7 * Q ? mh / 2 : 7 * Q, ink);
         if (v->outline) {
             to_outline(its[6]);
         }
@@ -1151,6 +1158,40 @@ static bool area_and(lv_area_t *out, const lv_area_t *a, const lv_area_t *b)
     return out->x1 <= out->x2 && out->y1 <= out->y2;
 }
 
+/* Fewer covered rows than this are not worth a second draw call. */
+#define COVERED_MIN_ROWS  4
+
+/*
+ * The rows of rect item i that a later plain fill covers over the item's whole width (the dome's lower
+ * arc under the skirt): nothing drawn there can show, and a rounded rect costs a masked blend per row.
+ */
+static bool covered_rows(const pet_view_t *v, uint16_t i, int32_t *y1, int32_t *y2)
+{
+    const item_t *a = &v->items[i];
+    const int32_t ax2 = a->p[0].x + a->p[1].x;
+    const int32_t ay2 = a->p[0].y + a->p[1].y - 1;
+    int32_t best = COVERED_MIN_ROWS - 1;
+    for (uint16_t j = i + 1; j < v->n_items; j++) {
+        const item_t *b = &v->items[j];
+        if (b->kind != IT_RECT || !b->fill || b->border != 0 || b->clip >= 0) {
+            continue;
+        }
+        if (b->p[0].x > a->p[0].x || b->p[0].x + b->p[1].x < ax2) {
+            continue;
+        }
+        /* Between its rounded corners a fill is solid from edge to edge. */
+        const int32_t top = b->p[0].y + b->radius > a->p[0].y ? b->p[0].y + b->radius : a->p[0].y;
+        const int32_t low = b->p[0].y + b->p[1].y - 1 - b->radius;
+        const int32_t bottom = low < ay2 ? low : ay2;
+        if (bottom - top + 1 > best) {
+            best = bottom - top + 1;
+            *y1 = top;
+            *y2 = bottom;
+        }
+    }
+    return best >= COVERED_MIN_ROWS;
+}
+
 static void on_draw(lv_event_t *e)
 {
     pet_view_t *v = lv_event_get_user_data(e);
@@ -1180,7 +1221,22 @@ static void on_draw(lv_event_t *e)
             draw_item(layer, it, base.x1, base.y1);
             layer->_clip_area = clip;
         } else {
-            draw_item(layer, it, base.x1, base.y1);
+            int32_t y1, y2;
+            if (it->kind != IT_RECT || !covered_rows(v, i, &y1, &y2)) {
+                draw_item(layer, it, base.x1, base.y1);
+                continue;
+            }
+            const lv_area_t above = {clip.x1, clip.y1, clip.x2, base.y1 + y1 - 1};
+            const lv_area_t below = {clip.x1, base.y1 + y2 + 1, clip.x2, clip.y2};
+            const lv_area_t *parts[] = {&above, &below};
+            for (int k = 0; k < 2; k++) {
+                lv_area_t rows;
+                if (area_and(&rows, parts[k], &visible)) {
+                    layer->_clip_area = rows;
+                    draw_item(layer, it, base.x1, base.y1);
+                }
+            }
+            layer->_clip_area = clip;
         }
     }
 }

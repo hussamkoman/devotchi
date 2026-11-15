@@ -11,6 +11,8 @@ import {
   decodePet,
   encodePet,
   parsePet,
+  petBodyColor,
+  petDark,
   PET_MOODS,
   petPose,
   renderPetSheetSvg,
@@ -229,14 +231,37 @@ describe("renderPetSvg", () => {
 
   it("uses the mood colour, the derived shades and only numbers", () => {
     const devo = renderPetSvg(golden("devo"), "happy");
-    expect(devo).toContain('fill="#F4F1EA"');
-    expect(devo).toContain('stroke="#F59A1B"');
+    expect(devo).toContain('rx="50" fill="#2A3550"');
+    expect(devo).toContain('fill="#FFD98C"');
     expect(devo.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="220" height="190"')).toBe(true);
     expect(devo).not.toMatch(/Devo/);
     const ember = renderPetSvg(golden("ember"), "idle", { width: 110, height: 95, gray: true, idPrefix: "x" });
     expect(ember).toContain('fill="#2FAE9C"');
     expect(ember).toContain("grayscale(1)");
     expect(ember).toContain('id="x-c0"');
+  });
+
+  it("draws the face lines in cream on a body too dark for ink", () => {
+    expect(petDark(0x2a3550)).toBe(true);
+    expect(petDark(0x3f3f3f)).toBe(true);
+    expect(petDark(0x404040)).toBe(false);
+    for (const id of ["mochi", "ember", "sprout"]) {
+      const def = parsePet(golden(id));
+      for (let m = 0; m < PET_MOODS.length; m++) expect(petDark(petBodyColor(def, m)), `${id} ${PET_MOODS[m]}`).toBe(false);
+    }
+    const line = (color: string) => `stroke="${color}" stroke-width="4"`;
+    // Angry Devo: brows and mouth in cream, pupils still ink inside the white eyes with a glint.
+    const dark = renderPetSvg(golden("devo"), "angry");
+    expect(dark.match(new RegExp(line("#F4F1EA"), "g"))).toHaveLength(4);
+    expect(dark).not.toContain(line("#1A1D26"));
+    expect(dark.match(/<circle [^>]*fill="#1A1D26"/g)).toHaveLength(2);
+    expect(dark.match(/<circle [^>]*fill="#FFFFFF"/g)).toHaveLength(2);
+    // The same pack on a light body goes back to ink.
+    const src = source("devo");
+    const light = renderPetSvg(encodePet({ ...src, palette: { ...src.palette, base: "#F4F1EA", cream: "#2A3550" } }), "angry");
+    expect(light.match(new RegExp(line("#1A1D26"), "g"))).toHaveLength(3);
+    // The lid edge of focused is the light shade on the dark body.
+    expect(renderPetSvg(golden("devo"), "focused")).toContain(line("#7F8696"));
   });
 
   it("applies aux drivers: the shown antenna stem follows the mood", () => {
@@ -248,35 +273,39 @@ describe("renderPetSvg", () => {
   });
 
   it("lights Devo's chip while aux 3 is nonzero and moves the antenna tip", () => {
-    const light = (color: string) => `<rect x="24" y="26" width="6" height="8" rx="1" fill="${color}"/>`;
-    expect(renderPetSvg(golden("devo"), "idle")).toContain(light("#9D8DF1"));
-    expect(renderPetSvg(golden("devo"), "sleeping")).not.toContain(light("#B9BCC8"));
+    const light = (color: string) => `<rect x="23" y="25" width="8" height="10" rx="2" fill="${color}"/>`;
+    expect(renderPetSvg(golden("devo"), "idle")).toContain(light("#B9AEFA"));
+    expect(renderPetSvg(golden("devo"), "sleeping")).not.toContain(light("#7C8597"));
     expect(renderPetSvg(golden("devo"), "sad")).toContain('points="0,-66 6,-77 16,-76"');
   });
 
   it("keeps a glow palette's body on the base and gives the mood colour to the mood role", () => {
     const def = parsePet(golden("devo"));
-    expect(def).toMatchObject({ glow: true, shift: false, base: 0xf4f1ea });
+    expect(def).toMatchObject({ glow: true, shift: false, base: 0x2a3550 });
     expect(decodePet(golden("devo")).palette.mode).toBe("glow");
     for (const mood of ["happy", "angry", "sleeping"] as const) {
       const svg = renderPetSvg(def, mood);
       const color = (source("devo").palette.moods[mood] as string).toUpperCase();
-      // The dome is the body; the traces, the vias and the ball take the mood colour.
+      // The dome keeps the base inside its cream rim; the ball takes the mood colour, the traces stay cream.
       const dome = mood === "sleeping" ? 'y="-62" width="108" height="114"' : 'y="-70" width="108" height="122"';
+      const inner = mood === "sleeping" ? 'y="-58" width="100" height="106"' : 'y="-66" width="100" height="114"';
       expect(svg).toContain(`<rect x="-54" ${dome} rx="54" fill="#F4F1EA"/>`);
-      expect(svg).toContain(`points="19,33 10,33 6,37 6,54" fill="none" stroke="${color}"`);
-      expect(svg).not.toContain(`width="108" height="58" rx="6" fill="${color}"`);
+      expect(svg).toContain(`<rect x="-50" ${inner} rx="50" fill="#2A3550"/>`);
+      expect(svg).toContain(`width="14" height="14" rx="7" fill="${color}"/>`);
+      expect(svg).toContain('points="19,34 6,34 6,54" fill="none" stroke="#F4F1EA"');
+      expect(svg).not.toContain(`rx="50" fill="${color}"`);
     }
     // The same parts in a table palette colour the body instead.
     const table = parsePet(encodePet({ ...source("devo"), palette: { ...source("devo").palette, mode: "table" } }));
     expect(table.glow).toBe(false);
-    expect(renderPetSvg(table, "happy")).toContain('rx="54" fill="#F59A1B"');
+    expect(renderPetSvg(table, "happy")).toContain('rx="50" fill="#FFD98C"');
     for (const id of ["mochi", "ember", "sprout"]) expect(parsePet(golden(id)).glow).toBe(false);
   });
 
   it("draws ring eyes as an ink ring around the sclera with a small pupil and no glint", () => {
-    const def = parsePet(golden("devo"));
-    expect(def.face.eyeStyle).toBe(3);
+    const devo = parsePet(golden("devo"));
+    expect(devo.face.eyeStyle).toBe(0);
+    const def = { ...devo, face: { ...devo.face, eyeStyle: 3 } };
     const ring = renderPetSvg(def, "idle");
     // Idle eyes are 25 wide and 30 high at (21, -22): the ring is 25/7 wide, drawn inside the eye.
     expect(ring).toContain('<rect x="8.5" y="-37" width="25" height="30" rx="12.5" fill="#FFFFFF"/>');
@@ -330,7 +359,8 @@ describe("reactions, outline and the preview sheet", () => {
     expect(renderPetSvg(golden("devo"), "idle")).not.toContain(edge);
     expect(parsePet(golden("devo")).parts.filter((p) => p.role === 14)).toHaveLength(4);
     expect(night).not.toContain("#F4F1EA");
-    expect(night).not.toContain("#9D8DF1");
+    expect(night).not.toContain("#2A3550");
+    expect(night).not.toContain("#B9AEFA");
     expect(night).not.toContain("#1A1D26");
     const ember = renderPetSvg(golden("ember"), "idle", { outline: true });
     expect(ember).not.toContain("#F6E7C1");

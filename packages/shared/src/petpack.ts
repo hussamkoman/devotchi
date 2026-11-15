@@ -350,6 +350,11 @@ export function petMoodColor(def: PetDef, mood: number): number {
   return def.shift ? petMix(def.base, def.moodRgb[m], def.moodT[m]) : def.moodRgb[m];
 }
 
+/** As the firmware's pet_pack_dark: a body too dark for pet ink, so the face lines take the pack's cream. */
+export function petDark(rgb: number): boolean {
+  return 54 * ((rgb >> 16) & 0xff) + 183 * ((rgb >> 8) & 0xff) + 19 * (rgb & 0xff) < 64 * 256;
+}
+
 /** The body colour in a mood: the base in a glow palette, else the mood colour. */
 export function petBodyColor(def: PetDef, mood: number): number {
   return def.glow ? def.base : petMoodColor(def, mood);

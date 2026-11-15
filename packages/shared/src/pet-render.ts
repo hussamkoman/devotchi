@@ -12,6 +12,7 @@ import {
   PET_REACTIONS,
   parsePet,
   petBodyColor,
+  petDark,
   petMix,
   petMoodColor,
   type PetDef,
@@ -295,11 +296,14 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
   const moodIndex = m >= 0 && m < PET_MOODS.length ? m : PET_MOODS.indexOf("idle");
   const pose = reaction !== undefined ? petPose(def, reaction) : poseFor(def, moodIndex);
   const night = options.outline === true;
-  const ink = night ? NIGHT : INK;
-  const stroke = night ? 2 : 4;
-  const face = def.face;
   const moodColor = petMoodColor(def, moodIndex);
   const body = petBodyColor(def, moodIndex);
+  const darkBody = petDark(body);
+  /** Face lines: pet ink, or the pack's cream on a body too dark for ink. */
+  const faceInk = darkBody ? def.cream : INK;
+  const ink = night ? NIGHT : faceInk;
+  const stroke = night ? 2 : 4;
+  const face = def.face;
   const dark = petMix(body, INK, DARK_T);
   const roleColor = (role: number): number =>
     [
@@ -438,7 +442,7 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
       const edge = ring ? w / RING_DIV + 1 : 2;
       const tx = ((w / 2 - pr - edge) * pdx) / 100;
       const ty = (Math.max(0, visH / 2 - pr - edge) * pdy) / 100;
-      svg.circle(x + tx, visCy + ty, dot ? w / 2 : pr, INK, clip);
+      svg.circle(x + tx, visCy + ty, dot ? w / 2 : pr, dot ? faceInk : INK, clip);
       if (!ring) svg.circle(x + tx + pr * 0.35, visCy + ty - pr * 0.35, Math.max(1.5, pr * 0.28), WHITE, clip);
     }
     if (hasLid) {
@@ -449,7 +453,7 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
       const yo = visTop - k;
       const top = y - hf / 2 - 3;
       svg.poly([[xi, top], [xo, top], [xo, yo], [xi, yi]], body);
-      svg.line([[xi, yi], [xo, yo]], 4, dark);
+      svg.line([[xi, yi], [xo, yo]], 4, darkBody ? petMix(body, WHITE, LIGHT_T) : dark);
     }
   }
 
@@ -464,7 +468,7 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
       const ang = angle * -sx;
       const dx = 11 * cosDeg(ang);
       const dy = 11 * sinDeg(ang);
-      svg.line([[x - dx, by - dy], [x + dx, by + dy]], 4, INK);
+      svg.line([[x - dx, by - dy], [x + dx, by + dy]], 4, faceInk);
     }
   }
 
@@ -479,11 +483,11 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
   if (pose.mouthOpen > 5) {
     if (curve > 40 && !night) {
       const hh = 8 + (pose.mouthOpen * 16) / 100;
-      svg.quad([cx - hw, y0 - 2], [cx, y0 + 2 * hh], [cx + hw, y0 - 2], 4, INK, INK);
+      svg.quad([cx - hw, y0 - 2], [cx, y0 + 2 * hh], [cx + hw, y0 - 2], 4, faceInk, faceInk);
       svg.rect(cx, y0 + hh - 1, 14, 7, 3.5, TONGUE);
     } else {
       const mh = 6 + pose.mouthOpen / 5;
-      fillRect(cx, my, 14 + pose.mouthOpen / 10, mh, Math.min(mh / 2, 7), INK);
+      fillRect(cx, my, 14 + pose.mouthOpen / 10, mh, Math.min(mh / 2, 7), faceInk);
     }
   } else {
     if (!night && pose.accessory === ACC_TONGUE && !own(ACC_TONGUE)) svg.rect(cx + hw - 4, y0 + (sag * 9) / 10 + 3.5, 10, 9, 4.5, TONGUE);
