@@ -15,6 +15,25 @@ typedef enum {
     POWER_STAGE_COUNT,
 } power_stage_t;
 
+/** Settings > Clock > Show clock (`s_clock`). */
+typedef enum {
+    POWER_CLOCK_RESTING,
+    POWER_CLOCK_ALWAYS_USB,
+    POWER_CLOCK_NEVER,
+    POWER_CLOCK_MODE_COUNT,
+} power_clock_mode_t;
+
+/** Clock backlight on battery by day, and at night on any power (ux-flows 5). */
+#define POWER_FSM_CLOCK_BATT_PCT   10
+#define POWER_FSM_CLOCK_NIGHT_PCT  5
+/** With Screen timeout = Never the clock replaces home after this much idle time. */
+#define POWER_FSM_NEVER_CLOCK_MS   120000u
+/** The going-to-sleep screen (91) shows this long before an idle deep sleep. */
+#define POWER_FSM_SLEEP_WARN_MS    10000u
+/** Low-battery toasts (90), once each per discharge. */
+#define POWER_FSM_LOW_PCT_1        15
+#define POWER_FSM_LOW_PCT_2        8
+
 typedef enum {
     POWER_WIFI_PS_MIN,
     POWER_WIFI_PS_MAX,
@@ -74,7 +93,17 @@ typedef struct {
      */
     bool dry_run;
     uint8_t brightness_pct;
+    /** Backlight of the dim stage when it shows home (the agent is busy). */
     uint8_t dim_pct;
+    power_clock_mode_t clock_mode;
+    /** Room mood idle or sleeping, or no agent traffic for 5 minutes. */
+    bool agent_idle;
+    /** Local night with Night dimming on. */
+    bool night;
+    /** Clock backlight by day on external power. */
+    uint8_t clock_brightness_pct;
+    /** Battery charge 0..100; read only when batt_present. */
+    uint8_t batt_pct;
 } power_fsm_input_t;
 
 typedef struct {
@@ -89,6 +118,13 @@ typedef struct {
     bool show_lowbatt;
     /** True on the one update that starts a low-battery episode. */
     bool low_toast;
+    /** POWER_FSM_LOW_PCT_1 or _2 on the update that crosses it, else 0. */
+    uint8_t low_toast_pct;
+    /** The resting face (clock, 40-42) replaces home. */
+    bool show_clock;
+    /** The going-to-sleep screen shows; an idle deep sleep follows in sleep_in_ms. */
+    bool sleep_warning;
+    uint32_t sleep_in_ms;
     /** True while the battery-wake decision of this boot is still open. */
     bool wake_check_pending;
     /** power_block_t bits for the idle deep sleep; 0 when it is due. */
@@ -117,6 +153,8 @@ typedef struct {
     bool card_shown;
     bool card_closed;
     uint32_t card_closed_ms;
+    /** Low-battery toasts already shown in this discharge (0, 1 or 2). */
+    uint8_t low_pct_level;
 } power_fsm_t;
 
 void power_fsm_init(power_fsm_t *f);
@@ -138,3 +176,5 @@ bool power_stage_parse(const char *name, power_stage_t *out);
 const char *power_block_name(uint32_t bit);
 
 const char *power_deep_reason_name(power_deep_reason_t reason);
+
+const char *power_clock_mode_name(power_clock_mode_t mode);

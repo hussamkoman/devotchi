@@ -73,7 +73,7 @@ static void send(uint32_t now, const char *reason, const char *alert)
         .heap_min = (uint32_t)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
         .reset_reason = app_reset_reason(),
         .fw = esp_app_get_description()->version,
-        .screen = ui_current_screen_name(),
+        .screen = app_flow_showcase_active() ? "showcase" : ui_current_screen_name(),
         .stage = power_stage_name(app_power_stage()),
         .alert = v.alert,
         .pet = app_pets_selected(),

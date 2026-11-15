@@ -4,7 +4,10 @@
 Covers what the bench allows: stage timings on external power and, with an
 injected battery, on battery; panel sleep and redraw; the CPU lock; wake by an
 incoming permission; the swallowed wake press; the pending-request cap; low and
-critical battery and the battery-wake decision in dry-run; the sleep guards
+critical battery and the battery-wake decision in dry-run; the clock face
+(ux-flows 5: time from register_ack and `time`, the resting face on battery
+between 30 s and 60 s of idle, back to home on a status or a swallowed wake
+press, `clock show`); the sleep guards
 with a USB host attached; an unreachable server that must not keep the screen
 on; optionally one forced deep sleep with a timer wake.
 
@@ -256,7 +259,8 @@ class PowerRun(FlowRun):
         mark = self.board.mark()
         mock_mark = self.mock.mark()
         self.battery(3200, 0, 0)
-        self.wait_toast("Battery low", mark, timeout=5)
+        self.wait_board(lambda e: e.get("evt") == "toast" and e.get("text", "").startswith("Battery low"), 5, mark,
+                        "low-battery toast")
         self.wait_screen(lambda s: s["id"] == "lowbatt", 45, "lowbatt screen")
         texts = self.board.texts()
         check("Battery empty" in texts and any(t.startswith("Plug in USB-C") for t in texts), f"lowbatt texts {texts}")
@@ -267,7 +271,7 @@ class PowerRun(FlowRun):
         telemetry = [f for f in (e.get("frame") for e in self.mock.snapshot()[mock_mark:] if e.get("ev") == "rx")
                      if isinstance(f, dict) and f.get("type") == "telemetry"]
         check(any(f.get("alert") == "battery_critical" for f in telemetry), f"no battery_critical telemetry")
-        toasts = [t for t in self.toasts(mark) if t == "Battery low"]
+        toasts = [t for t in self.toasts(mark) if t.startswith("Battery low")]
         check(len(toasts) == 1, f"low toasts {toasts}")
         self.cmd("batt inject 3900 0 0")
         # Idle on battery for longer than 2T, the screen goes off once the card ends; a wake shows the pet.
@@ -353,8 +357,77 @@ class PowerRun(FlowRun):
         return (f"console back {back:.1f} s after the command, WiFi {wifi_s:.1f} s, registered "
                 f"{registered_s:.1f} s; reset=deepsleep, timer wake")
 
+    # ---- clock face (ux-flows 5, architecture 7.6) ----
+
+    def step_clock_time(self):
+        mark = self.board.mark()
+        reply = self.mock.ctl("time 60")
+        check(reply.get("sent") == 1, f"time frame not sent: {reply}")
+        event = self.wait_board(lambda e: e.get("evt") == "time", 5, mark, "time event")
+        state = self.board.state()["clock"]
+        check(state["valid"] and state["offsetMin"] == 60 and len(state["time"]) >= 4,
+              f"clock after `time`: {state}")
+        screen = self.screen()
+        check(screen["statusBar"].get("time") == state["time"], f"status bar time {screen['statusBar']}")
+        return f"time {state['time']} {state['date']} offset {state['offsetMin']} (evt {event})"
+
+    def idle_battery(self):
+        self.cmd("set dim_s 30")
+        self.battery(3900, 0, 0)
+        self.send({"type": "mood", "mood": "idle"})
+        self.cmd("wake")
+        return time.monotonic()
+
+    def step_clock_battery(self):
+        start = self.idle_battery()
+        time.sleep(25)
+        check(self.screen()["id"] == "pet", "home must stay up for the first 30 s")
+        clock = self.wait_screen(lambda s: s["id"] == "clock", 10, "clock face")
+        shown = time.monotonic() - start
+        p = self.board.state()["power"]
+        check(p["stage"] == "dim" and p["clock"] and not p["cpuLock"], f"power while the clock shows: {p}")
+        off_mark = self.board.mark()
+        off = self.wait_power_evt(power_evt(stage="off"), 40, off_mark, "off after the clock")
+        hidden = time.monotonic() - start
+        check(28 <= shown <= 34 and 58 <= hidden <= 64, f"clock from {shown:.1f} s to {hidden:.1f} s of idle")
+        self.measurements["stages"]["clock"] = {"shownS": round(shown, 1), "offS": round(hidden, 1),
+                                                "offIdleS": off["idleS"], "texts": clock["texts"]}
+        self.to_active()
+        return f"clock visible from {shown:.1f} s to {hidden:.1f} s of idle; texts {clock['texts']}"
+
+    def step_clock_status(self):
+        self.idle_battery()
+        self.wait_screen(lambda s: s["id"] == "clock", 40, "clock face")
+        self.send({"type": "status", "msg": "Back at work", "mood": "idle"})
+        self.wait_screen(lambda s: s["id"] == "pet", 3, "home after a status")
+        check(self.power()["stage"] == "active", "a status on the lit clock must bring home back at full brightness")
+        return "a status turned the clock into home"
+
+    def step_clock_wake_press(self):
+        self.idle_battery()
+        self.wait_screen(lambda s: s["id"] == "clock", 40, "clock face")
+        mark = self.board.mark()
+        self.cmd("btn approve press", timeout=15.0)
+        self.wait_screen(lambda s: s["id"] == "pet", 3, "home after the waking press")
+        time.sleep(0.5)
+        self.board.drain()
+        pats = [e for _, e in self.board.events(mark) if e.get("evt") == "pet" and e.get("action") == "pat"]
+        swallowed = [e for _, e in self.board.events(mark) if e.get("evt") == "btn" and e.get("swallowed")]
+        check(not pats, f"the waking press also patted the pet: {pats}")
+        return f"waking press swallowed ({len(swallowed)} swallowed events), no pat"
+
+    def step_clock_show(self):
+        self.cmd("clock show night")
+        night = self.wait_screen(lambda s: s["id"] == "clock" and s.get("clock", {}).get("night"), 3, "night face")
+        self.cmd("clock show day")
+        self.wait_screen(lambda s: s["id"] == "clock" and not s.get("clock", {}).get("night"), 3, "day face")
+        self.cmd("clock show off")
+        self.wait_screen(lambda s: s["id"] == "pet", 3, "home after clock show off")
+        return f"night face {night.get('clock')}"
+
     def step_restore(self):
         try:
+            self.cmd("clock show off")
             self.cmd("batt inject off")
             self.cmd("pet freeze off")
             if self.saved is not None:
@@ -380,6 +453,11 @@ class PowerRun(FlowRun):
             ("guards", self.step_guards),
             ("reachability", self.step_reachability),
             ("forced-sleep", self.step_forced_sleep),
+            ("clock-time", self.step_clock_time),
+            ("clock-battery", self.step_clock_battery),
+            ("clock-status", self.step_clock_status),
+            ("clock-wake-press", self.step_clock_wake_press),
+            ("clock-show", self.step_clock_show),
         ]
         selected = self.args.steps.split(",") if self.args.steps else [n for n, _ in steps if n not in
                                                                        ("guards", "reachability", "forced-sleep")]

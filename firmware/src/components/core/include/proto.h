@@ -54,6 +54,9 @@
 #define PROTO_IDENTIFY_MIN_MS      1000
 #define PROTO_IDENTIFY_MAX_MS      10000
 #define PROTO_IDENTIFY_DEFAULT_MS  3000
+/* Protocol 14.9: utcOffsetMin range. */
+#define PROTO_UTC_OFFSET_MIN  (-720)
+#define PROTO_UTC_OFFSET_MAX  840
 
 typedef enum {
     /** A well-formed message of a type this firmware does not know; ignored. */
@@ -74,6 +77,8 @@ typedef enum {
     PROTO_PLAN,
     PROTO_DEADLINE,
     PROTO_PET_CMD,
+    /** Protocol 14.9. */
+    PROTO_TIME,
 } proto_type_t;
 
 typedef enum {
@@ -140,6 +145,9 @@ typedef struct {
     proto_mode_t mode;
     /** Epoch milliseconds, 0 when absent. */
     int64_t server_time_ms;
+    /** Minutes east of UTC (protocol 14.9); has_offset false when absent or out of range. */
+    bool has_offset;
+    int16_t utc_offset_min;
     proto_peers_t peers;
     char room[PROTO_ROOM_SIZE];
     char device_id[PROTO_DEVICE_ID_SIZE];
@@ -293,6 +301,12 @@ typedef struct {
     bool select;
 } proto_pet_cmd_t;
 
+/** `time` (protocol 14.9). */
+typedef struct {
+    int64_t server_time_ms;
+    int16_t utc_offset_min;
+} proto_time_t;
+
 typedef struct {
     proto_type_t type;
     union {
@@ -310,6 +324,7 @@ typedef struct {
         proto_plan_t plan;
         proto_deadline_t deadline;
         proto_pet_cmd_t pet_cmd;
+        proto_time_t time;
     } u;
 } proto_msg_t;
 

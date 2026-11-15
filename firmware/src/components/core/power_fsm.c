@@ -8,6 +8,8 @@
 #define EXT_DIM_T   2u
 #define EXT_OFF_T   10u
 
+static const char *const CLOCK_MODE_NAMES[POWER_CLOCK_MODE_COUNT] = {"resting", "always_usb", "never"};
+
 static const char *const STAGE_NAMES[POWER_STAGE_COUNT] = {"active", "dim", "off"};
 
 static const char *const BLOCK_NAMES[POWER_BLOCK_COUNT] = {
@@ -151,6 +153,58 @@ static bool battery_sleep(power_fsm_t *f, const power_fsm_input_t *in, power_fsm
     return due;
 }
 
+/* Toasts at 15 % and 8 % on battery; a jump straight below 8 % shows only the second. */
+static uint8_t low_pct_toast(power_fsm_t *f, const power_fsm_input_t *in)
+{
+    if (!in->batt_present || in->ext_power) {
+        f->low_pct_level = 0;
+        return 0;
+    }
+    if (in->batt_pct <= POWER_FSM_LOW_PCT_2 && f->low_pct_level < 2) {
+        f->low_pct_level = 2;
+        return POWER_FSM_LOW_PCT_2;
+    }
+    if (in->batt_pct <= POWER_FSM_LOW_PCT_1 && f->low_pct_level < 1) {
+        f->low_pct_level = 1;
+        return POWER_FSM_LOW_PCT_1;
+    }
+    return 0;
+}
+
+/*
+ * The resting face (ux-flows 5): the clock replaces home in dim when nothing
+ * waits for the user; Always on USB power keeps it lit instead of off.
+ */
+static power_stage_t resting_face(const power_fsm_input_t *in, power_fsm_output_t *out, power_stage_t stage)
+{
+    const bool eligible = in->clock_mode != POWER_CLOCK_NEVER && in->agent_idle && in->pending_count == 0 &&
+                          !in->card_visible;
+    if (!eligible) {
+        return stage;
+    }
+    if (stage == POWER_STAGE_OFF && in->clock_mode == POWER_CLOCK_ALWAYS_USB && in->ext_power) {
+        stage = POWER_STAGE_DIM;
+    }
+    out->show_clock = stage == POWER_STAGE_DIM ||
+                      (stage == POWER_STAGE_ACTIVE && in->screen_timeout_s == 0 &&
+                       out->idle_ms >= POWER_FSM_NEVER_CLOCK_MS);
+    return stage;
+}
+
+static uint8_t backlight(const power_fsm_input_t *in, const power_fsm_output_t *out)
+{
+    if (out->stage == POWER_STAGE_OFF) {
+        return 0;
+    }
+    if (out->show_clock) {
+        if (in->night) {
+            return POWER_FSM_CLOCK_NIGHT_PCT;
+        }
+        return in->ext_power ? in->clock_brightness_pct : POWER_FSM_CLOCK_BATT_PCT;
+    }
+    return out->stage == POWER_STAGE_ACTIVE || out->sleep_warning ? in->brightness_pct : in->dim_pct;
+}
+
 void power_fsm_update(power_fsm_t *f, const power_fsm_input_t *in, power_fsm_output_t *out)
 {
     memset(out, 0, sizeof(*out));
@@ -185,16 +239,29 @@ void power_fsm_update(power_fsm_t *f, const power_fsm_input_t *in, power_fsm_out
         out->enter_deep_sleep = true;
         out->deep_reason = POWER_DEEP_IDLE;
     }
+    out->low_toast_pct = low_pct_toast(f, in);
+    /* The only thing missing for an idle deep sleep is the last ten seconds of the timeout. */
+    if (!out->enter_deep_sleep && out->blockers == POWER_BLOCK_IDLE && out->deep_ms - out->agent_idle_ms <=
+                                                                           POWER_FSM_SLEEP_WARN_MS) {
+        out->sleep_warning = true;
+        out->sleep_in_ms = out->deep_ms - out->agent_idle_ms;
+    }
     /* The lowbatt card must be readable whatever the idle stage is. */
     if (out->show_lowbatt) {
         stage = POWER_STAGE_ACTIVE;
+    } else if (out->sleep_warning) {
+        /* Lit but not active, so the press that cancels the sleep is a wake press. */
+        stage = POWER_STAGE_DIM;
+    } else {
+        stage = resting_face(in, out, stage);
     }
 
     const bool off = stage == POWER_STAGE_OFF;
     out->stage = stage;
-    out->backlight_pct = stage == POWER_STAGE_ACTIVE ? in->brightness_pct : stage == POWER_STAGE_DIM ? in->dim_pct : 0;
+    out->backlight_pct = backlight(in, out);
     out->panel_sleep = off;
-    out->hold_cpu_lock = !off;
+    /* The clock face animates at 10 fps and changes digits once a minute: it can run with the CPU unlocked. */
+    out->hold_cpu_lock = !off && !out->show_clock;
     out->wifi_ps = off && !in->ext_power ? POWER_WIFI_PS_MAX : POWER_WIFI_PS_MIN;
     out->allow_light_sleep = off && !in->ext_power && !in->usb_host && in->light_sleep_enabled && !in->provisioning &&
                              !in_grace;
@@ -229,4 +296,9 @@ const char *power_block_name(uint32_t bit)
 const char *power_deep_reason_name(power_deep_reason_t reason)
 {
     return reason == POWER_DEEP_BATTERY ? "battery" : "idle";
+}
+
+const char *power_clock_mode_name(power_clock_mode_t mode)
+{
+    return mode < POWER_CLOCK_MODE_COUNT ? CLOCK_MODE_NAMES[mode] : "";
 }

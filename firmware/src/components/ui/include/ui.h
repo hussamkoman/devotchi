@@ -29,6 +29,10 @@ typedef enum {
     UI_SCREEN_PICKER,
     UI_SCREEN_IDENTIFY,
     UI_SCREEN_LOWBATT,
+    /** The resting face (40-42). */
+    UI_SCREEN_CLOCK,
+    /** Going to sleep (91). */
+    UI_SCREEN_SLEEP,
     UI_SCREEN_COUNT,
 } ui_screen_id_t;
 
@@ -178,6 +182,8 @@ typedef struct {
     /** 1..4, or 0 when WiFi is down (bars crossed out). */
     uint8_t rssi_bars;
     ui_link_t link;
+    /** Local time ("14:32"), "" while the clock is not set; shown where the screen has no title. */
+    char time[8];
 } ui_status_t;
 
 const char *ui_batt_name(ui_batt_t b);
@@ -186,6 +192,21 @@ const char *ui_link_name(ui_link_t l);
 /** Updates the status bar; objects are touched only for values that changed. */
 void ui_status_set(const ui_status_t *s);
 void ui_status_get(ui_status_t *out);
+
+/** How the showcase marks the screen (ux-flows 8). */
+typedef enum {
+    UI_MARK_NONE,
+    /** Violet 2 px frame and a `DEMO` tag before the title. */
+    UI_MARK_DEMO,
+    /** The same with `SAMPLE` (sample cards). */
+    UI_MARK_SAMPLE,
+    /** No frame; the cream `REAL REQUEST` bar in the status bar's place (85). */
+    UI_MARK_REAL,
+} ui_mark_t;
+
+void ui_mark_set(ui_mark_t mark);
+ui_mark_t ui_mark_get(void);
+const char *ui_mark_name(ui_mark_t mark);
 
 #define UI_TOAST_DEFAULT_MS  2500
 
@@ -226,6 +247,8 @@ void ui_pet_show_tabs(uint32_t ms);
 
 typedef enum {
     UI_PET_PAGE_PET,
+    /** Home page 2: recent activity. */
+    UI_PET_PAGE_RECENT,
     /** About 1/2: identity and network. */
     UI_PET_PAGE_ABOUT,
     /** About 2/2: diagnostics. */
@@ -236,24 +259,41 @@ typedef enum {
 /** Shows the face or the About page of the pet screen; the face animates only on its own page. */
 void ui_pet_page_set(ui_pet_page_t page);
 
-/** Rows of the About pages, a label and a value each; the first UI_ABOUT_PAGE1_ROWS are on page 1. */
+/** Rows of the About pages (70, 71), a label and a value each; the first UI_ABOUT_PAGE1_ROWS are on page 1. */
 typedef enum {
-    UI_ABOUT_NAME,
     UI_ABOUT_FW,
-    UI_ABOUT_DEVICE_ID,
-    UI_ABOUT_SSID,
-    UI_ABOUT_RSSI,
+    UI_ABOUT_DEVICE,
+    UI_ABOUT_PET,
+    UI_ABOUT_WIFI,
     UI_ABOUT_IP,
     UI_ABOUT_SERVER,
     UI_ABOUT_LINK,
+    UI_ABOUT_ROOM,
+    UI_ABOUT_BATTERY,
     UI_ABOUT_UPTIME,
     UI_ABOUT_RESET,
+    UI_ABOUT_HEAP,
+    UI_ABOUT_FRAMES,
+    UI_ABOUT_REQUESTS,
+    UI_ABOUT_PETS,
     UI_ABOUT_ERROR,
-    UI_ABOUT_NVS,
+    UI_ABOUT_FONTS,
     UI_ABOUT_COUNT,
 } ui_about_row_t;
 
-#define UI_ABOUT_PAGE1_ROWS  UI_ABOUT_UPTIME
+#define UI_ABOUT_PAGE1_ROWS  UI_ABOUT_BATTERY
+
+#define UI_RECENT_ROWS  5
+
+/** Recent activity: up to UI_RECENT_ROWS lines, newest first, each with its time ("14:32", "5 min"). */
+void ui_recent_set(const char *const times[UI_RECENT_ROWS], const char *const texts[UI_RECENT_ROWS], uint8_t n);
+
+/**
+ * Showcase moods and reactions (81, 82): bar is the status-bar title, title
+ * and line replace the project and status, the tabs are Back, Next and
+ * approve. NULL title ends it. Strings must outlive the call.
+ */
+void ui_pet_set_caption(const char *bar, const char *title, const char *line, const char *approve);
 
 void ui_about_set(const char *const values[UI_ABOUT_COUNT]);
 
@@ -327,21 +367,69 @@ typedef struct {
 /** def is copied into the picker's view. */
 void ui_picker_set(const ui_picker_t *p);
 
-#define UI_SETTINGS_ROWS        11
+#define UI_SETTINGS_ROWS        8
 #define UI_SETTINGS_VALUE_SIZE  16
 
+typedef enum {
+    UI_SETTINGS_LIST,
+    /** Value editor (52). */
+    UI_SETTINGS_EDITOR,
+    /** Destructive confirm (53). */
+    UI_SETTINGS_CONFIRM,
+} ui_settings_view_t;
+
+/**
+ * The list screen: Settings and its sub-lists (50, 51), the quick menu (16b)
+ * and the showcase menu (80); plus the value editor and the destructive
+ * confirm. Strings must outlive the call.
+ */
 typedef struct {
+    ui_settings_view_t view;
+    const char *title;
+    uint8_t count;
+    const char *icons[UI_SETTINGS_ROWS];
     const char *labels[UI_SETTINGS_ROWS];
-    /** What ACTION does on the cursor row ("Change", "Open"). */
-    const char *action;
     char values[UI_SETTINGS_ROWS][UI_SETTINGS_VALUE_SIZE];
+    /** The row opens a list: a chevron instead of a value. */
+    bool chevron[UI_SETTINGS_ROWS];
+    /** The row cannot be chosen now: slate, and desc explains why while it is focused. */
+    bool muted[UI_SETTINGS_ROWS];
+    const char *desc;
+    /** Paragraph under the list (quick menu); NULL for none. */
+    const char *note;
     uint8_t cursor;
-    /** The cursor row asks for the second ACTION click. */
-    bool confirming;
+    /** APPROVE's tab on the list ("Open", "Change"). */
+    const char *approve;
+    /* Editor: the big figure and unit, the value's place among steps, the choices line and a hint. */
+    char big[UI_SETTINGS_VALUE_SIZE];
+    char unit[UI_SETTINGS_VALUE_SIZE];
+    uint8_t steps;
+    uint8_t step;
+    char choices[64];
+    const char *hint;
+    /* Confirm: the question, what it erases, and the hold's word. */
+    const char *confirm_title;
+    const char *confirm_text;
+    const char *confirm_hold;
 } ui_settings_t;
 
-/** Settings list; rows are restyled only when the cursor or the confirmation changed. */
+/** Updates the list screen in place. */
 void ui_settings_set(const ui_settings_t *s);
+
+/** Clock face (40-42). */
+typedef struct {
+    /** "" without a valid time: the pet only. */
+    const char *time;
+    const char *date;
+    bool night;
+} ui_clock_t;
+
+void ui_clock_set(const ui_clock_t *c);
+/** What the clock face shows; time and date are copied into the caller's buffers. */
+void ui_clock_get(ui_clock_t *out, char time[8], char date[16]);
+
+/** Going to sleep (91): seconds left, and the bar as 0..1000 of the warning still to run. */
+void ui_sleep_set(uint8_t seconds, uint16_t permille);
 
 typedef struct {
     const char *tool;

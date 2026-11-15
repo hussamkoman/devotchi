@@ -179,6 +179,20 @@ static console_rc_t cmd_state(int argc, char **argv, const char *raw_args)
     cJSON_AddBoolToObject(pw, "uiParked", !ui_is_running());
     cJSON_AddBoolToObject(pw, "cpuLock", pm.cpu_lock);
     cJSON_AddNumberToObject(pw, "cpuMhz", pm.cpu_mhz);
+    cJSON_AddBoolToObject(pw, "clock", app_power_clock_shown());
+    uint32_t sleep_ms;
+    cJSON_AddBoolToObject(pw, "sleepWarning", app_power_sleep_warning(&sleep_ms));
+
+    cJSON *clk = cJSON_AddObjectToObject(root, "clock");
+    cJSON_AddBoolToObject(clk, "valid", app_clock_valid());
+    cJSON_AddNumberToObject(clk, "epoch", (double)(app_clock_epoch_ms() / 1000));
+    cJSON_AddNumberToObject(clk, "offsetMin", app_clock_offset_min());
+    cJSON_AddBoolToObject(clk, "night", app_clock_night());
+    char time[CLOCK_TIME_SIZE];
+    char date[CLOCK_DATE_SIZE];
+    app_clock_format(app_clock_epoch_ms(), time, date);
+    cJSON_AddStringToObject(clk, "time", time);
+    cJSON_AddStringToObject(clk, "date", date);
 
     if (snap.has_last_btn) {
         cJSON *btn = cJSON_AddObjectToObject(root, "lastButton");
@@ -270,7 +284,8 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
     cJSON_AddBoolToObject(root, "demo", ui_demo_is_active());
     add_tabs(root);
 
-    const bool bar_shown = screen != UI_SCREEN_SPLASH && screen != UI_SCREEN_LOWBATT && screen != UI_SCREEN_IDENTIFY;
+    const bool bar_shown = screen != UI_SCREEN_SPLASH && screen != UI_SCREEN_LOWBATT && screen != UI_SCREEN_IDENTIFY &&
+                           screen != UI_SCREEN_CLOCK;
     cJSON *sb = cJSON_AddObjectToObject(root, "statusBar");
     cJSON_AddBoolToObject(sb, "visible", bar_shown);
     cJSON *battery = cJSON_AddObjectToObject(sb, "battery");
@@ -283,6 +298,7 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
     cJSON_AddBoolToObject(battery, "low", bar.low);
     cJSON_AddStringToObject(sb, "link", ui_link_name(bar.link));
     cJSON_AddStringToObject(sb, "mode", bar.desk ? "desk" : "ask");
+    cJSON_AddStringToObject(sb, "time", bar.time);
     cJSON_AddNumberToObject(sb, "rssiBars", bar.rssi_bars);
 
     if ((screen == UI_SCREEN_APPROVAL || screen == UI_SCREEN_QUESTION || screen == UI_SCREEN_PLAN) &&
@@ -338,8 +354,21 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
         cJSON *set = cJSON_AddObjectToObject(root, "settings");
         cJSON_AddBoolToObject(set, "active", settings.active);
         cJSON_AddNumberToObject(set, "cursor", settings.cursor);
-        cJSON_AddStringToObject(set, "row", settings_menu_key((settings_row_t)settings.cursor));
-        cJSON_AddBoolToObject(set, "confirming", settings.confirming);
+        cJSON_AddStringToObject(set, "list", settings_list_key(settings.list));
+        cJSON_AddStringToObject(set, "row", settings_item_key(settings.item));
+        cJSON_AddStringToObject(set, "view", settings_view_name(settings.view));
+    }
+    cJSON_AddStringToObject(root, "mark", ui_mark_name(ui_mark_get()));
+    cJSON_AddBoolToObject(root, "showcase", app_flow_showcase_active());
+    if (screen == UI_SCREEN_CLOCK) {
+        ui_clock_t c;
+        char time[8];
+        char date[16];
+        ui_clock_get(&c, time, date);
+        cJSON *clk = cJSON_AddObjectToObject(root, "clock");
+        cJSON_AddStringToObject(clk, "time", time);
+        cJSON_AddStringToObject(clk, "date", date);
+        cJSON_AddBoolToObject(clk, "night", c.night);
     }
     if (screen == UI_SCREEN_PICKER) {
         cJSON *pk = cJSON_AddObjectToObject(root, "picker");

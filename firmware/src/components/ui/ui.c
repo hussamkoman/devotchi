@@ -36,6 +36,8 @@ static const char *const SCREEN_NAMES[UI_SCREEN_COUNT] = {
     [UI_SCREEN_PICKER] = "picker",
     [UI_SCREEN_IDENTIFY] = "identify",
     [UI_SCREEN_LOWBATT] = "lowbatt",
+    [UI_SCREEN_CLOCK] = "clock",
+    [UI_SCREEN_SLEEP] = "sleep",
 };
 
 static TaskHandle_t s_task;
@@ -223,7 +225,7 @@ static void ui_task(void *arg)
 
 static bool shows_status_bar(ui_screen_id_t id)
 {
-    return id != UI_SCREEN_SPLASH && id != UI_SCREEN_LOWBATT && id != UI_SCREEN_IDENTIFY;
+    return id != UI_SCREEN_SPLASH && id != UI_SCREEN_LOWBATT && id != UI_SCREEN_IDENTIFY && id != UI_SCREEN_CLOCK;
 }
 
 /* Caller holds the ui lock. */
@@ -233,6 +235,8 @@ static void load(ui_screen_id_t id)
     lv_screen_load(s_screens[id]);
     screen_pet_set_shown(id == UI_SCREEN_PET);
     screen_picker_set_shown(id == UI_SCREEN_PICKER);
+    screen_clock_set_shown(id == UI_SCREEN_CLOCK);
+    screen_sleep_set_shown(id == UI_SCREEN_SLEEP);
     w_status_set_visible(shows_status_bar(id));
     w_status_set_title(s_titles[id] != NULL ? s_titles[id] : "");
     w_tabs_set(&s_tabs[id]);
@@ -288,6 +292,8 @@ esp_err_t ui_init(void)
     s_screens[UI_SCREEN_SETTINGS] = screen_settings_create();
     s_screens[UI_SCREEN_PICKER] = screen_picker_create();
     s_screens[UI_SCREEN_LOWBATT] = screen_lowbatt_create();
+    s_screens[UI_SCREEN_CLOCK] = screen_clock_create();
+    s_screens[UI_SCREEN_SLEEP] = screen_sleep_create();
     /* Creation order is the stacking order on the top layer: tabs above toasts, both above the bar. */
     w_status_create();
     w_toast_create();
@@ -373,12 +379,16 @@ static const demo_entry_t DEMOS[] = {
     {"home", "idle|working|angry|tabs", UI_SCREEN_PET},
     {"toast", "positive|sticky|desk|battery|strip|receipt", UI_SCREEN_PET},
     {"about", "1|2", UI_SCREEN_PET},
+    {"recent", NULL, UI_SCREEN_PET},
     {"approval", "low|med|details|long|high|clicked|holding|sent|next", UI_SCREEN_APPROVAL},
     {"menu", "terminal|session|high|locked", UI_SCREEN_APPROVAL},
     {"tabs", "hold|nudge|any|inactive", UI_SCREEN_APPROVAL},
     {"question", "single|second|back|read|scroll|multi|send|menu|review|accents|accents-review", UI_SCREEN_QUESTION},
     {"plan", "card|menu|cut|more|accents", UI_SCREEN_PLAN},
-    {"settings", NULL, UI_SCREEN_SETTINGS},
+    {"settings", "top|display|editor|confirm|quick", UI_SCREEN_SETTINGS},
+    {"showcase", "menu|moods|reactions|sample|real", UI_SCREEN_SETTINGS},
+    {"clock", "day|night|notime", UI_SCREEN_CLOCK},
+    {"sleep", NULL, UI_SCREEN_SLEEP},
     {"picker", "devo|ember|more", UI_SCREEN_PICKER},
     {"identify", NULL, UI_SCREEN_IDENTIFY},
     {"lowbatt", NULL, UI_SCREEN_LOWBATT},
@@ -390,7 +400,9 @@ const char *ui_demo_usage(void)
            "toast[positive|sticky|desk|battery|strip|receipt] about[1|2] "
            "approval[low|med|details|long|high|clicked|holding|sent|next] menu[terminal|session|high|locked] "
            "tabs[hold|nudge|any|inactive] question[single|second|back|read|scroll|multi|send|menu|review|accents|"
-           "accents-review] plan[card|menu|cut|more|accents] settings picker[devo|ember|more] identify lowbatt | off";
+           "accents-review] plan[card|menu|cut|more|accents] settings[top|display|editor|confirm|quick] "
+           "showcase[menu|moods|reactions|sample|real] clock[day|night|notime] sleep recent picker[devo|ember|more] "
+           "identify lowbatt | off";
 }
 
 /* Index of variant in the "|"-separated list, or -1. NULL or "" picks the first. */
@@ -462,6 +474,8 @@ static void demo_load(const demo_entry_t *d, int v)
             demo_status(v == 2, v == 3 ? 12 : 72, UI_LINK_REGISTERED, 3);
             screen_pet_demo(TOAST[v]);
             w_toast_demo((w_toast_demo_t)v);
+        } else if (strcmp(d->name, "recent") == 0) {
+            screen_pet_demo(PET_DEMO_RECENT);
         } else if (strcmp(d->name, "about") == 0) {
             screen_pet_demo(v == 0 ? PET_DEMO_ABOUT1 : PET_DEMO_ABOUT2);
         } else {
@@ -480,7 +494,13 @@ static void demo_load(const demo_entry_t *d, int v)
         screen_plan_demo(v);
         break;
     case UI_SCREEN_SETTINGS:
-        screen_settings_demo();
+        screen_settings_demo(v);
+        break;
+    case UI_SCREEN_CLOCK:
+        screen_clock_demo(v);
+        break;
+    case UI_SCREEN_SLEEP:
+        screen_sleep_demo();
         break;
     case UI_SCREEN_PICKER:
         screen_picker_demo(v);
@@ -491,6 +511,40 @@ static void demo_load(const demo_entry_t *d, int v)
     case UI_SCREEN_SPLASH:
     case UI_SCREEN_LOWBATT:
     case UI_SCREEN_COUNT:
+        break;
+    }
+}
+
+/* The showcase pages are other screens under the violet mark (80-85). */
+static const demo_entry_t SHOWCASE_SCREENS[] = {
+    {"menu", NULL, UI_SCREEN_SETTINGS},
+    {"moods", NULL, UI_SCREEN_PET},
+    {"reactions", NULL, UI_SCREEN_PET},
+    {"sample", NULL, UI_SCREEN_APPROVAL},
+    {"real", NULL, UI_SCREEN_APPROVAL},
+};
+
+static void demo_showcase(int v)
+{
+    w_toast_demo(W_TOAST_DEMO_NONE);
+    demo_status(false, 72, UI_LINK_REGISTERED, 3);
+    load(SHOWCASE_SCREENS[v].screen);
+    w_status_set_mark(v == 3 ? UI_MARK_SAMPLE : v == 4 ? UI_MARK_REAL : UI_MARK_DEMO);
+    switch (v) {
+    case 0:
+        screen_settings_demo(5);
+        break;
+    case 1:
+        screen_pet_demo(PET_DEMO_MOODS);
+        break;
+    case 2:
+        screen_pet_demo(PET_DEMO_REACTIONS);
+        break;
+    case 3:
+        screen_approval_demo(APPROVAL_DEMO_HIGH);
+        break;
+    default:
+        screen_approval_demo(APPROVAL_DEMO_REAL);
         break;
     }
 }
@@ -511,8 +565,13 @@ esp_err_t ui_demo(const char *name, const char *variant)
         return ESP_ERR_TIMEOUT;
     }
     s_demo = true;
-    load(d->screen);
-    demo_load(d, v);
+    if (strcmp(d->name, "showcase") == 0) {
+        demo_showcase(v);
+    } else {
+        w_status_set_mark(UI_MARK_NONE);
+        load(d->screen);
+        demo_load(d, v);
+    }
     ui_unlock();
     return ESP_OK;
 }
@@ -529,6 +588,7 @@ void ui_demo_off(void)
         screen_provisioning_demo(-1);
         w_toast_demo(W_TOAST_DEMO_NONE);
         w_status_demo(NULL);
+        w_status_set_mark(w_status_app_mark());
         load(s_app_screen);
     }
     ui_unlock();

@@ -10,9 +10,11 @@
 #include "proto.h"
 #include "qstore.h"
 #include "reqq.h"
+#include "showcase.h"
 #include "storage.h"
 #include "text.h"
 #include "ui.h"
+#include "ui_icons.h"
 #include "wifi.h"
 
 #include "esp_app_desc.h"
@@ -20,9 +22,11 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "power.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,6 +98,20 @@ static char s_card_id[PROTO_ID_SIZE];
 static bool s_card_visible;
 /* A visible card left the queue with a receipt: the next card replaces it (28b). */
 static bool s_card_replaced;
+/* The card on screen is a real request opened in or just after the showcase: hold to allow, REAL REQUEST bar. */
+static bool s_card_guarded;
+/* The resting face is on screen (not the showcase's clock page). */
+static bool s_clock_visible;
+
+/* Showcase (protocol 14.7): the sample card is a card instance of its own, never in s_q. */
+static showcase_t s_sc;
+static reqq_entry_t s_sample;
+static qstore_slot_t *s_sample_slot;
+static bool s_sample_open;
+
+/* About 2/2: requests this device held and answered since boot. */
+static uint32_t s_held_total;
+static uint32_t s_answered_total;
 
 static uint32_t after(uint32_t now, uint32_t ms)
 {
@@ -135,15 +153,20 @@ static void json_escape(char *dst, size_t cap, const char *src)
     dst[n] = '\0';
 }
 
-void app_toast_kind(ui_toast_kind_t kind, const char *text)
+void app_toast_show(ui_toast_kind_t kind, const char *text, const char *detail, uint32_t ms)
 {
-    ui_toast_show(kind, text, NULL, UI_TOAST_DEFAULT_MS);
+    ui_toast_show(kind, text, detail, ms);
     /* Static: app task only, and too large for its stack. */
     static char escaped[2 * TOAST_SIZE];
     static char evt[EVT_SIZE + 2 * TOAST_SIZE];
     json_escape(escaped, sizeof(escaped), text);
     snprintf(evt, sizeof(evt), "{\"evt\":\"toast\",\"text\":\"%s\"}", escaped);
     console_evt(evt);
+}
+
+void app_toast_kind(ui_toast_kind_t kind, const char *text)
+{
+    app_toast_show(kind, text, NULL, UI_TOAST_DEFAULT_MS);
 }
 
 void app_toast(const char *text)
@@ -291,11 +314,52 @@ static void drop_request(const char *id)
     qstore_release(&s_store, copy);
 }
 
+/* The request whose card the buttons drive: the queue's head, or the showcase's sample. */
+static reqq_entry_t *card_entry(void)
+{
+    reqq_entry_t *head = reqq_head(&s_q);
+    if (head != NULL) {
+        return head;
+    }
+    return s_sample_open ? &s_sample : NULL;
+}
+
+/* The entry is still the one on screen after a send (a failed send can empty the queue). */
+static bool card_still(const reqq_entry_t *e)
+{
+    return e == &s_sample ? s_sample_open : reqq_find(&s_q, s_card_id) == e;
+}
+
+static void showcase_evt(const char *op)
+{
+    char evt[96];
+    snprintf(evt, sizeof(evt), "{\"evt\":\"showcase\",\"op\":\"%s\",\"page\":\"%s\",\"active\":%s}", op,
+             showcase_page_name(s_sc.page), s_sc.active ? "true" : "false");
+    console_evt(evt);
+}
+
+/* Ends the showcase (and its sample card); the 10 s guard of ux-flows 8 starts. */
+static void showcase_end(uint32_t now, const char *why)
+{
+    if (!s_sc.active) {
+        return;
+    }
+    showcase_leave(&s_sc, now);
+    s_sample_open = false;
+    s_page = UI_PET_PAGE_PET;
+    ui_pet_set_caption(NULL, NULL, NULL, NULL);
+    showcase_evt(why);
+}
+
 /* ---- messages ---- */
 
 /* A request joined the queue: it is named in `holding` soon, and the device buzzes once. */
 static void request_added(const char *id, uint32_t now)
 {
+    /* A real request ends the showcase before it is shown (protocol 14.7). */
+    showcase_end(now, "request");
+    app_settings_to_top(now);
+    s_held_total++;
     request_evt("add", id, "new");
     app_user_activity(now);
     if (s_identify_until != 0) {
@@ -490,6 +554,15 @@ static void on_error(const proto_error_t *err, uint32_t now)
 
 static void pet_mood_changed(proto_mood_t before);
 
+/* Agent traffic does not wake a dark screen, but it turns a lit clock back into home (ux-flows 7). */
+static void agent_traffic(uint32_t now)
+{
+    app_agent_activity(now);
+    if (s_clock_visible) {
+        app_user_activity(now);
+    }
+}
+
 static void on_notify(const proto_notify_t *n, uint32_t now)
 {
     const proto_mood_t before = s_pet.mood;
@@ -500,11 +573,14 @@ static void on_notify(const proto_notify_t *n, uint32_t now)
         [PET_EVENT_ATTENTION] = PET_REACT_ATTENTION,
     };
     pet_mood_changed(before);
+    char line[TOAST_SIZE];
+    pet_notify_text(line, sizeof(line), n);
+    pet_model_add_recent(&s_pet, line, now, app_clock_epoch_ms());
     if (n->urgency > 0 && (size_t)cls < sizeof(REACT) / sizeof(REACT[0]) && REACT[cls] != PET_REACT_NONE) {
         ui_pet_react(REACT[cls]);
         s_pet_attention = cls == PET_EVENT_ATTENTION;
     }
-    app_agent_activity(now);
+    agent_traffic(now);
     if (n->urgency == 0) {
         return;
     }
@@ -555,6 +631,11 @@ static void on_identify(uint32_t ms, uint32_t now)
     play(FB_SEQ_IDENTIFY, ms);
 }
 
+bool app_flow_mood_idle(void)
+{
+    return s_pet.mood == MOOD_IDLE || s_pet.mood == MOOD_SLEEPING;
+}
+
 uint8_t app_flow_pending_count(void)
 {
     return (uint8_t)reqq_count(&s_q);
@@ -578,12 +659,13 @@ void app_flow_on_message(const proto_msg_t *msg, uint32_t now)
     switch (msg->type) {
     case PROTO_STATUS:
         pet_model_apply_status(&s_pet, &msg->u.status);
-        app_agent_activity(now);
+        pet_model_add_recent(&s_pet, s_pet.status, now, app_clock_epoch_ms());
+        agent_traffic(now);
         pet_mood_changed(before);
         break;
     case PROTO_MOOD:
         pet_model_apply_mood(&s_pet, &msg->u.mood);
-        app_agent_activity(now);
+        agent_traffic(now);
         pet_mood_changed(before);
         break;
     case PROTO_NOTIFY:
@@ -617,6 +699,7 @@ void app_flow_on_message(const proto_msg_t *msg, uint32_t now)
     case PROTO_PEERS:
     case PROTO_PET_CMD:
     case PROTO_MODE:
+    case PROTO_TIME:
         break;
     }
 }
@@ -776,6 +859,46 @@ static bool entry_refuses(const reqq_entry_t *e, card_decision_t d)
     }
 }
 
+static const char *sample_word(card_decision_t d)
+{
+    switch (d) {
+    case CARD_DECISION_ALLOW:
+    case CARD_DECISION_ALLOW_SESSION:
+        return "allowed";
+    case CARD_DECISION_DENY:
+    case CARD_DECISION_DENY_ASK_WHY:
+    case CARD_DECISION_DENY_STOP:
+        return "denied";
+    case CARD_DECISION_ANSWER:
+    case CARD_DECISION_NO_PREFERENCE:
+        return "answered";
+    case CARD_DECISION_DECLINE:
+        return "declined";
+    default:
+        break;
+    }
+    return "sent to terminal";
+}
+
+/* The end of a sample card: a receipt, back to the showcase menu. */
+static void sample_end(const char *word, bool positive)
+{
+    char text[48];
+    snprintf(text, sizeof(text), "Sample: %s", word);
+    ui_toast_show(positive ? UI_TOAST_POSITIVE : UI_TOAST_INFO, text, NULL, UI_TOAST_DEFAULT_MS);
+    char evt[128];
+    snprintf(evt, sizeof(evt), "{\"evt\":\"receipt\",\"text\":\"%s\",\"strip\":false,\"sample\":true}", text);
+    console_evt(evt);
+    s_sample_open = false;
+    showcase_back(&s_sc);
+}
+
+static void sample_decided(card_decision_t d)
+{
+    sample_end(sample_word(d), d == CARD_DECISION_ALLOW || d == CARD_DECISION_ALLOW_SESSION ||
+                                   d == CARD_DECISION_ANSWER);
+}
+
 /*
  * The only way a decision reaches the wire. The card's own check runs again
  * here, next to the serialiser, with the entry's: nothing goes out for a sent
@@ -785,6 +908,11 @@ static void send_decision(reqq_entry_t *e, card_decision_t d, uint32_t now)
 {
     if (strcmp(e->id, s_card_id) != 0 || !card_fsm_may_send(&s_card, d, now) || entry_refuses(e, d)) {
         ESP_LOGW(TAG, "decision %s refused for the card on screen", card_decision_name(d));
+        return;
+    }
+    /* The sample flag travels with the card instance: a sample answer becomes a receipt and nothing is sent. */
+    if (e->sample) {
+        sample_decided(d);
         return;
     }
     char id[PROTO_ID_SIZE];
@@ -801,6 +929,7 @@ static void send_decision(reqq_entry_t *e, card_decision_t d, uint32_t now)
         return;
     }
     if (sent) {
+        s_answered_total++;
         still->answered = true;
         still->answered_ms = now;
         still->n_answers = (uint8_t)n;
@@ -888,16 +1017,16 @@ static void on_card_out(reqq_entry_t *e, const card_out_t *o, uint32_t now)
 
 static void on_approval_button(const btn_fsm_out_t *out, uint32_t now)
 {
-    reqq_entry_t *e = reqq_head(&s_q);
+    reqq_entry_t *e = card_entry();
     if (e == NULL || strcmp(e->id, s_card_id) != 0) {
         return;
     }
     const card_out_t o = card_fsm_button(&s_card, out, now);
-    if (o.extend) {
+    if (o.extend && !e->sample) {
         send_extend(e->id, now);
     }
     /* A failed send can take the link down and empty the queue. */
-    if (reqq_find(&s_q, s_card_id) == e) {
+    if (card_still(e)) {
         on_card_out(e, &o, now);
     }
 }
@@ -916,6 +1045,8 @@ const char *app_flow_page_name(ui_pet_page_t page)
         return "about";
     case UI_PET_PAGE_ABOUT2:
         return "about2";
+    case UI_PET_PAGE_RECENT:
+        return "recent";
     case UI_PET_PAGE_PET:
     case UI_PET_PAGE_COUNT:
         break;
@@ -923,9 +1054,10 @@ const char *app_flow_page_name(ui_pet_page_t page)
     return "pet";
 }
 
+/* A page of the pet screen other than the face: About and recent activity. */
 static bool on_about(void)
 {
-    return s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_ABOUT2;
+    return s_page != UI_PET_PAGE_PET;
 }
 
 static void set_page(ui_pet_page_t page, uint32_t now)
@@ -948,19 +1080,17 @@ static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
         ui_pet_show_tabs(HOME_TABS_MS);
     }
     if (out->id == BTN_ACTION && out->kind == BTN_HOLD) {
-        return false;
+        /* The quick menu (16b) opens from home only. */
+        return s_page != UI_PET_PAGE_PET;
     }
-    if (out->id == BTN_REJECT && out->kind == BTN_HOLD) {
-        const proto_mode_t next = app_link_mode() == PROTO_MODE_DESK ? PROTO_MODE_ASK : PROTO_MODE_DESK;
-        char extra[24];
-        snprintf(extra, sizeof(extra), ",\"mode\":\"%s\"", proto_mode_name(next));
-        app_link_send(now, "set_mode", s_tx, proto_write_set_mode(s_tx, sizeof(s_tx), next), extra);
-        app_toast_kind(UI_TOAST_DESK, next == PROTO_MODE_DESK ? "At desk: on" : "At desk: off");
-        play(FB_SEQ_TICK, 0);
-    } else if (out->id == BTN_ACTION) {
-        set_page(s_page == UI_PET_PAGE_PET ? UI_PET_PAGE_ABOUT : s_page == UI_PET_PAGE_ABOUT ? UI_PET_PAGE_ABOUT2
-                                                                                               : UI_PET_PAGE_PET,
-                 now);
+    if (out->kind != BTN_CLICK) {
+        return true;
+    }
+    if (out->id == BTN_ACTION) {
+        static const ui_pet_page_t NEXT[UI_PET_PAGE_COUNT] = {
+            [UI_PET_PAGE_PET] = UI_PET_PAGE_RECENT, [UI_PET_PAGE_RECENT] = UI_PET_PAGE_PET,
+            [UI_PET_PAGE_ABOUT] = UI_PET_PAGE_ABOUT2, [UI_PET_PAGE_ABOUT2] = UI_PET_PAGE_ABOUT};
+        set_page(NEXT[s_page], now);
     } else if (on_about()) {
         if (out->id == BTN_REJECT && out->kind == BTN_CLICK) {
             set_page(UI_PET_PAGE_PET, now);
@@ -979,17 +1109,229 @@ static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
     return true;
 }
 
+/* ---- showcase pages (80-84) ---- */
+
+/* Moods in the order of the showcase (81: Proud is 9 of 11), with the one-line meaning of the mood guide. */
+static const struct {
+    proto_mood_t mood;
+    const char *name;
+    const char *line;
+} SC_MOODS[SHOWCASE_MOODS] = {
+    {MOOD_IDLE, "Idle", "Between tasks"},
+    {MOOD_HAPPY, "Happy", "Tests passing, builds green"},
+    {MOOD_FOCUSED, "Focused", "Deep in a complex task"},
+    {MOOD_THINKING, "Thinking", "Analysing, planning, reading code"},
+    {MOOD_WORKING, "Working", "Editing and running things"},
+    {MOOD_ANXIOUS, "Anxious", "Waiting on something long or risky"},
+    {MOOD_EXCITED, "Excited", "Just shipped something"},
+    {MOOD_SAD, "Sad", "Tests failing, things not working"},
+    {MOOD_PROUD, "Proud", "All green after a big refactor"},
+    {MOOD_ANGRY, "Angry", "Repeated failures, flaky tests"},
+    {MOOD_SLEEPING, "Sleeping", "Idle for a long time"},
+};
+
+static const struct {
+    pet_react_t react;
+    const char *name;
+    const char *line;
+} SC_REACTIONS[SHOWCASE_REACTIONS] = {
+    {PET_REACT_PAT, "Pat", "APPROVE on home"},
+    {PET_REACT_POKE, "Poke", "REJECT on home"},
+    {PET_REACT_DIZZY, "Dizzy", "Three pokes within two seconds"},
+    {PET_REACT_WAKE, "Wake-up", "Leaving the clock face"},
+    {PET_REACT_ATTENTION, "Attention", "An urgent notification"},
+};
+
+/* The sample cards (83, 84) carry constant content and the id `sample`, which no serialiser accepts. */
+static void sample_open(bool question, uint32_t now)
+{
+    memset(&s_sample, 0, sizeof(s_sample));
+    strlcpy(s_sample.id, "sample", sizeof(s_sample.id));
+    strlcpy(s_sample.project, "devotchi", sizeof(s_sample.project));
+    strlcpy(s_sample.sid, "3fa9c1", sizeof(s_sample.sid));
+    s_sample.sample = true;
+    s_sample.timeout_ms = 30000;
+    s_sample.deadline_ms = now + s_sample.timeout_ms;
+    if (question && s_sample_slot != NULL) {
+        memset(s_sample_slot, 0, sizeof(*s_sample_slot));
+        qstore_slot_t *q = s_sample_slot;
+        q->kind = QSTORE_QUESTION;
+        strlcpy(q->id, s_sample.id, sizeof(q->id));
+        q->count = 1;
+        q->received = 1;
+        q->complete = true;
+        q->timeout_ms = s_sample.timeout_ms;
+        q->deadline_ms = s_sample.deadline_ms;
+        q->u.q[0].has_header = true;
+        strlcpy(q->u.q[0].header, "Storage", sizeof(q->u.q[0].header));
+        strlcpy(q->u.q[0].text, "Where should the pets be stored?", sizeof(q->u.q[0].text));
+        q->u.q[0].n_options = 3;
+        strlcpy(q->u.q[0].options[0].label, "NVS partition", sizeof(q->u.q[0].options[0].label));
+        strlcpy(q->u.q[0].options[0].desc, "Wear levelling, atomic replace", sizeof(q->u.q[0].options[0].desc));
+        strlcpy(q->u.q[0].options[1].label, "LittleFS", sizeof(q->u.q[0].options[1].label));
+        strlcpy(q->u.q[0].options[1].desc, "A file system of its own", sizeof(q->u.q[0].options[1].desc));
+        strlcpy(q->u.q[0].options[2].label, "In the app image", sizeof(q->u.q[0].options[2].label));
+        strlcpy(q->u.q[0].options[2].desc, "No downloads at all", sizeof(q->u.q[0].options[2].desc));
+        s_sample.kind = REQQ_QUESTION;
+        s_sample.slot = q;
+        strlcpy(s_sample.tool, "AskUserQuestion", sizeof(s_sample.tool));
+    } else {
+        s_sample.kind = REQQ_PERMISSION;
+        strlcpy(s_sample.tool, "Bash", sizeof(s_sample.tool));
+        strlcpy(s_sample.summary, "rm -rf dist node_modules", sizeof(s_sample.summary));
+        strlcpy(s_sample.cmd, "rm -rf dist node_modules", sizeof(s_sample.cmd));
+        s_sample.has_cmd = true;
+        strlcpy(s_sample.desc, "Clean the build output", sizeof(s_sample.desc));
+        strlcpy(s_sample.reason, "Recursive delete in the project", sizeof(s_sample.reason));
+        s_sample.risk = PROTO_RISK_HIGH;
+    }
+    s_sample_open = true;
+}
+
+static void sample_notification(const char *op)
+{
+    app_toast_show(UI_TOAST_POSITIVE, "Tests passed", "Sample notification", UI_TOAST_DEFAULT_MS);
+    ui_pet_react(PET_REACT_POSITIVE);
+    play(FB_SEQ_POSITIVE, 0);
+    showcase_evt(op);
+}
+
+static void showcase_pressed(const showcase_act_t *a, uint32_t now)
+{
+    switch (a->kind) {
+    case SHOWCASE_ACT_NONE:
+        return;
+    case SHOWCASE_ACT_CARD:
+        return;
+    case SHOWCASE_ACT_LEAVE:
+        s_sample_open = false;
+        s_page = UI_PET_PAGE_PET;
+        ui_pet_set_caption(NULL, NULL, NULL, NULL);
+        play(FB_SEQ_TICK, 0);
+        showcase_evt("leave");
+        return;
+    case SHOWCASE_ACT_OPEN:
+        if (a->page == SHOWCASE_PAGE_PERMISSION || a->page == SHOWCASE_PAGE_QUESTION) {
+            sample_open(a->page == SHOWCASE_PAGE_QUESTION, now);
+        } else if (a->page == SHOWCASE_PAGE_REACTIONS) {
+            ui_pet_react(SC_REACTIONS[s_sc.reaction].react);
+        }
+        break;
+    case SHOWCASE_ACT_MOVED:
+        if (s_sc.page == SHOWCASE_PAGE_REACTIONS) {
+            ui_pet_react(SC_REACTIONS[s_sc.reaction].react);
+        }
+        break;
+    case SHOWCASE_ACT_PLAY:
+        if (s_sc.page == SHOWCASE_PAGE_NOTIFY) {
+            sample_notification("play");
+            return;
+        }
+        ui_pet_react(s_sc.page == SHOWCASE_PAGE_MOODS ? PET_REACT_PAT : SC_REACTIONS[s_sc.reaction].react);
+        break;
+    case SHOWCASE_ACT_NOTIFY:
+        sample_notification("notify");
+        return;
+    case SHOWCASE_ACT_BACK:
+    case SHOWCASE_ACT_NIGHT:
+        break;
+    }
+    play(FB_SEQ_CLICK, 0);
+    showcase_evt(a->kind == SHOWCASE_ACT_OPEN ? "open" : a->kind == SHOWCASE_ACT_BACK ? "back" : "move");
+}
+
+static bool showcase_button_press(const btn_fsm_out_t *out, uint32_t now)
+{
+    const showcase_act_t a = showcase_button(&s_sc, out, now);
+    if (a.kind == SHOWCASE_ACT_CARD) {
+        on_approval_button(out, now);
+        return true;
+    }
+    showcase_pressed(&a, now);
+    return true;
+}
+
+bool app_flow_showcase_active(void)
+{
+    return s_sc.active;
+}
+
+bool app_flow_showcase_enter(uint32_t now)
+{
+    if (!showcase_enter(&s_sc, (uint8_t)reqq_count(&s_q), now)) {
+        app_toast_kind(UI_TOAST_ATTENTION, "A request is waiting");
+        showcase_evt("refused");
+        return false;
+    }
+    /* showcase_enter refuses a non-empty queue: sample cards never cover a real one. */
+    assert(reqq_count(&s_q) == 0);
+    app_settings_close();
+    s_sample_open = false;
+    s_page = UI_PET_PAGE_PET;
+    showcase_evt("enter");
+    return true;
+}
+
+void app_flow_showcase_on_request(app_request_t *req, uint32_t now)
+{
+    showcase_page_t page = SHOWCASE_PAGE_MENU;
+    if (strcmp(req->text, "off") == 0) {
+        showcase_end(now, "leave");
+        app_request_complete(true, "");
+        return;
+    }
+    if (strcmp(req->text, "on") != 0 && !showcase_page_parse(req->text, &page)) {
+        app_request_complete(false, "showcase on|off|menu|moods|reactions|permission|question|clock|notify");
+        return;
+    }
+    if (!s_sc.active && !app_flow_showcase_enter(now)) {
+        app_request_complete(false, "A request is waiting");
+        return;
+    }
+    s_sample_open = false;
+    showcase_open(&s_sc, page, now);
+    if (page == SHOWCASE_PAGE_MENU) {
+        s_sc.cursor = SHOWCASE_ROW_MOODS;
+    } else {
+        const showcase_act_t a = {
+            .kind = page == SHOWCASE_PAGE_NOTIFY ? SHOWCASE_ACT_NOTIFY : SHOWCASE_ACT_OPEN, .page = page};
+        showcase_pressed(&a, now);
+    }
+    app_request_complete(true, "");
+}
+
+/* The showcase drives the buttons unless a real request or identify is up. */
+static bool showcase_owns_buttons(uint32_t now)
+{
+    return s_sc.active && reqq_head(&s_q) == NULL && !identify_active(now);
+}
+
 btn_mode_t app_flow_btn_mode(btn_id_t id, uint32_t now)
 {
     /* The urgent banner and identify have one tab: any button. */
     if (s_attention || identify_active(now)) {
         return BTN_MODE_CLICK;
     }
+    if (showcase_owns_buttons(now)) {
+        /* REJECT keeps its hold everywhere in the showcase: leave. */
+        if (s_sample_open && id != BTN_REJECT && s_card_id[0] != '\0') {
+            return card_fsm_mode(&s_card, id, now);
+        }
+        return showcase_btn_mode(&s_sc, id);
+    }
     if (request_screen(s_screen)) {
         return s_card_id[0] != '\0' ? card_fsm_mode(&s_card, id, now) : BTN_MODE_NONE;
     }
-    /* Home: REJECT hold toggles desk mode, ACTION hold opens Settings. */
-    return id == BTN_APPROVE ? BTN_MODE_CLICK : BTN_MODE_NAV_HOLD;
+    if (s_clock_visible) {
+        return BTN_MODE_CLICK;
+    }
+    /* Home: ACTION hold opens the quick menu. */
+    return id == BTN_ACTION ? BTN_MODE_NAV_HOLD : BTN_MODE_CLICK;
+}
+
+bool app_flow_clock_visible(void)
+{
+    return s_clock_visible;
 }
 
 bool app_flow_card_visible(void)
@@ -1021,8 +1363,15 @@ bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
         }
         return true;
     }
+    if (showcase_owns_buttons(now)) {
+        return showcase_button_press(out, now);
+    }
     if (request_screen(s_screen)) {
         on_approval_button(out, now);
+        return true;
+    }
+    if (s_clock_visible) {
+        /* A waking press (app.c arms the wake guard) does nothing else. */
         return true;
     }
     return on_pet_button(out, now);
@@ -1049,9 +1398,16 @@ static void on_timer_cb(void *arg)
 
 static void run_deadlines(uint32_t now)
 {
-    if (s_card_id[0] != '\0') {
+    if (s_card_id[0] != '\0' && card_entry() != NULL) {
         const card_out_t o = card_fsm_tick(&s_card, now);
-        on_card_out(reqq_head(&s_q), &o, now);
+        on_card_out(card_entry(), &o, now);
+    }
+    if (s_sample_open && reqq_head(&s_q) == NULL && due(s_sample.deadline_ms, now)) {
+        sample_end("time ran out", false);
+    }
+    const showcase_act_t idle = showcase_tick(&s_sc, now);
+    if (idle.kind == SHOWCASE_ACT_LEAVE) {
+        showcase_pressed(&idle, now);
     }
     char id[PROTO_ID_SIZE];
     bool expired = false;
@@ -1133,6 +1489,13 @@ void app_flow_arm_timer(uint32_t now)
     }
     if (on_about()) {
         at = earliest(at, after(s_page_at, PAGE_IDLE_MS), now);
+    }
+    if (s_sc.active) {
+        at = earliest(at, after(s_sc.last_press_ms, SHOWCASE_IDLE_MS), now);
+    }
+    if (s_sample_open) {
+        at = earliest(at, s_sample.deadline_ms, now);
+        at = earliest(at, after(now, BAR_REFRESH_MS), now);
     }
     esp_timer_stop(s_timer);
     if (at == 0) {
@@ -1412,16 +1775,22 @@ static void show_card(const reqq_entry_t *head, uint32_t now)
             card_fsm_open_ask(&s_card, head, lines, app_link_server_caps());
         }
         card_fsm_set_sent(&s_card, head->answered);
+        /* Ux-flows 8: a real request in or just after the showcase needs the hold, whatever the risk. */
+        s_card_guarded = !head->sample && showcase_guarded(&s_sc, now);
+        card_fsm_set_hold_only(&s_card, s_card_guarded);
         strlcpy(s_card_id, head->id, sizeof(s_card_id));
         ui_tabs_hold_progress(UI_TAB_APPROVE, 0);
-        if (s_card_replaced) {
+        if (s_card_guarded) {
+            /* The request pattern that request_added() started opens with the two pulses of ux-flows 8. */
+            app_btn_arm(now, SHOWCASE_ARM_MS);
+        } else if (s_card_replaced) {
             app_btn_arm(now, CARD_ARM_NEXT_MS);
             play(FB_SEQ_NEXT, 0);
         } else {
             app_btn_arm(now, CARD_ARM_MS);
         }
     } else if (!s_card_visible) {
-        app_btn_arm(now, CARD_ARM_MS);
+        app_btn_arm(now, s_card_guarded ? SHOWCASE_ARM_MS : CARD_ARM_MS);
     }
     s_card_replaced = false;
     s_card_visible = true;
@@ -1435,8 +1804,9 @@ static void hide_card(uint32_t now)
     }
     s_card_visible = false;
     s_card_replaced = false;
-    if (reqq_head(&s_q) == NULL) {
+    if (card_entry() == NULL) {
         s_card_id[0] = '\0';
+        s_card_guarded = false;
     }
 }
 
@@ -1464,14 +1834,37 @@ static void preview_entry(reqq_entry_t *e, bool high, uint32_t now)
     e->deadline_ms = now + 21000;
 }
 
-static void render_about(void)
+/* "5 h 02 min", "14 min", "40 s". */
+static void duration_text(char *dst, size_t cap, uint32_t s)
+{
+    if (s >= 3600) {
+        snprintf(dst, cap, "%lu h %02lu min", (unsigned long)(s / 3600), (unsigned long)(s / 60 % 60));
+    } else if (s >= 60) {
+        snprintf(dst, cap, "%lu min", (unsigned long)(s / 60));
+    } else {
+        snprintf(dst, cap, "%lu s", (unsigned long)s);
+    }
+}
+
+static void render_about(uint32_t now)
 {
     /* Static: app task only, and the snapshot is too large for its stack. */
     static app_snapshot_t snap;
     static char server[STORAGE_URL_SIZE];
-    char uptime[24];
-    char rssi[16];
-    char link[40];
+    static char host[40];
+    static char fw[40];
+    static char pet[48];
+    static char wifi[48];
+    static char link[48];
+    static char room[40];
+    static char battery[40];
+    static char uptime[24];
+    static char heap[40];
+    static char frames[40];
+    static char requests[40];
+    static char pets[40];
+    static uint32_t last_frames;
+    static uint32_t last_ms;
     char id[APP_DEVICE_ID_SIZE];
     wifi_status_t w;
     storage_url_source_t source;
@@ -1479,31 +1872,171 @@ static void render_about(void)
     app_get_snapshot(&snap);
     wifi_get_status(&w);
     storage_get_server_url(server, &source);
+    const char *url = snap.link.server[0] != '\0' ? snap.link.server : server;
+    const char *scheme = strstr(url, "://");
+    strlcpy(host, scheme != NULL ? scheme + 3 : url, sizeof(host));
     app_get_device_id(id);
-    const uint32_t up = app_uptime_s();
-    snprintf(uptime, sizeof(uptime), "%luh %02lum %02lus", (unsigned long)(up / 3600), (unsigned long)(up / 60 % 60),
-             (unsigned long)(up % 60));
+    char sha[8];
+    esp_app_get_elf_sha256(sha, sizeof(sha));
+    snprintf(fw, sizeof(fw), "%.24s \xC2\xB7 %s", esp_app_get_description()->version, sha);
+    /* Static: the view holds the stored pets' list. */
+    static app_pets_view_t pv;
+    app_pets_get_view(&pv);
+    snprintf(pet, sizeof(pet), "%s%s", pv.shown, pv.source == PET_SOURCE_STORED ? "" : " (built in)");
+    if (pet[0] >= 'a' && pet[0] <= 'z') {
+        pet[0] = (char)(pet[0] - 'a' + 'A');
+    }
     if (w.connected) {
-        snprintf(rssi, sizeof(rssi), "%d dBm", w.rssi);
+        snprintf(wifi, sizeof(wifi), "%.24s %d dBm", snap.link.ssid, w.rssi);
     } else {
-        strlcpy(rssi, "-", sizeof(rssi));
+        snprintf(wifi, sizeof(wifi), "%s", snap.link.ssid[0] != '\0' ? snap.link.ssid : "-");
     }
     snprintf(link, sizeof(link), "%s (%s)", app_state_name(snap.state), app_ws_state_name(snap.link.ws));
+    snprintf(room, sizeof(room), "%.20s \xC2\xB7 mode %s", snap.link.name[0] != '\0' ? snap.link.name : id,
+             proto_mode_name(app_link_mode()));
+    power_battery_t b;
+    power_get_battery(&b);
+    if (b.valid && b.state != BATTERY_STATE_ABSENT) {
+        snprintf(battery, sizeof(battery), "%ld.%02ld V %d %% %s", (long)(b.mv / 1000), (long)(b.mv % 1000 / 10),
+                 b.pct, battery_state_name(b.state));
+    } else {
+        snprintf(battery, sizeof(battery), "none \xC2\xB7 %s", b.ext_power ? "USB power" : "no power");
+    }
+    duration_text(uptime, sizeof(uptime), app_uptime_s());
+    snprintf(heap, sizeof(heap), "%u kB free \xC2\xB7 min %u",
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
+    ui_stats_t st;
+    ui_get_stats(&st);
+    const uint32_t dt = now - last_ms;
+    const uint32_t fps = last_ms != 0 && dt > 0 ? (st.frames - last_frames) * 1000u / dt : 0;
+    last_frames = st.frames;
+    last_ms = now;
+    snprintf(frames, sizeof(frames), "%lu fps \xC2\xB7 %lu.%lu ms draw", (unsigned long)fps,
+             (unsigned long)(st.avg_ms_x10 / 10), (unsigned long)(st.avg_ms_x10 % 10));
+    snprintf(requests, sizeof(requests), "%lu held \xC2\xB7 %lu answered", (unsigned long)s_held_total,
+             (unsigned long)s_answered_total);
+    if (pv.partition == PET_PART_OK) {
+        snprintf(pets, sizeof(pets), "%u of %u stored", (unsigned)pv.stored, (unsigned)pv.slots);
+    } else {
+        snprintf(pets, sizeof(pets), "partition %s", pet_part_state_name(pv.partition));
+    }
+    const char *error = snap.link.last_error[0] != '\0' ? snap.link.last_error
+                        : storage_is_degraded()       ? "storage: defaults in use"
+                                                      : "-";
     const char *values[UI_ABOUT_COUNT] = {
-        [UI_ABOUT_NAME] = snap.link.name[0] != '\0' ? snap.link.name : "-",
-        [UI_ABOUT_FW] = esp_app_get_description()->version,
-        [UI_ABOUT_DEVICE_ID] = id,
+        [UI_ABOUT_FW] = fw,
+        [UI_ABOUT_DEVICE] = snap.link.name[0] != '\0' ? snap.link.name : id,
+        [UI_ABOUT_PET] = pet,
+        [UI_ABOUT_WIFI] = wifi,
+        [UI_ABOUT_IP] = w.connected ? w.ip : "-",
+        [UI_ABOUT_SERVER] = host,
+        [UI_ABOUT_LINK] = link,
+        [UI_ABOUT_ROOM] = room,
+        [UI_ABOUT_BATTERY] = battery,
         [UI_ABOUT_UPTIME] = uptime,
         [UI_ABOUT_RESET] = app_reset_reason(),
-        [UI_ABOUT_SSID] = snap.link.ssid[0] != '\0' ? snap.link.ssid : "-",
-        [UI_ABOUT_IP] = w.connected ? w.ip : "-",
-        [UI_ABOUT_RSSI] = rssi,
-        [UI_ABOUT_SERVER] = snap.link.server[0] != '\0' ? snap.link.server : server,
-        [UI_ABOUT_LINK] = link,
-        [UI_ABOUT_ERROR] = snap.link.last_error[0] != '\0' ? snap.link.last_error : "-",
-        [UI_ABOUT_NVS] = storage_is_degraded() ? "error, defaults in use" : "ok",
+        [UI_ABOUT_HEAP] = heap,
+        [UI_ABOUT_FRAMES] = frames,
+        [UI_ABOUT_REQUESTS] = requests,
+        [UI_ABOUT_PETS] = pets,
+        [UI_ABOUT_ERROR] = error,
+        [UI_ABOUT_FONTS] = "Figtree, JB Mono (OFL)",
     };
     ui_about_set(values);
+}
+
+/* Recent activity: the time of day when the clock is known, otherwise how long ago. */
+static void render_recent(uint32_t now)
+{
+    static char times[UI_RECENT_ROWS][CLOCK_TIME_SIZE + 8];
+    const char *time_p[UI_RECENT_ROWS] = {0};
+    const char *text_p[UI_RECENT_ROWS] = {0};
+    uint8_t n = 0;
+    for (; n < UI_RECENT_ROWS; n++) {
+        const pet_recent_t *r = pet_model_recent(&s_pet, n);
+        if (r == NULL) {
+            break;
+        }
+        char date[CLOCK_DATE_SIZE];
+        if (!app_clock_format(r->epoch_ms, times[n], date)) {
+            duration_text(times[n], sizeof(times[n]), (now - r->at_ms) / 1000);
+        }
+        time_p[n] = times[n];
+        text_p[n] = r->text;
+    }
+    ui_recent_set(time_p, text_p, n);
+}
+
+static void render_clock(bool night, bool sample)
+{
+    char time[CLOCK_TIME_SIZE];
+    char date[CLOCK_DATE_SIZE];
+    /* The showcase's clock page shows a sample time when the device has none (80). */
+    if (!app_clock_format(app_clock_epoch_ms(), time, date) && sample) {
+        strlcpy(time, "14:32", sizeof(time));
+        strlcpy(date, "Sun 15 Nov", sizeof(date));
+    }
+    const ui_clock_t c = {.time = time, .date = date, .night = night};
+    ui_clock_set(&c);
+}
+
+/* The showcase menu (80) on the list screen. */
+static void render_showcase_menu(void)
+{
+    static ui_settings_t ui;
+    static const char *const ICONS[SHOWCASE_ROW_COUNT] = {UI_ICON_PET,  UI_ICON_PLAY,  UI_ICON_SHIELD, UI_ICON_Q,
+                                                          UI_ICON_BELL, UI_ICON_CLOCK, UI_ICON_X};
+    static const char *const LABELS[SHOWCASE_ROW_COUNT] = {
+        "Moods", "Reactions", "Sample permission", "Sample question", "Sample notification", "Clock face",
+        "Leave showcase"};
+    memset(&ui, 0, sizeof(ui));
+    ui.title = "Showcase";
+    ui.count = SHOWCASE_ROW_COUNT;
+    ui.cursor = (uint8_t)s_sc.cursor;
+    ui.approve = "Open";
+    for (int i = 0; i < SHOWCASE_ROW_COUNT; i++) {
+        ui.icons[i] = ICONS[i];
+        ui.labels[i] = LABELS[i];
+    }
+    snprintf(ui.values[SHOWCASE_ROW_MOODS], sizeof(ui.values[0]), "%d", SHOWCASE_MOODS);
+    snprintf(ui.values[SHOWCASE_ROW_REACTIONS], sizeof(ui.values[0]), "%d", SHOWCASE_REACTIONS);
+    ui_settings_set(&ui);
+}
+
+/* A showcase page that is not a sample card. */
+static ui_screen_id_t render_showcase(void)
+{
+    static char bar[24];
+    switch (s_sc.page) {
+    case SHOWCASE_PAGE_MOODS:
+        snprintf(bar, sizeof(bar), "Moods %u/%d", s_sc.mood + 1u, SHOWCASE_MOODS);
+        ui_pet_set("", SC_MOODS[s_sc.mood].mood, "");
+        ui_pet_set_caption(bar, SC_MOODS[s_sc.mood].name, SC_MOODS[s_sc.mood].line, "Pat");
+        ui_pet_page_set(UI_PET_PAGE_PET);
+        return UI_SCREEN_PET;
+    case SHOWCASE_PAGE_REACTIONS:
+        ui_pet_set("", MOOD_IDLE, "");
+        ui_pet_set_caption("Reactions", SC_REACTIONS[s_sc.reaction].name, SC_REACTIONS[s_sc.reaction].line,
+                           "Replay");
+        ui_pet_page_set(UI_PET_PAGE_PET);
+        return UI_SCREEN_PET;
+    case SHOWCASE_PAGE_NOTIFY:
+        ui_pet_set("", MOOD_HAPPY, "");
+        ui_pet_set_caption("Notification", "Sample notification", "A toast and the pet's reaction", "Replay");
+        ui_pet_page_set(UI_PET_PAGE_PET);
+        return UI_SCREEN_PET;
+    case SHOWCASE_PAGE_CLOCK:
+        render_clock(s_sc.night, true);
+        return UI_SCREEN_CLOCK;
+    case SHOWCASE_PAGE_MENU:
+    case SHOWCASE_PAGE_PERMISSION:
+    case SHOWCASE_PAGE_QUESTION:
+    case SHOWCASE_PAGE_COUNT:
+        break;
+    }
+    render_showcase_menu();
+    return UI_SCREEN_SETTINGS;
 }
 
 ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flow_preview_t preview)
@@ -1533,20 +2066,26 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
     }
 
     const bool identify = identify_active(now);
-    const reqq_entry_t *head = reqq_head(&s_q);
-    if (identify || head != NULL) {
+    const reqq_entry_t *head = card_entry();
+    const bool showcase = s_sc.active && reqq_head(&s_q) == NULL;
+    if (identify || (head != NULL && !head->sample)) {
         s_page = UI_PET_PAGE_PET;
     }
+    const bool clock = !identify && head == NULL && !showcase &&
+                       (app_clock_show() != APP_CLOCK_SHOW_AUTO || app_power_clock_shown());
     /* Identify is full-screen: the name must not sit under a banner; the About page shows the link itself. */
-    const bool about = on_about();
-    set_banner(identify ? NULL : s_attention ? s_attention_text : about ? NULL : offline_banner,
-               !identify && s_attention);
+    const bool about = s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_ABOUT2;
+    set_banner(identify || clock ? NULL : s_attention ? s_attention_text : about ? NULL : offline_banner,
+               !identify && !clock && s_attention);
+    ui_mark_t mark = UI_MARK_NONE;
+    s_clock_visible = false;
     if (identify) {
         hide_card(now);
         screen = UI_SCREEN_IDENTIFY;
     } else if (head != NULL) {
         show_card(head, now);
         const bool armed = app_btn_armed(now);
+        mark = head->sample ? UI_MARK_SAMPLE : s_card_guarded ? UI_MARK_REAL : UI_MARK_NONE;
         switch (head->kind) {
         case REQQ_QUESTION:
             render_question(head, &s_card, armed, now, &view);
@@ -1558,19 +2097,33 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
             break;
         case REQQ_PERMISSION:
         default:
-            render_approval(head, &s_card, armed, 1, (uint8_t)reqq_count(&s_q), now, &view);
+            render_approval(head, &s_card, armed, 1, head->sample ? 1 : (uint8_t)reqq_count(&s_q), now, &view);
             screen = UI_SCREEN_APPROVAL;
             break;
         }
+    } else if (showcase) {
+        hide_card(now);
+        mark = UI_MARK_DEMO;
+        screen = render_showcase();
+    } else if (clock) {
+        hide_card(now);
+        ui_pet_set_caption(NULL, NULL, NULL, NULL);
+        render_clock(app_clock_night(), false);
+        s_clock_visible = true;
+        screen = UI_SCREEN_CLOCK;
     } else {
         hide_card(now);
+        ui_pet_set_caption(NULL, NULL, NULL, NULL);
         ui_pet_set(s_pet.project, s_pet.mood, s_pet.status);
         if (about) {
-            render_about();
+            render_about(now);
+        } else if (s_page == UI_PET_PAGE_RECENT) {
+            render_recent(now);
         }
         ui_pet_page_set(s_page);
         screen = UI_SCREEN_PET;
     }
+    ui_mark_set(mark);
     view.page = s_page;
     s_screen = screen;
     publish_view(&view);
@@ -1585,6 +2138,11 @@ esp_err_t app_flow_init(void)
     }
     ESP_RETURN_ON_FALSE(slots != NULL, ESP_ERR_NO_MEM, TAG, "question store");
     qstore_init(&s_store, slots);
+    s_sample_slot = heap_caps_calloc(1, sizeof(qstore_slot_t), MALLOC_CAP_SPIRAM);
+    if (s_sample_slot == NULL) {
+        s_sample_slot = calloc(1, sizeof(qstore_slot_t));
+    }
+    showcase_init(&s_sc);
     reqq_init(&s_q);
     pet_model_init(&s_pet);
     pet_pokes_init(&s_pokes);

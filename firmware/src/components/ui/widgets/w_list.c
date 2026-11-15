@@ -1,5 +1,6 @@
 #include "ui_priv.h"
 
+#include "ui_icons.h"
 #include "ui_theme.h"
 
 #include <string.h>
@@ -190,7 +191,7 @@ static uint32_t rows_hash(const w_list_row_t *rows, uint8_t count, uint8_t focus
     for (uint8_t i = 0; i < count; i++) {
         h = fnv1a(fnv1a(fnv1a(fnv1a(fnv1a(h, rows[i].icon), rows[i].label), rows[i].value), rows[i].code),
                   rows[i].desc);
-        h = (h ^ (rows[i].muted ? 1u : 0u) ^ (rows[i].accent ? 2u : 0u)) * 16777619u;
+        h = (h ^ (rows[i].muted ? 1u : 0u) ^ (rows[i].accent ? 2u : 0u) ^ (rows[i].chevron ? 4u : 0u)) * 16777619u;
     }
     return h;
 }
@@ -237,7 +238,7 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
         const bool has_icon = row->icon != NULL && row->icon[0] != '\0';
         const uint8_t lines = on ? desc_lines(l, row, has_icon ? PAD_H + ICON_W + ICON_GAP : PAD_H) : 0;
         const bool code = on && row->code != NULL && row->code[0] != '\0';
-        const bool has_value = row->value != NULL && row->value[0] != '\0';
+        const bool has_value = row->chevron || (row->value != NULL && row->value[0] != '\0');
         const int32_t text_x = has_icon ? PAD_H + ICON_W + ICON_GAP : PAD_H;
         const int32_t label_w = l->width - text_x - PAD_H - (has_value ? VALUE_W / 2 : 0);
         const int32_t line_h = lv_font_get_line_height(UI_FONT_BODY);
@@ -252,7 +253,12 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
         lv_obj_set_size(r->label, label_w, label_n * line_h);
         ui_label_set(r->label, row->label);
         ui_set_hidden(r->value, !has_value);
-        ui_label_set(r->value, has_value ? row->value : "");
+        lv_obj_set_style_text_font(r->value, row->chevron ? UI_FONT_ICONS : UI_FONT_SMALL, 0);
+        if (row->chevron) {
+            lv_label_set_text_static(r->value, UI_ICON_CHEV);
+        } else {
+            ui_label_set(r->value, has_value ? row->value : "");
+        }
         lv_obj_set_x(r->value, l->width - PAD_H - VALUE_W);
         if (on) {
             focus_lines = lines;
@@ -325,4 +331,9 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
     l->top = top;
     l->style = style;
     l->valid = true;
+}
+
+lv_obj_t *w_list_obj(w_list_t *l)
+{
+    return l != NULL ? l->clip : NULL;
 }

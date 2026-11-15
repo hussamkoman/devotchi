@@ -36,25 +36,29 @@ static const char *TAG = "app_cmds_io";
 typedef struct {
     const char *key;
     storage_setting_t id;
-    /** SETTINGS_ROW_COUNT for a setting the screen does not show. */
-    settings_row_t row;
+    /** SETTINGS_ITEM_COUNT for a setting the screen does not show. */
+    settings_item_t item;
 } setting_def_t;
 
 static const uint16_t BATT_VALUES[] = {BATTERY_PRESENCE_AUTO, BATTERY_PRESENCE_YES, BATTERY_PRESENCE_NO};
 
 static const setting_def_t SETTINGS[] = {
-    {"brightness", STORAGE_SETTING_BRIGHTNESS, SETTINGS_ROW_BRIGHTNESS},
-    {"dim_s", STORAGE_SETTING_DIM_S, SETTINGS_ROW_SCREEN_TIMEOUT},
-    {"deep_min", STORAGE_SETTING_DEEP_MIN, SETTINGS_ROW_DEEP_SLEEP},
-    {"haptic", STORAGE_SETTING_HAPTIC, SETTINGS_ROW_HAPTICS},
-    {"led", STORAGE_SETTING_LED, SETTINGS_ROW_LED},
-    {"batt", STORAGE_SETTING_BATT, SETTINGS_ROW_COUNT},
+    {"brightness", STORAGE_SETTING_BRIGHTNESS, SETTINGS_ITEM_BRIGHTNESS},
+    {"dim_s", STORAGE_SETTING_DIM_S, SETTINGS_ITEM_SCREEN_TIMEOUT},
+    {"deep_min", STORAGE_SETTING_DEEP_MIN, SETTINGS_ITEM_DEEP_SLEEP},
+    {"haptic", STORAGE_SETTING_HAPTIC, SETTINGS_ITEM_HAPTICS},
+    {"led", STORAGE_SETTING_LED, SETTINGS_ITEM_LED},
+    {"batt", STORAGE_SETTING_BATT, SETTINGS_ITEM_COUNT},
+    {"clock", STORAGE_SETTING_CLOCK, SETTINGS_ITEM_SHOW_CLOCK},
+    {"clock_bri", STORAGE_SETTING_CLOCK_BRI, SETTINGS_ITEM_CLOCK_BRIGHTNESS},
+    {"h24", STORAGE_SETTING_H24, SETTINGS_ITEM_H24},
+    {"night", STORAGE_SETTING_NIGHT, SETTINGS_ITEM_NIGHT},
 };
 
 static const uint16_t *setting_values(const setting_def_t *def, size_t *count)
 {
-    if (def->row < SETTINGS_ROW_COUNT) {
-        return settings_menu_choices(def->row, count);
+    if (def->item < SETTINGS_ITEM_COUNT) {
+        return settings_item_choices(def->item, count);
     }
     *count = sizeof(BATT_VALUES) / sizeof(BATT_VALUES[0]);
     return BATT_VALUES;
@@ -538,7 +542,46 @@ static console_rc_t cmd_factory_reset(int argc, char **argv, const char *raw_arg
     return CONSOLE_OK;
 }
 
+static console_rc_t cmd_clock(int argc, char **argv, const char *raw_args)
+{
+    (void)raw_args;
+    if (argc == 4 && strcmp(argv[1], "set") == 0) {
+        char arg[APP_REQUEST_ARG_SIZE];
+        snprintf(arg, sizeof(arg), "%.30s %.8s", argv[2], argv[3]);
+        return app_req(APP_REQUEST_CLOCK, "set", arg);
+    }
+    if (argc == 3 && strcmp(argv[1], "show") == 0) {
+        return app_req(APP_REQUEST_CLOCK, "show", argv[2]);
+    }
+    return console_fail(CONSOLE_ERR_BAD_ARGS, "clock set <epoch_s> <offset_min> | clock show day|night|off");
+}
+
+static console_rc_t cmd_showcase(int argc, char **argv, const char *raw_args)
+{
+    (void)raw_args;
+    if (argc != 2) {
+        return console_fail(CONSOLE_ERR_BAD_ARGS,
+                            "showcase on|off|menu|moods|reactions|permission|question|clock|notify");
+    }
+    return app_req(APP_REQUEST_SHOWCASE, argv[1], NULL);
+}
+
+static console_rc_t cmd_settings(int argc, char **argv, const char *raw_args)
+{
+    (void)raw_args;
+    if (argc == 3 && strcmp(argv[1], "open") == 0) {
+        return app_req(APP_REQUEST_SETTINGS, argv[2], NULL);
+    }
+    if (argc == 2 && strcmp(argv[1], "close") == 0) {
+        return app_req(APP_REQUEST_SETTINGS, "close", NULL);
+    }
+    return console_fail(CONSOLE_ERR_BAD_ARGS, "settings open <path> | settings close");
+}
+
 static const console_cmd_t CMDS[] = {
+    {"clock", "clock set <epoch_s> <offset_min> | clock show day|night|off: the time and the clock face", cmd_clock},
+    {"showcase", "showcase on|off|<page>: the demo mode (refused while a request is waiting)", cmd_showcase},
+    {"settings", "settings open top|quick|<list>[/<row>] | settings close: open a Settings view", cmd_settings},
     {"btn", "btn <approve|reject|action> <press|long|hold MS>: press a button (long: 1.3 s, past both hold thresholds)", cmd_btn},
     {"wake", "user activity without a button", cmd_wake},
     {"fb", "fb list | fb play <pattern> [ms] | fb stop: feedback patterns, steps reported as EVT fb", cmd_fb},

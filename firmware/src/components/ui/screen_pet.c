@@ -19,11 +19,17 @@
 #define ABOUT_VALUE_W    210
 
 static const char *const ABOUT_LABELS[UI_ABOUT_COUNT] = {
-    [UI_ABOUT_NAME] = "Name",     [UI_ABOUT_FW] = "Firmware", [UI_ABOUT_DEVICE_ID] = "Device",
-    [UI_ABOUT_SSID] = "Wi-Fi",    [UI_ABOUT_RSSI] = "RSSI",   [UI_ABOUT_IP] = "IP",
-    [UI_ABOUT_SERVER] = "Server", [UI_ABOUT_LINK] = "Link",   [UI_ABOUT_UPTIME] = "Uptime",
-    [UI_ABOUT_RESET] = "Reset",   [UI_ABOUT_ERROR] = "Last err", [UI_ABOUT_NVS] = "NVS",
+    [UI_ABOUT_FW] = "Firmware",    [UI_ABOUT_DEVICE] = "Device",     [UI_ABOUT_PET] = "Pet",
+    [UI_ABOUT_WIFI] = "Wi-Fi",     [UI_ABOUT_IP] = "IP",             [UI_ABOUT_SERVER] = "Server",
+    [UI_ABOUT_LINK] = "Link",      [UI_ABOUT_ROOM] = "Room",         [UI_ABOUT_BATTERY] = "Battery",
+    [UI_ABOUT_UPTIME] = "Uptime",  [UI_ABOUT_RESET] = "Reset",       [UI_ABOUT_HEAP] = "Heap",
+    [UI_ABOUT_FRAMES] = "Frames",  [UI_ABOUT_REQUESTS] = "Requests", [UI_ABOUT_PETS] = "Pets",
+    [UI_ABOUT_ERROR] = "Last err", [UI_ABOUT_FONTS] = "Fonts",
 };
+
+/* Showcase caption (81, 82): a title and one line between the pet and the tabs. */
+#define CAPTION_TITLE_Y  166
+#define CAPTION_LINE_Y   196
 
 /* Body centre of the home pet (mockups 10-16) and its scale in sixteenths. */
 #define PET_CX           160
@@ -36,6 +42,12 @@ static lv_obj_t *s_project;
 static lv_obj_t *s_status;
 static lv_obj_t *s_about[2];
 static lv_obj_t *s_about_values[UI_ABOUT_COUNT];
+static lv_obj_t *s_recent;
+static lv_obj_t *s_recent_times[UI_RECENT_ROWS];
+static lv_obj_t *s_recent_texts[UI_RECENT_ROWS];
+static lv_obj_t *s_recent_empty;
+static lv_obj_t *s_cap_title;
+static lv_obj_t *s_cap_line;
 static lv_timer_t *s_tabs_timer;
 
 /* Guarded by the ui lock. */
@@ -46,27 +58,36 @@ static bool s_tabs_on;
 static bool s_boot_tabs_done;
 static bool s_has_project;
 static bool s_error_shown;
+static bool s_caption;
+static const char *s_cap_approve = "";
+static char s_cap_bar[24];
 
 static void apply_tabs(void)
 {
     static const ui_tabs_t ANY = {.any = "Any button: OK"};
     static const ui_tabs_t HOME = {.tab = {
                                        [UI_TAB_REJECT] = {.state = UI_TAB_CLICK, .label = "Poke"},
-                                       [UI_TAB_ACTION] = {.state = UI_TAB_CLICK_AND_HOLD, .label = "About",
-                                                          .hold = "Settings"},
+                                       [UI_TAB_ACTION] = {.state = UI_TAB_CLICK_AND_HOLD, .label = "Recent",
+                                                          .hold = "Menu"},
                                        [UI_TAB_APPROVE] = {.state = UI_TAB_CLICK, .label = "Pat"},
                                    }};
-    static const ui_tabs_t ABOUT[2] = {
-        {.tab = {[UI_TAB_REJECT] = {.state = UI_TAB_CLICK, .label = "Back"},
-                 [UI_TAB_ACTION] = {.state = UI_TAB_CLICK, .label = "Page"}}},
-        {.tab = {[UI_TAB_REJECT] = {.state = UI_TAB_CLICK, .label = "Back"},
-                 [UI_TAB_ACTION] = {.state = UI_TAB_CLICK, .label = "Home"}}},
-    };
+    static const ui_tabs_t RECENT = {.tab = {[UI_TAB_REJECT] = {.state = UI_TAB_CLICK, .label = "Back"},
+                                             [UI_TAB_ACTION] = {.state = UI_TAB_CLICK, .label = "Home"}}};
+    static ui_tabs_t caption = {.tab = {[UI_TAB_REJECT] = {.state = UI_TAB_CLICK, .label = "Back"},
+                                        [UI_TAB_ACTION] = {.state = UI_TAB_CLICK, .label = "Next"},
+                                        [UI_TAB_APPROVE] = {.state = UI_TAB_CLICK}}};
+    static const ui_tabs_t ABOUT = {.tab = {[UI_TAB_REJECT] = {.state = UI_TAB_CLICK, .label = "Back"},
+                                            [UI_TAB_ACTION] = {.state = UI_TAB_CLICK, .label = "Page"}}};
     const ui_tabs_t *tabs = NULL;
+    caption.tab[UI_TAB_APPROVE].label = s_cap_approve;
     if (s_attention) {
         tabs = &ANY;
+    } else if (s_caption && s_page == UI_PET_PAGE_PET) {
+        tabs = &caption;
+    } else if (s_page == UI_PET_PAGE_RECENT) {
+        tabs = &RECENT;
     } else if (s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_ABOUT2) {
-        tabs = &ABOUT[s_page == UI_PET_PAGE_ABOUT2];
+        tabs = &ABOUT;
     } else if (s_tabs_on) {
         tabs = &HOME;
     }
@@ -76,13 +97,17 @@ static void apply_tabs(void)
 static void apply_page(void)
 {
     static const char *const TITLES[UI_PET_PAGE_COUNT] = {
-        [UI_PET_PAGE_PET] = "", [UI_PET_PAGE_ABOUT] = "About 1/2", [UI_PET_PAGE_ABOUT2] = "About 2/2"};
+        [UI_PET_PAGE_PET] = "", [UI_PET_PAGE_RECENT] = "Recent", [UI_PET_PAGE_ABOUT] = "About 1/2",
+        [UI_PET_PAGE_ABOUT2] = "About 2/2"};
     const bool pet = s_page == UI_PET_PAGE_PET;
     ui_set_hidden(s_about[0], s_page != UI_PET_PAGE_ABOUT);
     ui_set_hidden(s_about[1], s_page != UI_PET_PAGE_ABOUT2);
-    ui_set_hidden(s_project, !pet || !s_has_project);
-    ui_set_hidden(s_status, !pet);
-    ui_screen_set_title(UI_SCREEN_PET, TITLES[s_page]);
+    ui_set_hidden(s_recent, s_page != UI_PET_PAGE_RECENT);
+    ui_set_hidden(s_project, !pet || !s_has_project || s_caption);
+    ui_set_hidden(s_status, !pet || s_caption);
+    ui_set_hidden(s_cap_title, !pet || !s_caption);
+    ui_set_hidden(s_cap_line, !pet || !s_caption);
+    ui_screen_set_title(UI_SCREEN_PET, s_caption && pet ? s_cap_bar : TITLES[s_page]);
     pet_view_set_visible(s_view, s_shown && pet);
     apply_tabs();
 }
@@ -129,6 +154,17 @@ lv_obj_t *screen_pet_create(void)
     lv_obj_set_style_text_align(s_status, LV_TEXT_ALIGN_CENTER, 0);
     s_about[0] = about_page(scr, 0, UI_ABOUT_PAGE1_ROWS);
     s_about[1] = about_page(scr, UI_ABOUT_PAGE1_ROWS, UI_ABOUT_COUNT);
+    s_recent = ui_box(scr, UI_TEXT_X, ABOUT_Y, UI_WIDTH_TEXT, UI_RECENT_ROWS * ABOUT_ROW_H * 3 / 2);
+    for (int i = 0; i < UI_RECENT_ROWS; i++) {
+        const int32_t y = i * ABOUT_ROW_H * 3 / 2;
+        s_recent_times[i] = ui_text(s_recent, UI_FONT_MONO, UI_C_FOG, 0, y + 1, ABOUT_LABEL_W - 8, true);
+        s_recent_texts[i] = ui_text(s_recent, UI_FONT_SMALL, UI_C_CREAM, ABOUT_LABEL_W - 8, y, ABOUT_VALUE_W + 8, true);
+    }
+    s_recent_empty = ui_text(s_recent, UI_FONT_SMALL, UI_C_FOG, 0, 1, UI_WIDTH_TEXT, true);
+    lv_label_set_text_static(s_recent_empty, "Nothing from the agent yet");
+    lv_obj_add_flag(s_recent, LV_OBJ_FLAG_HIDDEN);
+    s_cap_title = ui_text_line(scr, UI_FONT_TITLE, UI_C_CREAM, CAPTION_TITLE_Y, LV_TEXT_ALIGN_CENTER);
+    s_cap_line = ui_text_line(scr, UI_FONT_SMALL, UI_C_FOG, CAPTION_LINE_Y, LV_TEXT_ALIGN_CENTER);
     s_tabs_timer = lv_timer_create(tabs_expired, BOOT_TABS_MS, NULL);
     lv_timer_pause(s_tabs_timer);
     apply_page();
@@ -221,6 +257,49 @@ static void apply_about(const char *const values[UI_ABOUT_COUNT])
     }
 }
 
+static void apply_recent(const char *const times[UI_RECENT_ROWS], const char *const texts[UI_RECENT_ROWS], uint8_t n)
+{
+    for (uint8_t i = 0; i < UI_RECENT_ROWS; i++) {
+        ui_set_hidden(s_recent_times[i], i >= n);
+        ui_set_hidden(s_recent_texts[i], i >= n);
+        ui_label_set(s_recent_times[i], i < n ? times[i] : "");
+        ui_label_set(s_recent_texts[i], i < n ? texts[i] : "");
+    }
+    ui_set_hidden(s_recent_empty, n > 0);
+}
+
+void ui_recent_set(const char *const times[UI_RECENT_ROWS], const char *const texts[UI_RECENT_ROWS], uint8_t n)
+{
+    if (!ui_lock()) {
+        return;
+    }
+    if (!ui_demo_active()) {
+        apply_recent(times, texts, n);
+    }
+    ui_unlock();
+}
+
+static void apply_caption(const char *bar, const char *title, const char *line, const char *approve)
+{
+    s_caption = title != NULL;
+    strlcpy(s_cap_bar, s_caption && bar != NULL ? bar : "", sizeof(s_cap_bar));
+    ui_label_set(s_cap_title, s_caption ? title : "");
+    ui_label_set(s_cap_line, s_caption && line != NULL ? line : "");
+    s_cap_approve = approve != NULL ? approve : "";
+    apply_page();
+}
+
+void ui_pet_set_caption(const char *bar, const char *title, const char *line, const char *approve)
+{
+    if (!ui_lock()) {
+        return;
+    }
+    if (!ui_demo_active()) {
+        apply_caption(bar, title, line, approve);
+    }
+    ui_unlock();
+}
+
 void ui_about_set(const char *const values[UI_ABOUT_COUNT])
 {
     if (!ui_lock()) {
@@ -235,26 +314,47 @@ void ui_about_set(const char *const values[UI_ABOUT_COUNT])
 void screen_pet_demo(ui_pet_demo_t demo)
 {
     static const char *const ABOUT[UI_ABOUT_COUNT] = {
-        [UI_ABOUT_NAME] = "devotchi-3F2A",
-        [UI_ABOUT_FW] = "0.2.0",
-        [UI_ABOUT_DEVICE_ID] = "dv-3f2a91",
-        [UI_ABOUT_SSID] = "HomeNet-5G",
-        [UI_ABOUT_RSSI] = "-58 dBm",
+        [UI_ABOUT_FW] = "2.1.0 \xC2\xB7 a1b2c3d",
+        [UI_ABOUT_DEVICE] = "devotchi-3F2A",
+        [UI_ABOUT_PET] = "Devo (built in)",
+        [UI_ABOUT_WIFI] = "HomeNet-5G -58 dBm",
         [UI_ABOUT_IP] = "192.168.1.42",
-        [UI_ABOUT_SERVER] = "ws://devotchi.local:8080",
-        [UI_ABOUT_LINK] = "online (connected)",
-        [UI_ABOUT_UPTIME] = "5h 02m 11s",
+        [UI_ABOUT_SERVER] = "devotchi.local",
+        [UI_ABOUT_LINK] = "online 2 h 14 min",
+        [UI_ABOUT_ROOM] = "desk \xC2\xB7 mode ask",
+        [UI_ABOUT_BATTERY] = "3.92 V 72 % charging",
+        [UI_ABOUT_UPTIME] = "5 h 02 min",
         [UI_ABOUT_RESET] = "power-on",
-        [UI_ABOUT_ERROR] = "ws close 1006",
-        [UI_ABOUT_NVS] = "ok",
+        [UI_ABOUT_HEAP] = "148 kB free \xC2\xB7 min 96",
+        [UI_ABOUT_FRAMES] = "30 fps \xC2\xB7 11 ms draw",
+        [UI_ABOUT_REQUESTS] = "42 held \xC2\xB7 37 answered",
+        [UI_ABOUT_PETS] = "2 of 8 \xC2\xB7 41 kB free",
+        [UI_ABOUT_ERROR] = "ws close 1006, 14:02",
+        [UI_ABOUT_FONTS] = "Figtree, JB Mono (OFL)",
     };
+    static const char *const TIMES[UI_RECENT_ROWS] = {"14:32", "14:30", "14:21", "14:02", "13:58"};
+    static const char *const TEXTS[UI_RECENT_ROWS] = {
+        "Tests passed", "Edit src/routes/hooks.ts", "Build failed", "Reading packages/server", "Task complete"};
     lv_timer_pause(s_tabs_timer);
     s_tabs_on = false;
+    s_caption = false;
     ui_pet_page_t page = UI_PET_PAGE_PET;
     switch (demo) {
     case PET_DEMO_OFF:
-        apply_tabs();
+        apply_caption(NULL, NULL, NULL, NULL);
         return;
+    case PET_DEMO_RECENT:
+        apply_recent(TIMES, TEXTS, UI_RECENT_ROWS);
+        page = UI_PET_PAGE_RECENT;
+        break;
+    case PET_DEMO_MOODS:
+        apply("", MOOD_PROUD, "");
+        apply_caption("Moods 9/11", "Proud", "All green after a big refactor", "Pat");
+        break;
+    case PET_DEMO_REACTIONS:
+        apply("", MOOD_IDLE, "");
+        apply_caption("Reactions", "Dizzy", "Three pokes within two seconds", "Replay");
+        break;
     case PET_DEMO_IDLE:
         apply("", MOOD_IDLE, "Waiting for an agent");
         break;
@@ -286,7 +386,7 @@ void screen_pet_demo(ui_pet_demo_t demo)
     if (page != s_page) {
         set_page(page);
     } else {
-        apply_tabs();
+        apply_page();
     }
 }
 

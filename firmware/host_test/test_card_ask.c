@@ -370,6 +370,17 @@ static void test_question_refuses_permission_decisions(void)
 
 /* ---- plans: protocol 14.5, each frame against approve, accept edits and revise ---- */
 
+static void test_plan_hold_only(void)
+{
+    plan(3, 0, false);
+    open_ask(PROTO_CAP_PLAN);
+    card_fsm_set_hold_only(&s_c, true);
+    TEST_ASSERT_EQUAL(CARD_ALLOW_HOLD, card_fsm_allow(&s_c));
+    TEST_ASSERT_EQUAL(BTN_MODE_COMMIT_HOLD, card_fsm_mode(&s_c, BTN_APPROVE, s_now));
+    TEST_ASSERT_EQUAL(CARD_OUT_NUDGE, click(BTN_APPROVE).kind);
+    expect_decision(commit_hold(), CARD_DECISION_APPROVE);
+}
+
 static void test_plan_complete(void)
 {
     plan(3, 0, false);
@@ -650,6 +661,7 @@ int main(void)
     RUN_TEST(test_review_menu);
     RUN_TEST(test_question_refuses_permission_decisions);
     RUN_TEST(test_plan_complete);
+    RUN_TEST(test_plan_hold_only);
     RUN_TEST(test_plan_pages_must_be_seen);
     RUN_TEST(test_plan_cut);
     RUN_TEST(test_plan_more_has_no_approve);

@@ -54,6 +54,8 @@ typedef struct {
     /** An answer was sent and its dismiss or error has not arrived yet. */
     bool answered;
     uint32_t answered_ms;
+    /** A showcase sample (protocol 14.7): its card answers with a receipt and never reaches the link. */
+    bool sample;
     /** The answers this device sent for a question (receipt), n_answers 0 before. */
     uint8_t n_answers;
     proto_answer_t answers[PROTO_Q_MAX];

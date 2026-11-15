@@ -571,15 +571,21 @@ class Run:
 
     def step_mode(self):
         self.wait_pet()
+        # Desk mode is a row of the quick menu (16b): ACTION hold, Next twice, APPROVE toggles it.
+        self.press("action", "long")
+        self.wait_screen(lambda s: (s.get("settings") or {}).get("list") == "quick", 3, "quick menu")
+        self.press("action")
+        self.press("action")
         for target, toast in (("desk", "At desk: on"), ("ask", "At desk: off")):
             bmark = self.board.mark()
             mark = self.mock.mark()
-            self.press("reject", "long")
+            self.press("approve")
             self.wait_mock_frame("set_mode", lambda f: f.get("mode") == target, 3, mark, f"set_mode {target}")
             self.wait_toast(toast, bmark)
-            self.wait_board(lambda e: e.get("evt") == "fb" and e.get("pattern") == "tick", 2, bmark, "tick")
             self.wait_screen(lambda s: s["statusBar"]["mode"] == target, 3, f"chip {target}")
-        return "reject long toggled desk on and off through the mock's mode broadcast"
+        self.press("reject")
+        self.wait_pet()
+        return "the quick menu's Desk mode row toggled desk on and off through the mock's mode broadcast"
 
     def step_identify(self):
         bmark = self.board.mark()

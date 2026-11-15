@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "app.c" "app_cmds.c" "app_cmds_io.c" "app_cmds_net.c" "app_link.c" "app_flow.c" "app_settings.c" "app_telemetry.c" "app_power.c" "app_pets.c"
+    SRCS "app.c" "app_cmds.c" "app_cmds_io.c" "app_cmds_net.c" "app_link.c" "app_flow.c" "app_settings.c" "app_telemetry.c" "app_power.c" "app_pets.c" "app_clock.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "."
     REQUIRES core
