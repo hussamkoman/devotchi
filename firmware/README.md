@@ -90,7 +90,8 @@ are the ids of `pets/builtin.txt`, the first the default: the CMake configure
 step (`tools/pet_builtins.cmake`, in the IDF build and the host tests) runs
 `petpack.py builtins` and compiles the generated `pet_builtins.c` /
 `pet_builtins.h` (`PET_BUILTIN_COUNT`, `PET_BUILTIN_DEFAULT`, the
-`pet_builtins` table) from the build directory; a change to the list, a
+`pet_builtins` table with each pack and the source's `tagline` for the picker)
+from the build directory; a change to the list, a
 listed source or the tool re-runs it. After editing a source, rewrite its
 golden pack; `test_pet_pack` (the compiled-in packs equal the golden ones) and
 `test_petpack` (`petpack.py check` on every pet, plus the tool's own tests)

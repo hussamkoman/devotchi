@@ -4,6 +4,7 @@
 #include "ui.h"
 #include "ui_theme.h"
 
+#include <stdio.h>
 #include <string.h>
 
 /* Mockups 60-62: one pet per page at 12/16, its name, the In use tag, a line and page dots. */
@@ -164,15 +165,18 @@ void ui_picker_set(const ui_picker_t *p)
 
 void screen_picker_demo(int variant)
 {
+    static const char *const IDS[] = {"devo", "ember", NULL, "mochi"};
     static pet_def_t def;
-    /* The showcase reproduces the design renders of Devo and Ember, whatever pets/builtin.txt lists. */
-    const pet_builtin_t *b = pet_builtin_find(variant == 1 ? "ember" : "devo");
-    ui_picker_t p = {.pages = 3, .page = (uint8_t)variant};
-    if (variant < 2 && b != NULL && pet_pack_decode(b->bytes, b->len, &def) == PET_PACK_OK) {
+    static char line[48];
+    const pet_builtin_t *b = variant >= 0 && variant < 4 && IDS[variant] != NULL ? pet_builtin_find(IDS[variant]) : NULL;
+    ui_picker_t p = {.pages = PET_BUILTIN_COUNT + 1, .page = PET_BUILTIN_COUNT};
+    if (b != NULL && pet_pack_decode(b->bytes, b->len, &def) == PET_PACK_OK) {
+        p.page = (uint8_t)(b - pet_builtins);
         p.def = &def;
-        p.in_use = variant == 0;
-        p.can_use = variant != 0;
-        p.line = variant == 0 ? "Built in \xC2\xB7 changes colour with its mood" : "Built in \xC2\xB7 a small jade dragon";
+        p.in_use = b == pet_builtins;
+        p.can_use = !p.in_use;
+        snprintf(line, sizeof(line), "Built in \xC2\xB7 %s", b->tagline);
+        p.line = line;
     }
     apply(&p);
 }

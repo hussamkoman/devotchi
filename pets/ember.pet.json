@@ -2,6 +2,7 @@
   "id": "ember",
   "name": "Ember",
   "rev": 1,
+  "tagline": "a small jade dragon",
   "palette": {
     "mode": "shift",
     "base": "#2FAE9C",

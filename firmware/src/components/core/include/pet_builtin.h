@@ -12,6 +12,8 @@ typedef struct {
     const char *id;
     const uint8_t *bytes;
     size_t len;
+    /** The source's `tagline` (the picker's line under the name); "" when it has none. */
+    const char *tagline;
 } pet_builtin_t;
 
 /** The packs compiled into the firmware, in pets/builtin.txt order (generated pet_builtins.c). */

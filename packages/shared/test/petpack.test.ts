@@ -78,7 +78,7 @@ describe.each(PET_IDS)("golden pack %s", (id) => {
     const result = validatePet(golden(id));
     expect(result).toEqual({
       ok: true,
-      pet: { id, name: source(id).name, rev: 1, size: golden(id).length, crc32: read(`pets/golden/${id}.crc32`).toString().trim() },
+      pet: { id, name: source(id).name, rev: source(id).rev, size: golden(id).length, crc32: read(`pets/golden/${id}.crc32`).toString().trim() },
     });
   });
 
@@ -159,7 +159,7 @@ describe("validatePet", () => {
 });
 
 describe("encodePet source checks", () => {
-  const base = () => source("devo") as unknown as Record<string, unknown>;
+  const base = () => source("mochi") as unknown as Record<string, unknown>;
   const fails = (mutate: (s: Record<string, unknown>) => void, message: RegExp) => {
     const s = clone(base());
     mutate(s);
@@ -171,6 +171,8 @@ describe("encodePet source checks", () => {
     fails((s) => (s.id = "Devo"), /^id: "Devo" is not \[a-z0-9\]\{1,8\}/);
     fails((s) => (s.name = "A name that is far too long"), /^name: /);
     fails((s) => (s.rev = 0), /^rev: 0 is not an integer in 1\.\.255/);
+    fails((s) => (s.tagline = "x".repeat(33)), /^tagline: "x+" is not 0\.\.32 printable ASCII characters/);
+    fails((s) => (s.tagline = 7), /^tagline: 7 is not/);
     fails((s) => ((s.palette as Record<string, unknown>).base = "red"), /^palette\.base: "red" is not a #RRGGBB colour/);
     fails((s) => delete ((s.palette as Record<string, Record<string, unknown>>).moods.sad), /^palette\.moods\.sad: is missing/);
     fails((s) => ((s.face as Record<string, unknown>).eyes = "square"), /^face\.eyes: "square" is not one of round, slit, dot/);
@@ -207,7 +209,7 @@ describe("encodePet source checks", () => {
   });
 
   it("lists every pet with its golden pack, and the template is a valid source", () => {
-    expect(PET_IDS).toEqual(expect.arrayContaining(["devo", "ember", "sprout"]));
+    expect(PET_IDS).toEqual(expect.arrayContaining(["devo", "mochi", "ember", "sprout"]));
     const template = JSON.parse(read("pets/_template.pet.json").toString("utf8")) as unknown;
     const pack = encodePet(template);
     expect(pack.length).toBeLessThan(PET_MAX_BYTES);
@@ -216,7 +218,7 @@ describe("encodePet source checks", () => {
 });
 
 describe("renderPetSvg", () => {
-  it.each(["devo", "ember"])("draws %s idle, happy and sleeping", (id) => {
+  it.each(["devo", "mochi", "ember"])("draws %s idle, happy and sleeping", (id) => {
     for (const mood of ["idle", "happy", "sleeping"] as const) {
       expect(renderPetSvg(golden(id), mood)).toMatchSnapshot(`${id}-${mood}`);
     }
@@ -224,7 +226,7 @@ describe("renderPetSvg", () => {
 
   it("uses the mood colour, the derived shades and only numbers", () => {
     const devo = renderPetSvg(golden("devo"), "happy");
-    expect(devo).toContain('fill="#FFB84D"');
+    expect(devo).toContain('fill="#FFD98C"');
     expect(devo.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="220" height="190"')).toBe(true);
     expect(devo).not.toMatch(/Devo/);
     const ember = renderPetSvg(golden("ember"), "idle", { width: 110, height: 95, gray: true, idPrefix: "x" });
@@ -234,11 +236,18 @@ describe("renderPetSvg", () => {
   });
 
   it("applies aux drivers: the shown antenna stem follows the mood", () => {
-    // Devo's stems are variants chosen by aux 2: 0 curve (idle), 3 straight (focused).
-    const idle = renderPetSvg(golden("devo"), "idle");
-    const focused = renderPetSvg(golden("devo"), "focused");
+    // Mochi's stems are variants chosen by aux 2: 0 curve (idle), 3 straight (focused).
+    const idle = renderPetSvg(golden("mochi"), "idle");
+    const focused = renderPetSvg(golden("mochi"), "focused");
     expect(idle).toContain('points="0,-55 0,-67 4.38,-77 10,-81"');
     expect(focused).toContain('points="0,-55 0,-88"');
+  });
+
+  it("lights Devo's traces while aux 3 is nonzero and moves the antenna tip", () => {
+    const glow = 'points="9,38 20,38 27,46 36,46" fill="none" stroke="#E8E5F9" stroke-width="2"';
+    expect(renderPetSvg(golden("devo"), "idle")).toContain(glow);
+    expect(renderPetSvg(golden("devo"), "sleeping")).not.toContain('stroke-width="2"');
+    expect(renderPetSvg(golden("devo"), "sad")).toContain('points="0,-66 6,-77 16,-76"');
   });
 });
 
@@ -277,7 +286,7 @@ describe("reactions, outline and the preview sheet", () => {
   it("draws the night outline in the night colour without hidden parts or face colour", () => {
     const night = renderPetSvg(golden("devo"), "idle", { outline: true });
     expect(night).toContain('stroke="#9A4A26"');
-    expect(night).not.toContain("#F0C594");
+    expect(night).not.toContain("#D9D3F5");
     expect(night).not.toContain("#1A1D26");
     const ember = renderPetSvg(golden("ember"), "idle", { outline: true });
     expect(ember).not.toContain("#F6E7C1");

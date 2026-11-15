@@ -27,7 +27,7 @@ from e2e_link import FORBIDDEN_PORTS, StepFailed, check, is_registered  # noqa: 
 import petpack  # noqa: E402
 
 PETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "pets")
-TEST_IDS = ("mochi", "wrongid", "fmt2", "mochi3", "mochi4")
+TEST_IDS = ("pixie", "wrongid", "fmt2", "pixie3", "pixie4")
 
 
 def pack_for(pet_id, rev=1, fmt=1, bad_trailer=False):
@@ -107,28 +107,28 @@ class PetsRun(Run):
         return json.dumps(frame, separators=(",", ":"))[:160]
 
     def step_install_select_reboot(self):
-        data = pack_for("mochi")
-        self.mock.ctl(f"pet-add mochi {data.hex()}")
-        self.pet_cmd("install", "mochi", "select", expect="ok", request=True)
+        data = pack_for("pixie")
+        self.mock.ctl(f"pet-add pixie {data.hex()}")
+        self.pet_cmd("install", "pixie", "select", expect="ok", request=True)
         pet, pets = self.pets_state()
-        check(pet == {"selected": "mochi", "shown": "mochi", "source": "stored"}, f"after install: {pet}")
-        check(pets["stored"] == [{"id": "mochi", "rev": 1}], f"stored: {pets['stored']}")
+        check(pet == {"selected": "pixie", "shown": "pixie", "source": "stored"}, f"after install: {pet}")
+        check(pets["stored"] == [{"id": "pixie", "rev": 1}], f"stored: {pets['stored']}")
         self.reboot()
         pet, _ = self.pets_state()
-        check(pet == {"selected": "mochi", "shown": "mochi", "source": "stored"}, f"after the reset: {pet}")
+        check(pet == {"selected": "pixie", "shown": "pixie", "source": "stored"}, f"after the reset: {pet}")
         pose = self.board.json_command("pet pose")
-        check(pose["pet"] == "mochi", f"drawn pet {pose['pet']}")
-        return "mochi rev 1 installed, selected, still selected and drawn after a reset"
+        check(pose["pet"] == "pixie", f"drawn pet {pose['pet']}")
+        return "pixie rev 1 installed, selected, still selected and drawn after a reset"
 
     def step_failures_change_nothing(self):
         before = self.pets_state()
-        data = pack_for("mochi")
-        self.mock.ctl(f"pet-add mochi {data.hex()}")
-        self.pet_cmd("install", "mochi", "crc32=00000000", expect="crc", request=True)
+        data = pack_for("pixie")
+        self.mock.ctl(f"pet-add pixie {data.hex()}")
+        self.pet_cmd("install", "pixie", "crc32=00000000", expect="crc", request=True)
         self.unchanged(before, "crc")
-        self.pet_cmd("install", "mochi", f"size={len(data) + 1}", expect="size", request=True)
+        self.pet_cmd("install", "pixie", f"size={len(data) + 1}", expect="size", request=True)
         self.unchanged(before, "size")
-        self.pet_cmd("install", "mochi", "rev=2", expect="mismatch", request=True)
+        self.pet_cmd("install", "pixie", "rev=2", expect="mismatch", request=True)
         self.unchanged(before, "rev mismatch")
         self.mock.ctl(f"pet-add wrongid {data.hex()}")
         self.pet_cmd("install", "wrongid", expect="mismatch", request=True)
@@ -141,36 +141,36 @@ class PetsRun(Run):
         self.unchanged(before, "fmt 2")
         for mode in ("truncate", "drop"):
             self.mock.ctl(f"pet-mode {mode}")
-            self.pet_cmd("install", "mochi", expect="http", request=True)
+            self.pet_cmd("install", "pixie", expect="http", request=True)
             self.unchanged(before, mode)
         self.mock.ctl("pet-mode normal")
         return "crc, size, mismatch (rev, id), http (404, short body, dropped connection), format: nothing changed"
 
     def step_malformed_and_builtin(self):
         before = self.pets_state()
-        for bad in ("../x", "Mochi", "abcdefghi", ""):
+        for bad in ("../x", "Pixie", "abcdefghi", ""):
             frame, _ = self.pet_cmd("install", bad, "rev=1", "size=344", "crc32=1a2b3c4d", expect="unknown",
                                     request=False)
             check(frame["result"]["pet"] == "", f"malformed id echoed back: {frame['result']}")
-        self.pet_cmd("install", "mochi", "rev=0", expect="unknown", request=False)
+        self.pet_cmd("install", "pixie", "rev=0", expect="unknown", request=False)
         self.pet_cmd("install", "devo", expect="builtin", request=False)
         self.pet_cmd("remove", "ember", expect="builtin", request=False)
         self.pet_cmd("select", "nothere", expect="unknown", request=False)
         self.unchanged(before, "malformed")
-        return "../x, Mochi, 9 characters, empty: unknown without a request; devo install, ember remove: builtin"
+        return "../x, Pixie, 9 characters, empty: unknown without a request; devo install, ember remove: builtin"
 
     def step_replace_bad_crc(self):
-        good = pack_for("mochi", rev=1)
-        self.mock.ctl(f"pet-add mochi {good.hex()}")
-        self.pet_cmd("install", "mochi", "select", expect="ok")
-        bad = pack_for("mochi", rev=2, bad_trailer=True)
-        self.mock.ctl(f"pet-add mochi {bad.hex()}")
+        good = pack_for("pixie", rev=1)
+        self.mock.ctl(f"pet-add pixie {good.hex()}")
+        self.pet_cmd("install", "pixie", "select", expect="ok")
+        bad = pack_for("pixie", rev=2, bad_trailer=True)
+        self.mock.ctl(f"pet-add pixie {bad.hex()}")
         # The command carries the CRC of the body, so the broken trailer is what fails.
-        self.pet_cmd("install", "mochi", "select", f"crc32={crc_of(bad)}", expect="crc", request=True)
+        self.pet_cmd("install", "pixie", "select", f"crc32={crc_of(bad)}", expect="crc", request=True)
         self.reboot()
         pet, pets = self.pets_state()
-        check(pet == {"selected": "mochi", "shown": "mochi", "source": "stored"}, f"after the reset: {pet}")
-        check({"id": "mochi", "rev": 1} in pets["stored"], f"rev 1 not kept: {pets['stored']}")
+        check(pet == {"selected": "pixie", "shown": "pixie", "source": "stored"}, f"after the reset: {pet}")
+        check({"id": "pixie", "rev": 1} in pets["stored"], f"rev 1 not kept: {pets['stored']}")
         return "rev 2 with a bad CRC refused; rev 1 still installed, selected and drawn after a reset"
 
     def check_boot_consistent(self, old, new_id):
@@ -183,23 +183,23 @@ class PetsRun(Run):
 
     def step_reset_during_install(self):
         old = self.pets_state()[0]["selected"]
-        data = pack_for("mochi3")
-        self.mock.ctl(f"pet-add mochi3 {data.hex()}")
+        data = pack_for("pixie3")
+        self.mock.ctl(f"pet-add pixie3 {data.hex()}")
         self.mock.ctl("pet-mode delay:8")
         mark = self.mock.mark()
-        self.mock.ctl("pet-cmd install mochi3 select")
-        self.mock.wait_for(lambda e: e.get("ev") == "http" and e.get("path") == "/api/pets/mochi3/pack", 15,
+        self.mock.ctl("pet-cmd install pixie3 select")
+        self.mock.wait_for(lambda e: e.get("ev") == "http" and e.get("path") == "/api/pets/pixie3/pack", 15,
                            "pack request", mark)
         self.reboot()
-        first = self.check_boot_consistent(old, "mochi3")
+        first = self.check_boot_consistent(old, "pixie3")
         self.mock.ctl("pet-mode normal")
-        data = pack_for("mochi4")
-        self.mock.ctl(f"pet-add mochi4 {data.hex()}")
+        data = pack_for("pixie4")
+        self.mock.ctl(f"pet-add pixie4 {data.hex()}")
         mark = self.mock.mark()
-        self.mock.ctl("pet-cmd install mochi4 select")
+        self.mock.ctl("pet-cmd install pixie4 select")
         self.mock.wait_for(lambda e: (frame_of(e, "pets") or {}).get("result") is not None, 25, "pets result", mark)
         self.reboot()
-        second = self.check_boot_consistent(first["selected"], "mochi4")
+        second = self.check_boot_consistent(first["selected"], "pixie4")
         return f"reset mid-body: {first['selected']}; reset after the result: {second['selected']}"
 
     def leave_settings(self):
@@ -232,6 +232,10 @@ class PetsRun(Run):
         check("Devo" in scr["texts"] and "IN USE" in scr["texts"], f"page 1 texts {scr['texts']}")
         check((scr.get("tabs") or {}).get("approve") is None, f"Use on the pet in use: {scr.get('tabs')}")
         self.cmd("btn action press")
+        scr = self.wait_screen(lambda s: "Mochi" in s.get("texts", []), 5, "Mochi page")
+        check("IN USE" not in scr["texts"], f"Mochi marked in use: {scr['texts']}")
+        check(((scr.get("tabs") or {}).get("approve") or {}).get("text") == "Use", f"no Use tab: {scr.get('tabs')}")
+        self.cmd("btn action press")
         scr = self.wait_screen(lambda s: "Ember" in s.get("texts", []), 5, "Ember page")
         check("IN USE" not in scr["texts"], f"Ember marked in use: {scr['texts']}")
         check(((scr.get("tabs") or {}).get("approve") or {}).get("text") == "Use", f"no Use tab: {scr.get('tabs')}")
@@ -255,7 +259,7 @@ class PetsRun(Run):
         self.wait_pet(10)
         pose = self.board.json_command("pet pose")
         check(pose["pet"] == "ember", f"home draws {pose['pet']}")
-        return (f"Devo (in use, no Use tab) -> Ember -> Use -> In use -> stored pages {stored} -> More pets -> Back; "
+        return (f"Devo (in use, no Use tab) -> Mochi -> Ember -> Use -> In use -> stored pages {stored} -> More pets -> Back; "
                 "home draws Ember")
 
     def step_cleanup(self):

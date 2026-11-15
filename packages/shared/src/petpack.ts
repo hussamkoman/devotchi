@@ -179,6 +179,8 @@ export interface PetSource {
   id: string;
   name: string;
   rev?: number;
+  /** The device picker's line under the name of a built-in pet; not part of the pack. */
+  tagline?: string;
   palette: PetSourcePalette;
   face: PetSourceFace;
   aux_names?: string[];
@@ -804,7 +806,7 @@ export function validatePetSource(json: unknown): PetSource {
 /** JSON source -> pack, byte for byte as petpack.py. Throws PetSourceError. */
 export function encodePet(json: unknown): Uint8Array {
   const src = obj(json, "pet");
-  onlyKeys(src, ["id", "name", "rev", "palette", "face", "aux_names", "aux", "overrides", "oscillators", "parts"], "pet");
+  onlyKeys(src, ["id", "name", "rev", "tagline", "palette", "face", "aux_names", "aux", "overrides", "oscillators", "parts"], "pet");
   if (typeof src.id !== "string" || !PET_ID_CHARS.test(src.id)) srcFail("id", `${describe(src.id)} is not [a-z0-9]{1,8}`);
   const id = src.id as string;
   if (typeof src.name !== "string" || !/^[\x20-\x7e]{1,12}$/.test(src.name)) {
@@ -865,6 +867,9 @@ export function encodePet(json: unknown): Uint8Array {
     optInt(f.sweat_y, -128, 127, -46, "face.sweat_y"),
   ];
 
+  if (src.tagline !== undefined && (typeof src.tagline !== "string" || !/^[\x20-\x7e]{0,32}$/.test(src.tagline))) {
+    srcFail("tagline", `${describe(src.tagline)} is not 0..32 printable ASCII characters`);
+  }
   if (src.aux_names !== undefined) {
     if (!Array.isArray(src.aux_names) || src.aux_names.length > 4 || src.aux_names.some((n) => typeof n !== "string")) {
       srcFail("aux_names", "must be a list of at most 4 strings");

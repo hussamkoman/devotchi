@@ -122,20 +122,32 @@ static void test_golden_packs_decode(void)
     TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(devo->bytes, devo->len, &s_def));
     TEST_ASSERT_EQUAL_STRING("devo", s_def.id);
     TEST_ASSERT_EQUAL_STRING("Devo", s_def.name);
-    TEST_ASSERT_EQUAL(1, s_def.rev);
+    TEST_ASSERT_EQUAL_STRING("changes colour with its mood", devo->tagline);
+    TEST_ASSERT_EQUAL(2, s_def.rev);
     TEST_ASSERT_FALSE(s_def.shift_palette);
-    TEST_ASSERT_EQUAL_HEX32(0xF0C594, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
+    TEST_ASSERT_EQUAL_HEX32(0xD9D3F5, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
     TEST_ASSERT_EQUAL_HEX32(0x5B82F0, pet_pack_mood_color(&s_def, PET_PACK_MOOD_FOCUSED));
     TEST_ASSERT_EQUAL(PET_EYE_ROUND, s_def.face.eye_style);
     TEST_ASSERT_TRUE(s_def.face.brows);
-    TEST_ASSERT_EQUAL(-8, s_def.face.eye_y);
+    TEST_ASSERT_EQUAL(-14, s_def.face.eye_y);
+    TEST_ASSERT_EQUAL(16, s_def.n_parts);
+    TEST_ASSERT_TRUE(s_def.parts[7].squash);
+    TEST_ASSERT_EQUAL(108, s_def.parts[7].w);
+    TEST_ASSERT_TRUE(s_def.parts[4].mirrored);
+    TEST_ASSERT_EQUAL(16, s_def.aux[PET_PACK_MOOD_SAD][0]);
+    TEST_ASSERT_EQUAL(7, s_def.aux[PET_PACK_MOODS + 4][3]);
+    TEST_ASSERT_EQUAL(400, s_def.osc[5].period_ms);
+
+    /* Mochi is the square pet with the antenna, in one apricot hue. */
+    const pet_builtin_t *mochi = pet_builtin_find("mochi");
+    TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(mochi->bytes, mochi->len, &s_def));
+    TEST_ASSERT_EQUAL_STRING("Mochi", s_def.name);
+    TEST_ASSERT_TRUE(s_def.shift_palette);
+    TEST_ASSERT_EQUAL_HEX32(0xF0C594, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
     TEST_ASSERT_EQUAL(12, s_def.n_parts);
     TEST_ASSERT_TRUE(s_def.parts[9].squash);
     TEST_ASSERT_EQUAL(140, s_def.parts[9].w);
-    TEST_ASSERT_TRUE(s_def.parts[1].mirrored);
     TEST_ASSERT_EQUAL(30, s_def.aux[PET_PACK_MOOD_SAD][0]);
-    TEST_ASSERT_EQUAL(2, s_def.aux[PET_PACK_MOODS + 4][3]);
-    TEST_ASSERT_EQUAL(500, s_def.osc[5].period_ms);
 
     const pet_builtin_t *ember = pet_builtin_find("ember");
     TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(ember->bytes, ember->len, &s_def));

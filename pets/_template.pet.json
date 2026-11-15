@@ -2,6 +2,7 @@
   "id": "mypet",
   "name": "My pet",
   "rev": 1,
+  "tagline": "one line for the device picker",
   "palette": {
     "mode": "shift",
     "base": "#B9A7E8",

@@ -9,7 +9,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pet import DEVO_COLOR, EMBER_ACCENT, EMBER_CREAM, JADE, MOODS, REACT, pet_color, pet_svg  # noqa: E402
+from pet import DEVO_COLOR, EMBER_ACCENT, EMBER_CREAM, MOCHI_BASE, MOODS, REACT, pet_color, pet_svg  # noqa: E402
 from PIL import ImageFont  # noqa: E402  (only to measure tab labels)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -546,12 +546,12 @@ def build():
     screen("06-pairing", "Start-up", "Pairing code in two groups of three at display size, the exact command to type, expiry, and the server host on one mono line (default port hidden, long hosts cut in the middle).", b)
 
     # --- home ---
-    screen("10-home-idle", "Home", "Home, idle, no project label. Idle is warm apricot with a soft smile, not grey. No button tabs: the pet owns the screen.", home("idle", "Waiting for an agent"))
-    screen("11-home-working", "Home", "Home, working, with project label: pupils on the work, tongue out, antenna wags.", home("working", "Edit src/routes/hooks.ts", "devotchi", look=(-55, 0)))
-    screen("12-home-thinking", "Home", "Home, thinking: one brow up, mouth off-centre, antenna curled into a hook.", home("thinking", "Planning the settings menu", "devotchi"))
+    screen("10-home-idle", "Home", "Home, idle, no project label. Devo, the ghost, idles in a soft lilac with a smile and lit traces, not grey. No button tabs: the pet owns the screen.", home("idle", "Waiting for an agent"))
+    screen("11-home-working", "Home", "Home, working, with project label: pupils on the work, tongue out, antenna sways with the scan.", home("working", "Edit src/routes/hooks.ts", "devotchi", look=(-55, 0)))
+    screen("12-home-thinking", "Home", "Home, thinking: one brow up, mouth off-centre, dots rising, traces pulsing.", home("thinking", "Planning the settings menu", "devotchi"))
     screen("13-home-happy", "Home", "Home, happy, after a positive notification.", home("happy", "47 tests passed", "devotchi"))
     screen("14-home-angry-long", "Home", "Home, angry (crimson, not the coral of a denial), with a status line that is too long (ellipsis; it scrolls once on arrival).", home("angry", "pnpm test failed again in packages/server/test/ws.test.ts", "api-gateway"))
-    screen("15-home-attention", "Home", "needs_input: the antenna tip lights amber, a badge appears, LED and haptics fire. The ring stays inside the screen.",
+    screen("15-home-attention", "Home", "needs_input: the antenna ball lights amber, a badge appears, LED and haptics fire. The antenna stays inside the screen.",
            home("idle", "Claude is waiting for you", "devotchi", react="attention"))
     screen("16-home-hints-pat", "Home", "Any press on home shows the button tabs for 3 s; here APPROVE patted the pet. ACTION hold opens the quick menu.",
            home("idle", "Waiting for an agent", extra=HOME_TABS(), react="pat"))
@@ -568,7 +568,7 @@ def build():
     b = home("happy", None, "devotchi", extra=toast("check", MINT, "Tests passed", "47 of 47 · packages/server"))
     screen("17-toast-positive", "Home", "Notification toast (urgency 1-2): slides up from the bottom edge, 4 s; the pet reacts above it.", b)
     b = home("sad", None, "devotchi", cy=96, extra=toast("x", CORAL, "Build failed", "tsc: 3 errors in src/ws.ts", y=170) + ANY("Any button: OK"))
-    screen("18-toast-sticky", "Home", "Sticky banner (urgency 3): stays until any button is pressed (one centred tab = all three buttons). The pet steps up 4 px so the banner never covers its feet.", b)
+    screen("18-toast-sticky", "Home", "Sticky banner (urgency 3): stays until any button is pressed (one centred tab = all three buttons). The pet steps up 4 px so the banner never covers its hem.", b)
     b = home("idle", None, sbkw={"chips": ["DESK"]}, extra=toast("desk", TEXT2, "Desk mode on", "Requests go to your terminal"))
     screen("19-desk-mode", "Home", "Desk mode: DESK chip in the status bar for as long as it is on; toast when it is switched in the quick menu.", b)
 
@@ -725,22 +725,23 @@ def build():
     screen("53-confirm-destructive", "Settings", "Destructive confirmation (factory reset, unpair): cancel is one click; the commit is 'Hold: Erase', and its glyph and fill turn coral because it destroys.", b)
 
     # --- pet picker ---
-    def picker(kind, name, sub, idx, current):
+    def picker(kind, name, sub, idx, current, pages=4):
         b = sb(left="Pet")
         b += pet(kind, "happy", 160, 96, 0.72)
         nm = f'<span class="t24">{name}</span>' + (f'<span class="tag" style="background:{MINT};color:{BG}">IN USE</span>' if current else "")
         b += a(0, 158, 320, 28, nm, "row", "justify-content:center;gap:8px")
         b += a(0, 186, 320, 18, sub, "t14 c f2")
-        b += a(0, 205, 320, 8, dots(3, idx), "c", "line-height:8px")
+        b += a(0, 205, 320, 8, dots(pages, idx), "c", "line-height:8px")
         b += H([("click", "Back")], [("click", "Next")], None if current else [("click", "Use")])
         return b
     screen("60-pet-picker", "Pets", "Pet picker: a live, animated preview per pet; the one in use is tagged. Page dots only: ACTION is the one way to move.", picker("devo", "Devo", "Built in · changes colour with its mood", 0, True))
-    screen("61-pet-picker-ember", "Pets", "A second pet with its own body, face and colours. APPROVE switches; the change shows everywhere at once.", picker("ember", "Ember", "Built in · a small jade dragon", 1, False))
+    screen("60b-pet-picker-mochi", "Pets", "The next built-in pet: Mochi, the soft square with an antenna. APPROVE switches.", picker("mochi", "Mochi", "Built in · a soft square with an antenna", 1, False))
+    screen("61-pet-picker-ember", "Pets", "A pet with its own body, face and colours. APPROVE switches; the change shows everywhere at once.", picker("ember", "Ember", "Built in · a small jade dragon", 2, False))
     b = sb(left="Pet")
     b += a(110, 30, 100, 84, f'<div style="width:100px;height:84px;border-radius:30px;border:2px dashed {LINE};display:flex;align-items:center;justify-content:center;font:700 40px/40px Figtree;color:{TEXT3}">+</div>')
     b += a(0, 122, 320, 28, "More pets", "t24 c")
     b += a(20, 152, 280, 36, "Pick up to four more in the dashboard, under Pets. They are sent here.", "t14 c f2")
-    b += a(0, 205, 320, 8, dots(3, 2), "c", "line-height:8px")
+    b += a(0, 205, 320, 8, dots(4, 3), "c", "line-height:8px")
     b += H([("click", "Back")], [("click", "Next")], None)
     screen("62-pet-picker-more", "Pets", "Last page of the picker: every finished pet ships in the firmware; four more slots are filled from the web dashboard.", b)
 
@@ -809,6 +810,14 @@ def build():
 def pet_sheet():
     def tile(svg, name, note="", bg=SURF, w=180):
         return f'<figure style="background:{bg};width:{w}px">{svg}<figcaption><b>{name}</b><span>{note}</span></figcaption></figure>'
+    dn = {
+        "focused": "level half lids, traces lit, antenna still", "working": "eyes on the work, tongue out, antenna sways with the scan",
+        "thinking": "one brow up, mouth off-centre, dots, traces pulse", "idle": "open eyes, soft smile, hem ripples, traces lit",
+        "happy": "big smile, perky antenna, hem ripples", "sad": "low gaze, tear, antenna droops, traces dark",
+        "anxious": "pin pupils, sweat, traces flicker", "excited": "open smile, fast bob, sparkles, traces pulse",
+        "proud": "eyes half shut looking up, sparkles", "angry": "brows down, frown, antenna bent back",
+        "sleeping": "lids closed, body settles, traces dark, Zzz",
+    }
     notes = {
         "focused": "flat half lids, small smile, antenna straight and still", "working": "eyes on the work, tongue out, antenna wags",
         "thinking": "one brow up, mouth off-centre, antenna hooks, dots", "idle": "open eyes, soft smile, cheeks, slow blinks",
@@ -826,14 +835,19 @@ def pet_sheet():
         "angry": "lids slant in, fins flare, smoke, hotter accent", "sleeping": "wings folded, head down, smoke rings",
     }
     er = {"pat": "wings and tail lift", "poke": "head squashes, wings flatten", "dizzy": "", "wake": "", "attention": "wings and fins snap up"}
-    devo = "".join(tile(pet_svg("devo", m, scale=.8), m, notes[m]) for m in MOODS)
-    react = "".join(tile(pet_svg("devo", "sleeping" if r == "wake" else "idle", react=r, scale=.8), r, rn[r]) for r in REACT)
+    dr = dict(rn, attention="attention: needs input; antenna tip turns amber")
+    devo = "".join(tile(pet_svg("devo", m, scale=.8), m, dn[m]) for m in MOODS)
+    react = "".join(tile(pet_svg("devo", "idle", react=r, scale=.8), r, dr[r]) for r in REACT)
+    mochi = "".join(tile(pet_svg("mochi", m, scale=.8), m, notes[m]) for m in MOODS)
+    mreact = "".join(tile(pet_svg("mochi", "sleeping" if r == "wake" else "idle", react=r, scale=.8), r, rn[r]) for r in REACT)
     ember = "".join(tile(pet_svg("ember", m, scale=.8), m, en[m]) for m in MOODS)
     ereact = "".join(tile(pet_svg("ember", "sleeping" if r == "wake" else "idle", react=r, scale=.8), r, er[r]) for r in REACT)
-    night = tile(pet_svg("devo", "sleeping", night=NIGHT, scale=.8), "Devo", "black fill, ember outline", "#000") + tile(pet_svg("ember", "sleeping", night=NIGHT, scale=.8), "Ember", "", "#000")
-    gray = "".join(tile(pet_svg(k, m, scale=.45, gray=True), m, "", SURF, 100) for k in ("devo", "ember") for m in MOODS)
-    onex = "".join(tile(pet_svg(k, m, scale=.46), m, "", BG, 100) for k in ("devo", "ember") for m in ("focused", "working", "thinking", "idle"))
+    night = (tile(pet_svg("devo", "sleeping", night=NIGHT, scale=.8), "Devo", "black fill, ember outline", "#000")
+             + tile(pet_svg("mochi", "sleeping", night=NIGHT, scale=.8), "Mochi", "", "#000") + tile(pet_svg("ember", "sleeping", night=NIGHT, scale=.8), "Ember", "", "#000"))
+    gray = "".join(tile(pet_svg(k, m, scale=.45, gray=True), m, "", SURF, 100) for k in ("devo", "mochi", "ember") for m in MOODS)
+    onex = "".join(tile(pet_svg(k, m, scale=.46), m, "", BG, 100) for k in ("devo", "mochi", "ember") for m in ("focused", "working", "thinking", "idle"))
     sw = "".join(f'<span class="sw" style="background:{DEVO_COLOR[m]}">{m}<br>{DEVO_COLOR[m]}</span>' for m in MOODS)
+    sw1 = "".join(f'<span class="sw" style="background:{pet_color("mochi", m)}">{m}<br>{pet_color("mochi", m)}</span>' for m in MOODS)
     sw2 = "".join(f'<span class="sw" style="background:{pet_color("ember", m)}">{m}<br>{pet_color("ember", m)}</span>' for m in MOODS)
     sw2 += f'<span class="sw" style="background:{EMBER_ACCENT}">accent<br>{EMBER_ACCENT}</span><span class="sw" style="background:{EMBER_CREAM}">cream<br>{EMBER_CREAM}</span>'
     sem = "".join(f'<span class="sw" style="background:{c}">{n}<br>{c}</span>' for n, c in (("mint", MINT), ("amber", AMBER), ("coral", CORAL), ("sky", SKY), ("violet", VIOLET)))
@@ -848,9 +862,12 @@ figure svg{{margin:0 auto}} figcaption b{{display:block;font:700 16px/20px Figtr
 </style></head><body>
 <h1>Devotchi pets</h1>
 <p>A pet is data: its own palette, body parts, face style and four auxiliary channels, posed by the shared channel table of the firmware rig (pet_pose.c). Everything is rounded rectangles, circles, short polylines and a few triangles. See pet-animations.md.</p>
-<h2>Devo, the signature pet: 11 moods</h2><p>A soft square with an antenna, and the pet that changes colour with its mood. The antenna is its second face: it wags, droops, kinks and curls, and its tip is the on-screen twin of the device LED. The four everyday moods (first four tiles) are warm and friendly, and each has its own cue that survives without colour.</p>
+<h2>Devo, the signature pet: 11 moods</h2><p>The ghost from the PCB silkscreen: a dome, straight sides and a three-bump hem, with the antenna and ball of the small logo. Devo is the pet that changes colour with its mood. It floats over a soft shadow while its hem ripples; the circuit traces on its body are a second mood channel (lit, pulsing, flickering when anxious, dark when sad or asleep), and the antenna ball is the on-screen twin of the device LED. Drawn here from its pack by the dashboard's renderer.</p>
 <div class="grid">{devo}</div>
 <h2>Devo: reactions</h2><div class="grid">{react}</div>
+<h2>Mochi: 11 moods</h2><p>A soft square with an antenna, in one apricot hue that a mood only shifts lighter, darker or paler. The antenna is its second face: it wags, droops, kinks and curls.</p>
+<div class="grid">{mochi}</div>
+<h2>Mochi: reactions</h2><div class="grid">{mreact}</div>
 <h2>Ember, the alternative pet: 11 moods</h2><p>A small jade dragon: big head on a small body, snout with nostrils and fangs, slit pupils, lids instead of brows, orange wings, ear fins and tail spade. Ember keeps its jade in every mood (a mood only shifts it lighter, darker or paler); wings, tail, smoke and fire carry the feeling.</p>
 <div class="grid">{ember}</div>
 <h2>Ember: reactions</h2><div class="grid">{ereact}</div>
@@ -858,6 +875,7 @@ figure svg{{margin:0 auto}} figcaption b{{display:block;font:700 16px/20px Figtr
 <h2>Check 1: greyscale (every mood must be told apart without colour)</h2><div class="grid">{gray}</div>
 <h2>Check 2: the everyday moods at the size they have on the clock and connecting screens (about half scale)</h2><div class="grid">{onex}</div>
 <h2>Devo palette (eleven mood colours)</h2><div>{sw}</div>
+<h2>Mochi palette (one hue {MOCHI_BASE}, shifted by mood)</h2><div>{sw1}</div>
 <h2>Ember palette (one hue, shifted by mood, plus accent and cream)</h2><div>{sw2}</div>
 <h2>Semantic UI colours, for comparison (no pet colour sits on these)</h2><div>{sem}</div>
 </body></html>"""
@@ -927,7 +945,7 @@ Mockups define look, type, pages and button behaviour; they are not pixel-exact.
 <p>The full list, with the points where the design disagrees with a reviewer, is in design-system.md under "Review decisions".</p>
 <h2>The device</h2><p>The three buttons sit in a row under the screen: REJECT left, ACTION middle, APPROVE right, 14 mm apart. The on-screen tabs sit straight above them (x = 50, 160 and 270 px).</p>
 <div class="wide"><img src="renders/device-context.png" width="550" alt="device"></div>
-<h2>Pets</h2><p>The signature pet Devo and the alternative Ember, in all moods and reactions, with the greyscale and small-size checks (<a href="pet-moods.html">pet-moods.html</a>).</p>
+<h2>Pets</h2><p>The signature pet Devo (the ghost from the PCB silkscreen), Mochi and Ember, in all moods and reactions, with the greyscale and small-size checks (<a href="pet-moods.html">pet-moods.html</a>).</p>
 <div class="wide"><img src="renders/pet-moods.png" alt="pets"></div>
 {sec}
 </body></html>"""

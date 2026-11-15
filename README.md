@@ -110,8 +110,9 @@ time zone yet the zone of the PC or browser, so the device clock shows local
 time; the dashboard settings change it.
 
 Pets are data ([pets/README.md](pets/README.md)): every `pets/*.pet.json` is
-in the server's catalog, and the ones listed in `pets/builtin.txt` (Devo and
-Ember) are also built into the firmware; adding a pet is a JSON file, its
+in the server's catalog, and the ones listed in `pets/builtin.txt` (Devo, the
+ghost from the PCB silkscreen and the default; Mochi; Ember) are also built
+into the firmware; adding a pet is a JSON file, its
 preview sheet (`pnpm run pet-sheet <id>`) and `petpack.py check`, no code. A room can upload up to 16 more; `devotchi pets send <id>` or "Send
 to device" on the dashboard's Pets page installs one in one of the device's 8
 slots. Every pack is checked with the same rules as the firmware before the

@@ -59,12 +59,12 @@ describe("pets in the store", () => {
         slots: 8,
         free: 8,
         installed: [{ id: "devo", rev: 1, builtin: true }],
-        result: { op: "install", pet: "mochi", ok: false, error: "crc" },
+        result: { op: "install", pet: "sprout", ok: false, error: "crc" },
       },
     });
     expect(state.devices[0].pets).toEqual({ selected: "devo", slots: 8, free: 8, installed: [{ id: "devo", rev: 1, builtin: true }] });
-    expect(state.petResults["dv-0a1b2c"]).toEqual({ result: { op: "install", pet: "mochi", ok: false, error: "crc" }, at: 1000 });
-    expect(state.toasts.at(-1)?.text).toBe("desk: could not install mochi: the pack was damaged on the way (CRC)");
+    expect(state.petResults["dv-0a1b2c"]).toEqual({ result: { op: "install", pet: "sprout", ok: false, error: "crc" }, at: 1000 });
+    expect(state.toasts.at(-1)?.text).toBe("desk: could not install sprout: the pack was damaged on the way (CRC)");
     expect(state.log[0].kind).toBe("pets");
     expect(petResultText({ op: "select", pet: "ember", ok: true })).toBe("now shows ember");
   });

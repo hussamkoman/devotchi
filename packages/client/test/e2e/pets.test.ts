@@ -43,7 +43,7 @@ describe("pets with a sim", () => {
     expect(listed.stdout).toMatch(/^copy "Copy": rev 2, \d+ bytes, crc32 [0-9a-f]{8}, uploaded to this room$/m);
     expect(listed.stdout).toMatch(/^sprout "Sprout": .* catalog$/m);
     expect(listed.stdout).toMatch(/^devo "Devo": .* catalog, built in$/m);
-    expect(listed.stdout).toContain('sim-pet "petsim": shows devo; 8 of 8 slots free; devo (built-in), ember (built-in)');
+    expect(listed.stdout).toContain('sim-pet "petsim": shows devo; 8 of 8 slots free; devo (built-in), mochi (built-in), ember (built-in)');
 
     const sent = await world.cli(["pets", "send", "copy", "--use", "--wait", "10"]);
     expect(sent.stderr).toBe("");
@@ -113,7 +113,8 @@ describe("the sim's pet store", () => {
       slots: 8,
       free: 8,
       installed: [
-        { id: "devo", rev: 1, builtin: true },
+        { id: "devo", rev: 2, builtin: true },
+        { id: "mochi", rev: 1, builtin: true },
         { id: "ember", rev: 1, builtin: true },
       ],
     });
@@ -135,7 +136,7 @@ describe("the sim's pet store", () => {
     const crc = store(() => packResponse(damaged));
     await crc.pets.onCommand(install(pack));
     expect(crc.last().result).toEqual({ op: "install", pet: "copy", ok: false, error: "crc" });
-    expect(crc.last().installed.map((p) => p.id)).toEqual(["devo", "ember"]);
+    expect(crc.last().installed.map((p) => p.id)).toEqual(["devo", "mochi", "ember"]);
 
     const mismatch = store(() => packResponse(pack));
     await mismatch.pets.onCommand(install(pack, { rev: 3 }));
