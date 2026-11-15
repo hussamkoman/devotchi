@@ -189,6 +189,9 @@ static void apply(uint32_t now, const power_fsm_output_t *out)
                 ui_set_running(true);
             }
             ui_pet_set_running(out->stage == POWER_STAGE_ACTIVE);
+            if (was_off && out->stage == POWER_STAGE_ACTIVE) {
+                ui_pet_react(PET_REACT_WAKE);
+            }
         }
         if (!first) {
             stage_evt(prev.stage, out);

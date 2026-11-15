@@ -32,6 +32,13 @@ over 0x9000..0xFFFF, esptool `--erase-all`): the NVS partition holds the WiFi
 credentials and the pairing, and the board has no BOOT button, so USB is the
 only way back in.
 
+The partition table has a `pets` partition at the end of the flash
+(0x3F2000, 0xE000; architecture 7.3). A normal `flash` writes the new table
+at 0x8000 and nothing else moves: `nvs` and `phy_init` keep their offsets, the
+pairing and WiFi survive. The firmware may erase `pets` by label when it
+cannot be opened (losing downloaded pets, nothing else); nothing ever erases
+`nvs`. A board still on the old table runs with the built-in pets only.
+
 After editing `sdkconfig.defaults`, delete `sdkconfig` and rebuild. For a
 variant build, keep the normal tree untouched and use a scratch directory:
 
@@ -40,7 +47,7 @@ python "$IDF_PATH/tools/idf.py" -B /tmp/x/build -D SDKCONFIG=/tmp/x/sdkconfig \
   -D "SDKCONFIG_DEFAULTS=$PWD/sdkconfig.defaults;/tmp/x/extra.defaults" build
 ```
 
-The app image is 1 613 904 bytes. Every build checks it against
+The app image is 1 667 760 bytes. Every build checks it against
 `DEVOTCHI_APP_MAX_BYTES` = 1 966 080 bytes (0x1E0000, `CMakeLists.txt`):
 `tools/check_app_size.cmake` runs after the binary is generated, prints
 `devotchi.bin: N bytes of 1966080` and fails the build above the limit, so a
@@ -73,6 +80,29 @@ advance and takes them out of kerning). The lock-up of the splash screen is
 two A8 masks (`ui_img_lockup.c`, 5 842 B, `tools/gen_lockup.py`). The OFL
 licence texts sit next to the generated files. `display` and `title` are for
 firmware-owned strings only; dynamic text uses `body`, `small` or `mono`.
+
+## Pet packs
+
+Pets are data (architecture 7.2): `pets/<id>.pet.json` is the source,
+`tools/petpack.py` (standard library only) turns it into the binary pack.
+After editing a source, regenerate the golden pack, its CRC and the
+compiled-in array together; the host test `test_pet_pack` fails when they
+disagree:
+
+```bash
+python3 -I tools/petpack.py encode ../pets/devo.pet.json ../pets/golden/devo.pet
+python3 -I -c "import zlib,sys;d=open(sys.argv[1],'rb').read();print('%08x'%zlib.crc32(d[:-4]))" \
+  ../pets/golden/devo.pet > ../pets/golden/devo.crc32
+python3 -I tools/petpack.py c-array ../pets/devo.pet.json src/components/core/pet_builtin_devo.c
+python3 -I tools/petpack.py check ../pets/devo.pet.json ../pets/golden/devo.pet
+```
+
+Console: `pet list`, `pet use <id>`, `pet rm <id>`, `pet install <id> <rev>
+<size> <crc32> [select]` (the same checks as a server's `pet_cmd`; the pack is
+fetched from the configured server), `pet react <name>`, `pet aux`,
+`pet scale <n>`, `pet outline on|off`, `pet mood`, `pet pose`, `pet freeze`.
+`state` reports `pet` (selected, shown, source) and `pets` (partition,
+slots, free, stored).
 
 ## Debug console
 
@@ -135,7 +165,9 @@ AddressSanitizer and UBSan are enabled when the host compiler has them.
 `tools/mock_server.py` is a protocol v2 server for tests (WebSocket, pairing,
 `/health`), controllable over stdin or `POST /_ctl` (send, send-fragmented,
 send-text, send-binary, send-continuation, flood, close, drop, stall,
-reject-token, confirm, tokens, status). It never logs tokens.
+reject-token, confirm, tokens, status, and for pet packs pet-add, pet-cmd,
+pet-mode). It serves `pets/golden/*.pet` at `/api/pets/<id>/pack`
+(`--pets DIR`, `--pet-truncate`). It never logs tokens.
 
 ```bash
 python3 tools/mock_server.py --port 18090 [--tls CERT KEY] [--proto 1] [--confirm-after S]
@@ -151,6 +183,7 @@ They use ports 18080..18099 only.
 | `e2e_link.py` | WiFi, connect, register, reconnect, close codes, 401 rule, pairing flows |
 | `e2e_flow.py` | Approval cards, answers, queue, dismiss, toasts, offline banner (`--tls` for wss) |
 | `e2e_pet.py` | Pet moods, status text, telemetry, settings page |
+| `e2e_pets.py` | Pet packs: install, select, replace, remove, every `pets` error, resets during an install, the picker |
 | `e2e_power.py` | Power stages, wake, swallowed wake press, battery decisions (dry run) |
 | `e2e_soak.py` | Malformed frames, flood, stuck link, 30 min soak, stacks, heap, secrets (`--tls`) |
 | `e2e_server.py` | The whole approval path against the real server from `packages/server` |

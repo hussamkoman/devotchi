@@ -25,6 +25,13 @@ static const char *const ABOUT_LABELS[UI_ABOUT_COUNT] = {
     [UI_ABOUT_RESET] = "Reset",   [UI_ABOUT_ERROR] = "Last err", [UI_ABOUT_NVS] = "NVS",
 };
 
+/* Body centre of the home pet (mockups 10-16) and its scale in sixteenths. */
+#define PET_CX           160
+#define PET_CY           100
+#define PET_SCALE        15
+#define BANNER_LIFT_PX   4
+
+static pet_view_t *s_view;
 static lv_obj_t *s_project;
 static lv_obj_t *s_status;
 static lv_obj_t *s_about[2];
@@ -76,7 +83,7 @@ static void apply_page(void)
     ui_set_hidden(s_project, !pet || !s_has_project);
     ui_set_hidden(s_status, !pet);
     ui_screen_set_title(UI_SCREEN_PET, TITLES[s_page]);
-    pet_view_set_visible(s_shown && pet);
+    pet_view_set_visible(s_view, s_shown && pet);
     apply_tabs();
 }
 
@@ -112,7 +119,8 @@ static lv_obj_t *about_page(lv_obj_t *scr, int first, int last)
 lv_obj_t *screen_pet_create(void)
 {
     lv_obj_t *scr = ui_screen_base_create();
-    pet_view_create(scr);
+    s_view = pet_view_create(scr, PET_CX, PET_CY, PET_SCALE);
+    pet_view_follow(s_view);
     /* Decoration only: the project name repeats what the agent's status line is about. */
     s_project = ui_text_line(scr, UI_FONT_SMALL, UI_C_SLATE, PROJECT_Y, LV_TEXT_ALIGN_CENTER);
     lv_obj_add_style(s_project, &ui_style_caps, 0);
@@ -154,7 +162,7 @@ static void apply(const char *project, proto_mood_t mood, const char *status)
         lv_obj_set_y(s_status, has_project ? STATUS_Y : STATUS_ALONE_Y);
         ui_set_hidden(s_project, s_page != UI_PET_PAGE_PET || !has_project);
     }
-    pet_view_set_mood(mood);
+    pet_view_set_mood(s_view, mood);
     ui_label_set(s_status, status);
 }
 
@@ -282,27 +290,17 @@ void screen_pet_demo(ui_pet_demo_t demo)
     }
 }
 
-const char *ui_pet_reaction_name(ui_pet_reaction_t r)
+void screen_pet_set_banner(bool shown)
 {
-    switch (r) {
-    case UI_PET_REACT_NONE:
-        return "none";
-    case UI_PET_REACT_PAT:
-        return "pat";
-    case UI_PET_REACT_POKE:
-        return "poke";
-    case UI_PET_REACT_DIZZY:
-        return "dizzy";
-    }
-    return "none";
+    pet_view_set_lift(s_view, shown ? BANNER_LIFT_PX : 0);
 }
 
-void ui_pet_react(ui_pet_reaction_t r)
+void ui_pet_react(pet_react_t r)
 {
     if (!ui_lock()) {
         return;
     }
-    pet_view_react(r);
+    pet_view_react(s_view, r);
     ui_unlock();
 }
 
@@ -311,7 +309,7 @@ void ui_pet_set_running(bool running)
     if (!ui_lock()) {
         return;
     }
-    pet_view_set_powered(running);
+    pet_views_set_powered(running);
     ui_unlock();
 }
 
@@ -320,7 +318,25 @@ void ui_pet_freeze(bool frozen)
     if (!ui_lock()) {
         return;
     }
-    pet_view_set_frozen(frozen);
+    pet_view_set_frozen(s_view, frozen);
+    ui_unlock();
+}
+
+void ui_pet_set_scale(uint8_t sixteenths)
+{
+    if (!ui_lock()) {
+        return;
+    }
+    pet_view_set_scale(s_view, sixteenths);
+    ui_unlock();
+}
+
+void ui_pet_set_outline(bool on)
+{
+    if (!ui_lock()) {
+        return;
+    }
+    pet_view_set_outline(s_view, on);
     ui_unlock();
 }
 
@@ -330,6 +346,6 @@ void ui_pet_get_state(ui_pet_state_t *out)
     if (!ui_lock()) {
         return;
     }
-    pet_view_get_state(out);
+    pet_view_get_state(s_view, out);
     ui_unlock();
 }

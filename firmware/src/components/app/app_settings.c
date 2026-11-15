@@ -40,6 +40,10 @@ static const storage_setting_t STORAGE_IDS[SETTINGS_VALUE_ROWS] = {
 /* App task only, except s_view (guarded by s_view_mux). */
 static settings_menu_t s_menu;
 static bool s_active;
+/* The pet picker (60-62): pages are the built-ins, the stored pets and "More pets". */
+static bool s_picker;
+static size_t s_picker_page;
+static char s_picker_line[48];
 static char s_tx[TX_SIZE];
 static portMUX_TYPE s_view_mux = portMUX_INITIALIZER_UNLOCKED;
 static app_settings_view_t s_view;
@@ -51,6 +55,8 @@ static void publish_view(void)
         .active = s_active,
         .cursor = (uint8_t)s_menu.cursor,
         .confirming = s_menu.confirming,
+        .picker = s_picker,
+        .page = (uint8_t)s_picker_page,
     };
     portEXIT_CRITICAL(&s_view_mux);
 }
@@ -122,6 +128,7 @@ void app_settings_open(uint32_t now)
 static void close_menu(void)
 {
     s_active = false;
+    s_picker = false;
     s_menu.confirming = false;
     publish_view();
 }
@@ -155,9 +162,98 @@ static void set_value(settings_row_t row, uint16_t value, uint32_t now)
     app_apply_setting(id);
 }
 
+bool app_settings_picker(void)
+{
+    return s_active && s_picker;
+}
+
+static void picker_report(const char *op, const char *pet)
+{
+    char evt[96];
+    snprintf(evt, sizeof(evt), "{\"evt\":\"picker\",\"op\":\"%s\",\"page\":%u,\"pet\":\"%s\"}", op,
+             (unsigned)s_picker_page, pet != NULL ? pet : "");
+    console_evt(evt);
+}
+
+static void picker_open(void)
+{
+    s_picker = true;
+    s_picker_page = 0;
+    const size_t n = app_pets_count();
+    for (size_t i = 0; i < n; i++) {
+        bool builtin;
+        const pet_def_t *def = app_pets_load(i, &builtin);
+        if (def != NULL && strcmp(def->id, app_pets_selected()) == 0) {
+            s_picker_page = i;
+        }
+    }
+    picker_report("open", app_pets_selected());
+}
+
+/* What the page shows; NULL def is the "More pets" page. */
+static const pet_def_t *picker_page(ui_picker_t *out)
+{
+    const size_t n = app_pets_count();
+    if (s_picker_page > n) {
+        s_picker_page = 0;
+    }
+    *out = (ui_picker_t){.page = (uint8_t)s_picker_page, .pages = (uint8_t)(n + 1)};
+    bool builtin = false;
+    const pet_def_t *def = s_picker_page < n ? app_pets_load(s_picker_page, &builtin) : NULL;
+    if (def != NULL) {
+        if (strcmp(def->id, "devo") == 0) {
+            snprintf(s_picker_line, sizeof(s_picker_line), "Built in \xC2\xB7 changes colour with its mood");
+        } else if (strcmp(def->id, "ember") == 0) {
+            snprintf(s_picker_line, sizeof(s_picker_line), "Built in \xC2\xB7 a small jade dragon");
+        } else {
+            snprintf(s_picker_line, sizeof(s_picker_line), "From the dashboard \xC2\xB7 rev %u", def->rev);
+        }
+        out->def = def;
+        out->line = s_picker_line;
+        out->in_use = strcmp(def->id, app_pets_selected()) == 0;
+        out->can_use = !out->in_use;
+    }
+    return def;
+}
+
+static void picker_button(const btn_fsm_out_t *out, uint32_t now)
+{
+    if (out->kind != BTN_CLICK) {
+        return;
+    }
+    ui_picker_t page;
+    const pet_def_t *def = picker_page(&page);
+    switch (out->id) {
+    case BTN_REJECT:
+        s_picker = false;
+        picker_report("back", NULL);
+        break;
+    case BTN_ACTION:
+        s_picker_page = (s_picker_page + 1) % page.pages;
+        picker_report("next", NULL);
+        break;
+    case BTN_APPROVE:
+        if (def != NULL && page.can_use) {
+            char id[STORAGE_PET_ID_SIZE];
+            strlcpy(id, def->id, sizeof(id));
+            const pet_result_t r = app_pets_select(id, now);
+            picker_report(r == PET_RESULT_OK ? "use" : "use-failed", id);
+            if (r != PET_RESULT_OK) {
+                app_toast("Pet not saved");
+            }
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 static void execute(settings_row_t row, uint32_t now)
 {
     switch (row) {
+    case SETTINGS_ROW_PET:
+        picker_open();
+        return;
     case SETTINGS_ROW_WIFI_SETUP:
         if (storage_set_prov_request(true) == ESP_OK) {
             ESP_LOGI(TAG, "restarting into WiFi setup");
@@ -191,6 +287,14 @@ static void execute(settings_row_t row, uint32_t now)
 
 void app_settings_on_button(const btn_fsm_out_t *out, uint32_t now)
 {
+    if (s_picker) {
+        if (out->kind == BTN_CLICK) {
+            feedback_play(FB_SEQ_CLICK);
+        }
+        picker_button(out, now);
+        publish_view();
+        return;
+    }
     const settings_act_t act = settings_menu_button(&s_menu, out, now);
     if (act.kind != SETTINGS_ACT_NONE) {
         report(act_name(act.kind), act.row, act.value);
@@ -239,6 +343,8 @@ uint32_t app_settings_deadline(void)
 static const char *action_label(settings_row_t row)
 {
     switch (row) {
+    case SETTINGS_ROW_PET:
+        return "Open";
     case SETTINGS_ROW_WIFI_SETUP:
         return "Set up";
     case SETTINGS_ROW_UNPAIR:
@@ -267,6 +373,12 @@ void app_settings_render(bool preview)
             return;
         }
         load();
+    }
+    if (s_picker && !preview) {
+        ui_picker_t page;
+        picker_page(&page);
+        ui_picker_set(&page);
+        return;
     }
     settings_menu_sync(&s_menu, SETTINGS_ROW_MODE, mode_value());
     for (int r = 0; r < SETTINGS_ROW_COUNT; r++) {

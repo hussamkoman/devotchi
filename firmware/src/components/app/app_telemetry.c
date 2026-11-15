@@ -76,6 +76,7 @@ static void send(uint32_t now, const char *reason, const char *alert)
         .screen = ui_current_screen_name(),
         .stage = power_stage_name(app_power_stage()),
         .alert = v.alert,
+        .pet = app_pets_selected(),
     };
     const int len = proto_write_telemetry(s_tx, sizeof(s_tx), &t);
     char extra[48];

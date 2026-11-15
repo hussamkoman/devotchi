@@ -1,5 +1,8 @@
 #include "storage.h"
 
+#include "pet_builtin.h"
+#include "pet_pack.h"
+
 #include "esp_check.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -8,6 +11,7 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "storage";
@@ -24,6 +28,7 @@ static const char *TAG = "storage";
 #define KEY_BK_ROOM     "bk_room"
 #define KEY_BK_URL      "bk_url"
 #define KEY_DEV_NAME    "dev_name"
+#define KEY_PET         "s_pet"
 #define KEY_PROV_REQ    "prov_req"
 
 typedef struct {
@@ -420,6 +425,23 @@ esp_err_t storage_set_prov_request(bool requested)
 bool storage_get_dev_name(char name[STORAGE_DEV_NAME_SIZE])
 {
     return get_str(KEY_DEV_NAME, name, STORAGE_DEV_NAME_SIZE);
+}
+
+bool storage_get_pet(char id[STORAGE_PET_ID_SIZE])
+{
+    if (!get_str(KEY_PET, id, STORAGE_PET_ID_SIZE) || id[0] == '\0') {
+        snprintf(id, STORAGE_PET_ID_SIZE, "%s", PET_BUILTIN_DEFAULT);
+        return false;
+    }
+    return true;
+}
+
+esp_err_t storage_set_pet(const char *id)
+{
+    ESP_RETURN_ON_FALSE(id != NULL && pet_pack_id_ok(id), ESP_ERR_INVALID_ARG, TAG, "pet id");
+    nvs_handle_t h;
+    ESP_RETURN_ON_ERROR(begin_write(&h), TAG, "open");
+    return end_write(h, nvs_set_str(h, KEY_PET, id), "set pet");
 }
 
 esp_err_t storage_set_dev_name(const char *name)

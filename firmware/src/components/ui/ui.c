@@ -33,6 +33,7 @@ static const char *const SCREEN_NAMES[UI_SCREEN_COUNT] = {
     [UI_SCREEN_QUESTION] = "question",
     [UI_SCREEN_PLAN] = "plan",
     [UI_SCREEN_SETTINGS] = "settings",
+    [UI_SCREEN_PICKER] = "picker",
     [UI_SCREEN_IDENTIFY] = "identify",
     [UI_SCREEN_LOWBATT] = "lowbatt",
 };
@@ -231,6 +232,7 @@ static void load(ui_screen_id_t id)
     s_current = id;
     lv_screen_load(s_screens[id]);
     screen_pet_set_shown(id == UI_SCREEN_PET);
+    screen_picker_set_shown(id == UI_SCREEN_PICKER);
     w_status_set_visible(shows_status_bar(id));
     w_status_set_title(s_titles[id] != NULL ? s_titles[id] : "");
     w_tabs_set(&s_tabs[id]);
@@ -284,6 +286,7 @@ esp_err_t ui_init(void)
     s_screens[UI_SCREEN_PLAN] = screen_plan_create();
     s_screens[UI_SCREEN_IDENTIFY] = screen_identify_create();
     s_screens[UI_SCREEN_SETTINGS] = screen_settings_create();
+    s_screens[UI_SCREEN_PICKER] = screen_picker_create();
     s_screens[UI_SCREEN_LOWBATT] = screen_lowbatt_create();
     /* Creation order is the stacking order on the top layer: tabs above toasts, both above the bar. */
     w_status_create();
@@ -376,6 +379,7 @@ static const demo_entry_t DEMOS[] = {
     {"question", "single|second|back|read|scroll|multi|send|menu|review|accents|accents-review", UI_SCREEN_QUESTION},
     {"plan", "card|menu|cut|more|accents", UI_SCREEN_PLAN},
     {"settings", NULL, UI_SCREEN_SETTINGS},
+    {"picker", "devo|ember|more", UI_SCREEN_PICKER},
     {"identify", NULL, UI_SCREEN_IDENTIFY},
     {"lowbatt", NULL, UI_SCREEN_LOWBATT},
 };
@@ -386,7 +390,7 @@ const char *ui_demo_usage(void)
            "toast[positive|sticky|desk|battery|strip|receipt] about[1|2] "
            "approval[low|med|details|long|high|clicked|holding|sent|next] menu[terminal|session|high|locked] "
            "tabs[hold|nudge|any|inactive] question[single|second|back|read|scroll|multi|send|menu|review|accents|"
-           "accents-review] plan[card|menu|cut|more|accents] settings identify lowbatt | off";
+           "accents-review] plan[card|menu|cut|more|accents] settings picker[devo|ember|more] identify lowbatt | off";
 }
 
 /* Index of variant in the "|"-separated list, or -1. NULL or "" picks the first. */
@@ -477,6 +481,9 @@ static void demo_load(const demo_entry_t *d, int v)
         break;
     case UI_SCREEN_SETTINGS:
         screen_settings_demo();
+        break;
+    case UI_SCREEN_PICKER:
+        screen_picker_demo(v);
         break;
     case UI_SCREEN_IDENTIFY:
         screen_identify_demo();
@@ -595,6 +602,16 @@ size_t ui_get_texts(char texts[][UI_TEXT_SIZE], size_t max_texts)
     lv_obj_tree_walk(lv_layer_top(), collect_text, &walk);
     display_unlock();
     return walk.count;
+}
+
+uint32_t ui_frame_recent_x10(void)
+{
+    const uint32_t n = s_frames < UI_RECENT_FRAMES ? s_frames : UI_RECENT_FRAMES;
+    uint32_t sum = 0;
+    for (uint32_t i = 1; i <= n; i++) {
+        sum += s_frame_ms_x10[(s_frames - i) % FRAME_HISTORY];
+    }
+    return n > 0 ? sum / n : 0;
 }
 
 void ui_get_stats(ui_stats_t *out)

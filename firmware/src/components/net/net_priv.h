@@ -19,3 +19,6 @@ void pairing_claim(const url_t *server, const char *code, const net_identity_t *
 void pairing_start(const url_t *server, const net_identity_t *id, net_job_result_t *out);
 void pairing_poll(const url_t *server, const char *secret, net_job_result_t *out);
 void pairing_health(const url_t *server, net_job_result_t *out);
+
+/* pet_fetch.c: the pack download for the net task (protocol 14.8). */
+void pet_fetch(const url_t *server, const char *id, const char *token, net_job_result_t *out);

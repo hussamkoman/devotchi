@@ -19,6 +19,7 @@ static const char *const ICONS[SETTINGS_ROW_COUNT] = {
     [SETTINGS_ROW_BRIGHTNESS] = UI_ICON_SUN,      [SETTINGS_ROW_SCREEN_TIMEOUT] = UI_ICON_CLOCK,
     [SETTINGS_ROW_DEEP_SLEEP] = UI_ICON_MOON,     [SETTINGS_ROW_HAPTICS] = UI_ICON_BUZZ,
     [SETTINGS_ROW_LED] = UI_ICON_BELL,            [SETTINGS_ROW_MODE] = UI_ICON_DESK,
+    [SETTINGS_ROW_PET] = UI_ICON_PET,
     [SETTINGS_ROW_WIFI_SETUP] = UI_ICON_WIFI,     [SETTINGS_ROW_UNPAIR] = UI_ICON_PLUG,
     [SETTINGS_ROW_FACTORY_RESET] = UI_ICON_RESET, [SETTINGS_ROW_ABOUT] = UI_ICON_INFO,
 };
@@ -72,7 +73,7 @@ void ui_settings_set(const ui_settings_t *s)
 void screen_settings_demo(void)
 {
     static const char *const LABELS[UI_SETTINGS_ROWS] = {
-        "Brightness", "Screen timeout", "Deep sleep", "Haptics", "LED", "Mode", "WiFi setup", "Unpair",
+        "Brightness", "Screen timeout", "Deep sleep", "Haptics", "LED", "Mode", "Pet", "WiFi setup", "Unpair",
         "Factory reset", "About",
     };
     static const char *const VALUES[UI_SETTINGS_ROWS] = {"75 %", "30 s", "20 min", "Gentle", "On", "Ask"};

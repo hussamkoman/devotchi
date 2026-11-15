@@ -12,6 +12,8 @@ typedef struct {
     char base_url[URL_BASE_SIZE];
     /** Pairing code for a claim, device secret for a poll. */
     char arg[NET_JOB_ARG_SIZE];
+    /** Device token for NET_JOB_PET_FETCH. */
+    char token[NET_TOKEN_SIZE];
 } net_job_t;
 
 typedef struct {

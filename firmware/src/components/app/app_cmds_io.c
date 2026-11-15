@@ -6,6 +6,8 @@
 #include "console.h"
 #include "fb_seq.h"
 #include "feedback.h"
+#include "pet_builtin.h"
+#include "pet_install.h"
 #include "pet_pose.h"
 #include "power.h"
 #include "proto.h"
@@ -340,8 +342,6 @@ static console_rc_t pet_mood(const char *name)
 
 static void add_pose(cJSON *obj, const pet_pose_t *p)
 {
-    char color[8];
-    snprintf(color, sizeof(color), "#%06lx", (unsigned long)(p->body_color & 0xFFFFFF));
     cJSON_AddNumberToObject(obj, "eyeOpen", p->eye_open);
     cJSON_AddNumberToObject(obj, "eyeSize", p->eye_size);
     cJSON_AddNumberToObject(obj, "pupilSize", p->pupil_size);
@@ -355,24 +355,52 @@ static void add_pose(cJSON *obj, const pet_pose_t *p)
     cJSON_AddNumberToObject(obj, "blinkMinMs", p->blink_min_ms);
     cJSON_AddNumberToObject(obj, "blinkMaxMs", p->blink_max_ms);
     cJSON_AddNumberToObject(obj, "jitterPx", p->jitter_px);
-    cJSON_AddStringToObject(obj, "bodyColor", color);
     cJSON_AddStringToObject(obj, "accessory", pet_accessory_name((pet_accessory_t)p->accessory));
     static const char *const GLANCE[] = {[PET_GLANCE_OFF] = "off", [PET_GLANCE_LOOK] = "look",
                                          [PET_GLANCE_SCAN] = "scan"};
-    cJSON_AddStringToObject(obj, "glance", p->glance <= PET_GLANCE_SCAN ? GLANCE[p->glance] : "off");
+    cJSON_AddStringToObject(obj, "glance", p->glance >= 0 && p->glance <= PET_GLANCE_SCAN ? GLANCE[p->glance] : "off");
+    if (p->lid != PET_PACK_LID_OFF) {
+        cJSON_AddNumberToObject(obj, "lid", p->lid);
+    } else {
+        cJSON_AddNullToObject(obj, "lid");
+    }
+    cJSON_AddNumberToObject(obj, "browL", p->brow_l);
+    cJSON_AddNumberToObject(obj, "browR", p->brow_r);
+    cJSON_AddNumberToObject(obj, "browLift", p->brow_lift);
+    cJSON_AddNumberToObject(obj, "mouthDx", p->mouth_dx);
+    cJSON_AddNumberToObject(obj, "mouthW", p->mouth_w);
+}
+
+static void add_aux(cJSON *obj, const char *key, const int16_t aux[PET_PACK_AUX_COUNT])
+{
+    cJSON *arr = cJSON_AddArrayToObject(obj, key);
+    for (int i = 0; i < PET_PACK_AUX_COUNT; i++) {
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(aux[i]));
+    }
 }
 
 static console_rc_t pet_pose(void)
 {
     ui_pet_state_t st;
     ui_pet_get_state(&st);
+    char color[8];
+    snprintf(color, sizeof(color), "#%06lx", (unsigned long)(st.color & 0xFFFFFF));
     cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "pet", st.id);
     cJSON_AddStringToObject(root, "mood", proto_mood_name(st.mood));
     cJSON_AddNumberToObject(root, "tweenPermille", st.tween_permille);
     cJSON_AddBoolToObject(root, "frozen", st.frozen);
     cJSON_AddBoolToObject(root, "animating", st.animating);
     cJSON_AddBoolToObject(root, "blinking", st.blinking);
-    cJSON_AddStringToObject(root, "reaction", ui_pet_reaction_name(st.reaction));
+    cJSON_AddBoolToObject(root, "outline", st.outline);
+    cJSON_AddNumberToObject(root, "scale", st.scale);
+    cJSON_AddStringToObject(root, "reaction", pet_react_name(st.reaction));
+    cJSON_AddStringToObject(root, "bodyColor", color);
+    add_aux(root, "aux", st.aux);
+    add_aux(root, "auxSel", st.aux_sel);
+    cJSON_AddNumberToObject(root, "items", st.items);
+    cJSON_AddNumberToObject(root, "dirty", st.dirty);
+    cJSON_AddBoolToObject(root, "slow", st.slow);
     cJSON *drawn = cJSON_AddObjectToObject(root, "drawn");
     cJSON_AddNumberToObject(drawn, "eyeOpen", st.eye_open);
     cJSON_AddNumberToObject(drawn, "pupilDx", st.pupil_dx);
@@ -383,10 +411,106 @@ static console_rc_t pet_pose(void)
     return send(root);
 }
 
+static console_rc_t app_req(app_request_kind_t kind, const char *text, const char *arg)
+{
+    bool ok;
+    char message[APP_REQUEST_MESSAGE_SIZE];
+    if (app_request(kind, text, arg, PET_REQUEST_TIMEOUT_MS, &ok, message) != APP_REQUEST_DONE) {
+        return console_fail(CONSOLE_ERR_BUSY, "no answer from the app task");
+    }
+    return ok ? CONSOLE_OK : console_fail(CONSOLE_ERR_FAILED, "%s", message);
+}
+
+static console_rc_t pet_list(void)
+{
+    app_pets_view_t v;
+    app_pets_get_view(&v);
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "selected", v.selected);
+    cJSON_AddStringToObject(root, "shown", v.shown);
+    cJSON_AddStringToObject(root, "partition", pet_part_state_name(v.partition));
+    cJSON_AddNumberToObject(root, "slots", (double)v.slots);
+    cJSON *list = cJSON_AddArrayToObject(root, "pets");
+    for (unsigned i = 0; i < PET_BUILTIN_COUNT; i++) {
+        const pet_builtin_t *b = pet_builtin_at(i);
+        cJSON *e = cJSON_CreateObject();
+        cJSON_AddStringToObject(e, "id", b->id);
+        cJSON_AddNumberToObject(e, "rev", b->bytes[5]);
+        cJSON_AddNumberToObject(e, "size", (double)*b->len);
+        cJSON_AddBoolToObject(e, "builtin", true);
+        cJSON_AddItemToArray(list, e);
+    }
+    for (size_t i = 0; i < v.stored && i < PET_STORE_SLOTS; i++) {
+        cJSON *e = cJSON_CreateObject();
+        cJSON_AddStringToObject(e, "id", v.entries[i].id);
+        cJSON_AddNumberToObject(e, "rev", v.entries[i].rev);
+        cJSON_AddBoolToObject(e, "builtin", false);
+        cJSON_AddItemToArray(list, e);
+    }
+    return send(root);
+}
+
+/* The same path as a server's pet_cmd, so every check applies. */
+static console_rc_t pet_install(int argc, char **argv)
+{
+    char frame[192];
+    const bool select = argc == 7 && strcmp(argv[6], "select") == 0;
+    const int n = snprintf(frame, sizeof(frame),
+                           "{\"type\":\"pet_cmd\",\"op\":\"install\",\"pet\":\"%.15s\",\"rev\":%ld,\"size\":%ld,"
+                           "\"crc32\":\"%.11s\",\"select\":%s}",
+                           argv[2], strtol(argv[3], NULL, 10), strtol(argv[4], NULL, 10), argv[5],
+                           select ? "true" : "false");
+    if (n < 0 || n >= (int)sizeof(frame) || strpbrk(argv[2], "\"\\") != NULL || strpbrk(argv[5], "\"\\") != NULL) {
+        return console_fail(CONSOLE_ERR_BAD_ARGS, "bad arguments");
+    }
+    return app_req(APP_REQUEST_MSG, frame, NULL);
+}
+
 static console_rc_t cmd_pet(int argc, char **argv, const char *raw_args)
 {
     (void)raw_args;
-    static const char USAGE[] = "pet mood <mood> | pet pose | pet freeze on|off";
+    static const char USAGE[] =
+        "pet mood <mood> | pose | freeze on|off | list | use <id> | rm <id> | install <id> <rev> <size> <crc32> "
+        "[select] | react <pat|poke|dizzy|wake|attention|positive|negative|complete|none> | aux | scale <4..16> | "
+        "outline on|off";
+    if (argc == 2 && strcmp(argv[1], "list") == 0) {
+        return pet_list();
+    }
+    if (argc == 3 && (strcmp(argv[1], "use") == 0 || strcmp(argv[1], "rm") == 0)) {
+        return app_req(APP_REQUEST_PET, strcmp(argv[1], "use") == 0 ? "use" : "rm", argv[2]);
+    }
+    if ((argc == 6 || argc == 7) && strcmp(argv[1], "install") == 0) {
+        return pet_install(argc, argv);
+    }
+    if (argc == 3 && strcmp(argv[1], "react") == 0) {
+        const pet_react_t r = pet_react_parse(argv[2]);
+        if (r == PET_REACT_COUNT) {
+            return console_fail(CONSOLE_ERR_BAD_ARGS, "%s", USAGE);
+        }
+        ui_pet_react(r);
+        return CONSOLE_OK;
+    }
+    if (argc == 2 && strcmp(argv[1], "aux") == 0) {
+        ui_pet_state_t st;
+        ui_pet_get_state(&st);
+        cJSON *root = cJSON_CreateObject();
+        cJSON_AddStringToObject(root, "pet", st.id);
+        add_aux(root, "aux", st.aux);
+        add_aux(root, "auxSel", st.aux_sel);
+        return send(root);
+    }
+    if (argc == 3 && strcmp(argv[1], "scale") == 0) {
+        const long n = strtol(argv[2], NULL, 10);
+        if (n < 4 || n > 16) {
+            return console_fail(CONSOLE_ERR_BAD_ARGS, "scale 4..16");
+        }
+        ui_pet_set_scale((uint8_t)n);
+        return CONSOLE_OK;
+    }
+    if (argc == 3 && strcmp(argv[1], "outline") == 0 && (strcmp(argv[2], "on") == 0 || strcmp(argv[2], "off") == 0)) {
+        ui_pet_set_outline(strcmp(argv[2], "on") == 0);
+        return CONSOLE_OK;
+    }
     if (argc == 3 && strcmp(argv[1], "mood") == 0) {
         return pet_mood(argv[2]);
     }
@@ -421,7 +545,7 @@ static const console_cmd_t CMDS[] = {
     {"batt", "batt | batt inject <mv> <chrg 0|1> <stdby 0|1> | batt inject off | batt present auto|yes|no "
              "(chrg/stdby 1 = pin asserted)", cmd_batt},
     {"set", "set [<key> <value>]: list or change a setting (persisted, applied at once)", cmd_set},
-    {"pet", "pet mood <mood> | pet pose | pet freeze on|off: drive and inspect the face", cmd_pet},
+    {"pet", "pet mood|pose|freeze|list|use|rm|install|react|aux|scale|outline: drive and inspect the pet (pet help for the arguments)", cmd_pet},
     {"factory-reset", "factory-reset --yes-erase-wifi-and-pairing: erase WiFi, pairing and settings, then restart",
      cmd_factory_reset},
 };

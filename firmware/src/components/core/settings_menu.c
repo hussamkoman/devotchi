@@ -27,6 +27,7 @@ static const row_def_t ROWS[SETTINGS_ROW_COUNT] = {
     [SETTINGS_ROW_HAPTICS] = {"haptics", "Haptics", CHOICES(HAPTICS)},
     [SETTINGS_ROW_LED] = {"led", "LED", CHOICES(ON_OFF)},
     [SETTINGS_ROW_MODE] = {"mode", "Mode", CHOICES(MODES)},
+    [SETTINGS_ROW_PET] = {"pet", "Pet", NULL, 0},
     [SETTINGS_ROW_WIFI_SETUP] = {"wifi_setup", "WiFi setup", NULL, 0},
     [SETTINGS_ROW_UNPAIR] = {"unpair", "Unpair", NULL, 0},
     [SETTINGS_ROW_FACTORY_RESET] = {"factory_reset", "Factory reset", NULL, 0},
@@ -117,6 +118,7 @@ void settings_menu_value_text(settings_row_t row, uint16_t value, char out[SETTI
     case SETTINGS_ROW_MODE:
         snprintf(out, SETTINGS_VALUE_TEXT_SIZE, "%s", value == SETTINGS_MODE_DESK ? "Desk" : "Ask");
         break;
+    case SETTINGS_ROW_PET:
     case SETTINGS_ROW_WIFI_SETUP:
     case SETTINGS_ROW_UNPAIR:
     case SETTINGS_ROW_FACTORY_RESET:

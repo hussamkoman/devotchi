@@ -73,6 +73,7 @@ typedef enum {
     PROTO_QUESTION,
     PROTO_PLAN,
     PROTO_DEADLINE,
+    PROTO_PET_CMD,
 } proto_type_t;
 
 typedef enum {
@@ -260,6 +261,38 @@ typedef struct {
     proto_choice_t choice;
 } proto_dismiss_t;
 
+typedef enum {
+    PROTO_PET_OP_UNKNOWN,
+    PROTO_PET_OP_INSTALL,
+    PROTO_PET_OP_SELECT,
+    PROTO_PET_OP_REMOVE,
+} proto_pet_op_t;
+
+/** Received `pet` text kept for the check; longer text sets pet_long. */
+#define PROTO_PET_RAW_SIZE   16
+#define PROTO_PET_CRC_SIZE   12
+/** Most installed pets one `pets` message lists (built-ins plus stored). */
+#define PROTO_PETS_MAX       12
+#define PROTO_PETS_MAX_BYTES 700
+
+/**
+ * pet_cmd as received (protocol 14.8). Nothing here is checked yet:
+ * pet_cmd_check() (pet_install.h) decides whether the command is well formed,
+ * so that a malformed one can still be answered with `unknown`. Missing
+ * numbers are -1, a missing or non-string text is "" with *_present false.
+ */
+typedef struct {
+    proto_pet_op_t op;
+    char pet[PROTO_PET_RAW_SIZE];
+    bool pet_present;
+    bool pet_long;
+    int32_t rev;
+    int32_t size;
+    char crc32[PROTO_PET_CRC_SIZE];
+    bool crc_long;
+    bool select;
+} proto_pet_cmd_t;
+
 typedef struct {
     proto_type_t type;
     union {
@@ -276,6 +309,7 @@ typedef struct {
         proto_question_t question;
         proto_plan_t plan;
         proto_deadline_t deadline;
+        proto_pet_cmd_t pet_cmd;
     } u;
 } proto_msg_t;
 
@@ -296,7 +330,28 @@ typedef struct {
     const char *screen;
     const char *stage;
     const char *alert;
+    /** Selected pet id. */
+    const char *pet;
 } proto_telemetry_t;
+
+typedef struct {
+    const char *id;
+    uint8_t rev;
+    bool builtin;
+} proto_pet_entry_t;
+
+/** The `pets` message; result_op NULL leaves `result` out. */
+typedef struct {
+    const char *selected;
+    int slots;
+    int free;
+    size_t n_installed;
+    proto_pet_entry_t installed[PROTO_PETS_MAX];
+    const char *result_op;
+    const char *result_pet;
+    bool result_ok;
+    const char *result_error;
+} proto_pets_t;
 
 /**
  * Parses one inbound frame. False for anything that is not a JSON object with
@@ -340,6 +395,12 @@ typedef struct {
 /** `answers` in question order, one per question (1..PROTO_Q_MAX); fails for an option bit past PROTO_Q_OPTIONS_MAX. */
 int proto_write_question_response(char *buf, size_t cap, const char *id, const proto_answer_t *answers, size_t count);
 int proto_write_extend(char *buf, size_t cap, const char *id);
+
+/** Also fails above PROTO_PETS_MAX_BYTES. */
+int proto_write_pets(char *buf, size_t cap, const proto_pets_t *p);
+
+/** "install", "select", "remove" or "unknown". */
+const char *proto_pet_op_name(proto_pet_op_t op);
 
 /** Also fails when the frame would exceed PROTO_TELEMETRY_MAX bytes. */
 int proto_write_telemetry(char *buf, size_t cap, const proto_telemetry_t *t);

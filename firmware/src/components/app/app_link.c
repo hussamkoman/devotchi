@@ -633,6 +633,11 @@ static void on_job_result(const net_job_result_t *r, uint32_t now)
         on_claim_result(r, now);
         return;
     }
+    /* A download answers its pet_cmd even when the link restarted meanwhile. */
+    if (r->kind == NET_JOB_PET_FETCH) {
+        app_pets_on_fetch(r, now);
+        return;
+    }
     if (r->tag != s_generation) {
         return;
     }
@@ -647,6 +652,7 @@ static void on_job_result(const net_job_result_t *r, uint32_t now)
         on_health_result(r, now);
         break;
     case NET_JOB_PAIR_CLAIM:
+    case NET_JOB_PET_FETCH:
     case NET_JOB_WS_STOP:
         break;
     }
@@ -677,12 +683,23 @@ static void submit_next_job(void)
         job.kind = NET_JOB_PAIR_POLL;
         strlcpy(job.arg, s_pair.secret, sizeof(job.arg));
         intent = &s_want_pair_poll;
+    } else if (s_token[0] != '\0' && app_pets_take_fetch(job.arg)) {
+        job.kind = NET_JOB_PET_FETCH;
+        strlcpy(job.token, s_token, sizeof(job.token));
+        /* app_pets_take_fetch already took the intent. */
+        intent = NULL;
     } else {
         return;
     }
-    if (net_worker_submit(&job)) {
+    if (!net_worker_submit(&job)) {
+        if (job.kind == NET_JOB_PET_FETCH) {
+            app_pets_fetch_failed(app_now_ms());
+        }
+    } else {
         s_http_busy = true;
-        *intent = false;
+        if (intent != NULL) {
+            *intent = false;
+        }
         if (job.kind == NET_JOB_PAIR_CLAIM) {
             s_claim_in_flight = true;
         } else if (job.kind == NET_JOB_HEALTH) {
@@ -726,6 +743,7 @@ static void on_register_ack(const proto_register_ack_t *ack, uint32_t now)
     set_state(APP_STATE_ONLINE);
     ESP_LOGI(TAG, "registered");
     app_telemetry_on_registered(now);
+    app_pets_on_registered(now);
 }
 
 static void handle_message(const char *json, size_t len, uint32_t now)
@@ -770,6 +788,9 @@ static void handle_message(const char *json, size_t len, uint32_t now)
     case PROTO_IDENTIFY:
         app_flow_on_message(&s_msg, now);
         break;
+    case PROTO_PET_CMD:
+        app_pets_on_cmd(&s_msg.u.pet_cmd, now);
+        break;
     case PROTO_UNKNOWN:
     case PROTO_PONG:
     case PROTO_PEERS:
@@ -790,7 +811,7 @@ static void on_ws_up(uint32_t now)
     s_info.server_caps = 0;
     const int len = proto_write_register(s_tx, sizeof(s_tx), s_device_id, APP_MODEL,
                                          esp_app_get_description()->version,
-                                         PROTO_CAP_DECIDE | PROTO_CAP_ASK | PROTO_CAP_PLAN);
+                                         PROTO_CAP_DECIDE | PROTO_CAP_ASK | PROTO_CAP_PLAN | PROTO_CAP_PETS);
     link_send(now, "register", len, NULL);
 }
 
@@ -1108,6 +1129,15 @@ static void handle_request(app_request_t *req, uint32_t now)
     case APP_REQUEST_POWER:
         app_power_on_request(req);
         return;
+    case APP_REQUEST_PET: {
+        const pet_result_t r =
+            strcmp(req->text, "use") == 0 ? app_pets_select(req->arg, now) : app_pets_remove(req->arg, now);
+        app_request_complete(r == PET_RESULT_OK, pet_result_name(r));
+        if (r == PET_RESULT_OK) {
+            s_screen_valid = false;
+        }
+        return;
+    }
     }
 }
 
@@ -1423,7 +1453,7 @@ static void render(uint32_t now)
             render_flow(now, APP_FLOW_PREVIEW_OFF);
         } else {
             app_settings_render(false);
-            show(UI_SCREEN_SETTINGS);
+            show(app_settings_picker() ? UI_SCREEN_PICKER : UI_SCREEN_SETTINGS);
         }
         return;
     }
@@ -1471,6 +1501,9 @@ btn_mode_t app_link_btn_mode(btn_id_t id, uint32_t now)
     if (s_preview != PREVIEW_OFF) {
         return BTN_MODE_NONE;
     }
+    if (app_settings_active() && s_screen_valid && s_screen == UI_SCREEN_PICKER) {
+        return BTN_MODE_CLICK;
+    }
     if (app_settings_active() && s_screen_valid && s_screen == UI_SCREEN_SETTINGS) {
         return id == BTN_ACTION ? BTN_MODE_NAV_HOLD : BTN_MODE_CLICK;
     }
@@ -1495,7 +1528,8 @@ void app_link_on_button(const btn_fsm_out_t *out)
         return;
     }
     const bool settings_long = out->id == BTN_ACTION && out->kind == BTN_HOLD;
-    if (app_settings_active() && s_screen_valid && s_screen == UI_SCREEN_SETTINGS) {
+    if (app_settings_active() && s_screen_valid &&
+        (s_screen == UI_SCREEN_SETTINGS || s_screen == UI_SCREEN_PICKER)) {
         app_settings_on_button(out, now);
     } else if (s_flow_shown) {
         if (!app_flow_on_button(out, now) && settings_long && s_screen == UI_SCREEN_PET) {

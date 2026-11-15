@@ -653,6 +653,7 @@ esp_err_t app_init(void)
     ESP_RETURN_ON_ERROR(buttons_init(on_button_raw), TAG, "buttons");
     ESP_RETURN_ON_ERROR(feedback_init(on_feedback_step), TAG, "feedback");
     ESP_RETURN_ON_ERROR(power_init(on_power), TAG, "power");
+    app_pets_init();
     ESP_RETURN_ON_ERROR(app_flow_init(), TAG, "flow");
     ESP_RETURN_ON_ERROR(app_link_init(), TAG, "link");
     ESP_RETURN_ON_ERROR(app_power_init(), TAG, "power stages");

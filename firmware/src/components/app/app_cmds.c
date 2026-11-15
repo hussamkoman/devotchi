@@ -108,6 +108,26 @@ static console_rc_t cmd_state(int argc, char **argv, const char *raw_args)
     cJSON_AddStringToObject(root, "server", url);
     cJSON_AddStringToObject(root, "serverSource", source_name);
     cJSON_AddBoolToObject(root, "hasBackup", storage_has_backup());
+    app_pets_view_t pets;
+    app_pets_get_view(&pets);
+    static const char *const SOURCES[] = {[PET_SOURCE_BUILTIN] = "builtin", [PET_SOURCE_STORED] = "stored",
+                                          [PET_SOURCE_FALLBACK] = "fallback"};
+    cJSON *pet = cJSON_AddObjectToObject(root, "pet");
+    cJSON_AddStringToObject(pet, "selected", pets.selected);
+    cJSON_AddStringToObject(pet, "shown", pets.shown);
+    cJSON_AddStringToObject(pet, "source", (size_t)pets.source < 3 ? SOURCES[pets.source] : "fallback");
+    cJSON *store = cJSON_AddObjectToObject(root, "pets");
+    cJSON_AddStringToObject(store, "partition", pet_part_state_name(pets.partition));
+    cJSON_AddNumberToObject(store, "slots", (double)pets.slots);
+    cJSON_AddNumberToObject(store, "free", (double)(pets.slots > pets.stored ? pets.slots - pets.stored : 0));
+    cJSON_AddBoolToObject(store, "fetching", pets.fetching);
+    cJSON *list = cJSON_AddArrayToObject(store, "stored");
+    for (size_t i = 0; i < pets.stored && i < PET_STORE_SLOTS; i++) {
+        cJSON *e = cJSON_CreateObject();
+        cJSON_AddStringToObject(e, "id", pets.entries[i].id);
+        cJSON_AddNumberToObject(e, "rev", pets.entries[i].rev);
+        cJSON_AddItemToArray(list, e);
+    }
     cJSON_AddStringToObject(root, "mode", proto_mode_name(snap.link.mode));
     cJSON_AddStringToObject(root, "name", snap.link.name);
 
@@ -320,6 +340,11 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
         cJSON_AddNumberToObject(set, "cursor", settings.cursor);
         cJSON_AddStringToObject(set, "row", settings_menu_key((settings_row_t)settings.cursor));
         cJSON_AddBoolToObject(set, "confirming", settings.confirming);
+    }
+    if (screen == UI_SCREEN_PICKER) {
+        cJSON *pk = cJSON_AddObjectToObject(root, "picker");
+        cJSON_AddBoolToObject(pk, "open", settings.picker);
+        cJSON_AddNumberToObject(pk, "page", settings.page);
     }
     if (s_toast[0] != '\0') {
         cJSON_AddStringToObject(root, "toast", s_toast);

@@ -79,6 +79,8 @@ static bool s_banner_visible;
 static bool s_banner_attention;
 
 static ui_screen_id_t s_screen = UI_SCREEN_PET;
+/* The home pet loops its attention reaction until a press or the next status. */
+static bool s_pet_attention;
 static ui_pet_page_t s_page = UI_PET_PAGE_PET;
 static uint32_t s_page_at;
 static pet_pokes_t s_pokes;
@@ -486,9 +488,22 @@ static void on_error(const proto_error_t *err, uint32_t now)
     }
 }
 
+static void pet_mood_changed(proto_mood_t before);
+
 static void on_notify(const proto_notify_t *n, uint32_t now)
 {
+    const proto_mood_t before = s_pet.mood;
     const pet_event_class_t cls = pet_model_apply_notify(&s_pet, n);
+    static const pet_react_t REACT[] = {
+        [PET_EVENT_NONE] = PET_REACT_NONE,         [PET_EVENT_POSITIVE] = PET_REACT_POSITIVE,
+        [PET_EVENT_NEGATIVE] = PET_REACT_NEGATIVE, [PET_EVENT_COMPLETE] = PET_REACT_COMPLETE,
+        [PET_EVENT_ATTENTION] = PET_REACT_ATTENTION,
+    };
+    pet_mood_changed(before);
+    if (n->urgency > 0 && (size_t)cls < sizeof(REACT) / sizeof(REACT[0]) && REACT[cls] != PET_REACT_NONE) {
+        ui_pet_react(REACT[cls]);
+        s_pet_attention = cls == PET_EVENT_ATTENTION;
+    }
     app_agent_activity(now);
     if (n->urgency == 0) {
         return;
@@ -545,16 +560,31 @@ uint8_t app_flow_pending_count(void)
     return (uint8_t)reqq_count(&s_q);
 }
 
+/* The pet's own reactions to what the agent does (pet-animations 3). */
+static void pet_mood_changed(proto_mood_t before)
+{
+    if (s_pet_attention) {
+        s_pet_attention = false;
+        ui_pet_react(PET_REACT_NONE);
+    }
+    if (before == MOOD_SLEEPING && s_pet.mood != MOOD_SLEEPING) {
+        ui_pet_react(PET_REACT_WAKE);
+    }
+}
+
 void app_flow_on_message(const proto_msg_t *msg, uint32_t now)
 {
+    const proto_mood_t before = s_pet.mood;
     switch (msg->type) {
     case PROTO_STATUS:
         pet_model_apply_status(&s_pet, &msg->u.status);
         app_agent_activity(now);
+        pet_mood_changed(before);
         break;
     case PROTO_MOOD:
         pet_model_apply_mood(&s_pet, &msg->u.mood);
         app_agent_activity(now);
+        pet_mood_changed(before);
         break;
     case PROTO_NOTIFY:
         on_notify(&msg->u.notify, now);
@@ -585,6 +615,7 @@ void app_flow_on_message(const proto_msg_t *msg, uint32_t now)
     case PROTO_PING:
     case PROTO_PONG:
     case PROTO_PEERS:
+    case PROTO_PET_CMD:
     case PROTO_MODE:
         break;
     }
@@ -871,10 +902,10 @@ static void on_approval_button(const btn_fsm_out_t *out, uint32_t now)
     }
 }
 
-static void pet_evt(ui_pet_reaction_t r)
+static void pet_evt(pet_react_t r)
 {
     char evt[48];
-    snprintf(evt, sizeof(evt), "{\"evt\":\"pet\",\"action\":\"%s\"}", ui_pet_reaction_name(r));
+    snprintf(evt, sizeof(evt), "{\"evt\":\"pet\",\"action\":\"%s\"}", pet_react_name(r));
     console_evt(evt);
 }
 
@@ -908,6 +939,11 @@ static void set_page(ui_pet_page_t page, uint32_t now)
 
 static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
 {
+    /* Any press answers the attention loop. */
+    if (s_pet_attention) {
+        s_pet_attention = false;
+        ui_pet_react(PET_REACT_NONE);
+    }
     if (s_page == UI_PET_PAGE_PET) {
         ui_pet_show_tabs(HOME_TABS_MS);
     }
@@ -932,11 +968,11 @@ static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
             s_page_at = now;
         }
     } else if (out->id == BTN_APPROVE) {
-        ui_pet_react(UI_PET_REACT_PAT);
+        ui_pet_react(PET_REACT_PAT);
         play(FB_SEQ_TICK, 0);
-        pet_evt(UI_PET_REACT_PAT);
+        pet_evt(PET_REACT_PAT);
     } else {
-        const ui_pet_reaction_t r = pet_pokes_add(&s_pokes, now) ? UI_PET_REACT_DIZZY : UI_PET_REACT_POKE;
+        const pet_react_t r = pet_pokes_add(&s_pokes, now) ? PET_REACT_DIZZY : PET_REACT_POKE;
         ui_pet_react(r);
         pet_evt(r);
     }

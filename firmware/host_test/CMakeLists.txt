@@ -87,3 +87,6 @@ foreach(test_src ${TEST_SRCS})
     target_link_libraries(${test_name} PRIVATE core)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+# The golden packs the compiled-in arrays are compared with.
+target_compile_definitions(test_pet_pack PRIVATE PETS_GOLDEN_DIR="${CMAKE_CURRENT_LIST_DIR}/../../pets/golden")
