@@ -484,3 +484,9 @@ uint32_t pet_pack_body_color(const pet_def_t *def, uint32_t mood_color)
 {
     return def->glow_palette ? def->base : mood_color;
 }
+
+bool pet_pack_dark(uint32_t rgb)
+{
+    const uint32_t luma = 54 * ((rgb >> 16) & 0xFF) + 183 * ((rgb >> 8) & 0xFF) + 19 * (rgb & 0xFF);
+    return luma < 64 * 256;
+}

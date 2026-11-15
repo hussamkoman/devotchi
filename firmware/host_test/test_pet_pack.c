@@ -122,26 +122,33 @@ static void test_golden_packs_decode(void)
     TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(devo->bytes, devo->len, &s_def));
     TEST_ASSERT_EQUAL_STRING("devo", s_def.id);
     TEST_ASSERT_EQUAL_STRING("Devo", s_def.name);
-    TEST_ASSERT_EQUAL_STRING("traces glow with its mood", devo->tagline);
-    TEST_ASSERT_EQUAL(3, s_def.rev);
-    /* Devo is the white ghost: the body keeps the base and the mood colour goes to the traces. */
+    TEST_ASSERT_EQUAL_STRING("antenna glows with its mood", devo->tagline);
+    TEST_ASSERT_EQUAL(4, s_def.rev);
+    /* Devo is the dark PCB ghost: the body keeps the base and the mood colour goes to the ball and the chip light. */
     TEST_ASSERT_FALSE(s_def.shift_palette);
     TEST_ASSERT_TRUE(s_def.glow_palette);
-    TEST_ASSERT_EQUAL_HEX32(0x9D8DF1, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
-    TEST_ASSERT_EQUAL_HEX32(0x3D6BF0, pet_pack_mood_color(&s_def, PET_PACK_MOOD_FOCUSED));
-    TEST_ASSERT_EQUAL_HEX32(0xF4F1EA, pet_pack_body_color(&s_def, pet_pack_mood_color(&s_def, PET_PACK_MOOD_FOCUSED)));
-    TEST_ASSERT_EQUAL(PET_EYE_RING, s_def.face.eye_style);
+    TEST_ASSERT_EQUAL_HEX32(0xB9AEFA, pet_pack_mood_color(&s_def, PET_PACK_MOOD_IDLE));
+    TEST_ASSERT_EQUAL_HEX32(0x5B82F0, pet_pack_mood_color(&s_def, PET_PACK_MOOD_FOCUSED));
+    TEST_ASSERT_EQUAL_HEX32(0x2A3550, pet_pack_body_color(&s_def, pet_pack_mood_color(&s_def, PET_PACK_MOOD_FOCUSED)));
+    TEST_ASSERT_TRUE(pet_pack_dark(s_def.base));
+    TEST_ASSERT_EQUAL_HEX32(0xF4F1EA, s_def.cream);
+    TEST_ASSERT_EQUAL(PET_EYE_ROUND, s_def.face.eye_style);
     TEST_ASSERT_TRUE(s_def.face.brows);
     TEST_ASSERT_EQUAL(-22, s_def.face.eye_y);
     TEST_ASSERT_EQUAL(28, s_def.n_parts);
-    TEST_ASSERT_TRUE(s_def.parts[7].squash);
-    TEST_ASSERT_EQUAL(108, s_def.parts[7].w);
-    TEST_ASSERT_TRUE(s_def.parts[4].mirrored);
+    TEST_ASSERT_TRUE(s_def.parts[4].squash);
+    TEST_ASSERT_EQUAL(108, s_def.parts[4].w);
+    TEST_ASSERT_TRUE(s_def.parts[5].mirrored);
     TEST_ASSERT_EQUAL(PET_PACK_ROLE_MOOD, s_def.parts[2].role);
-    TEST_ASSERT_EQUAL(PET_PACK_ROLE_MOOD, s_def.parts[12].role);
-    TEST_ASSERT_TRUE(s_def.parts[12].ring);
+    /* The white outline: every body shape once in cream and once, 4 smaller all round, in the body colour. */
+    TEST_ASSERT_EQUAL(PET_PACK_ROLE_CREAM, s_def.parts[4].role);
+    TEST_ASSERT_EQUAL(PET_PACK_ROLE_BODY, s_def.parts[8].role);
+    TEST_ASSERT_EQUAL(100, s_def.parts[8].w);
+    TEST_ASSERT_EQUAL(PET_PACK_ROLE_CREAM, s_def.parts[16].role);
+    TEST_ASSERT_TRUE(s_def.parts[16].ring);
+    TEST_ASSERT_EQUAL(PET_PACK_ROLE_MOOD, s_def.parts[17].role);
     /* The silhouette of the night clock is four mirrored lines that only outline mode draws. */
-    for (int i = 8; i < 12; i++) {
+    for (int i = 12; i < 16; i++) {
         TEST_ASSERT_EQUAL(PET_PACK_ROLE_NIGHT, s_def.parts[i].role);
         TEST_ASSERT_EQUAL(PET_SHAPE_LINE, s_def.parts[i].shape);
         TEST_ASSERT_FALSE(s_def.parts[i].no_outline);
@@ -351,6 +358,27 @@ static void test_header_fields(void)
     }
 }
 
+/* Pet ink does not show on a dark body, so the rig switches the face lines to cream there. */
+static void test_dark_bodies(void)
+{
+    TEST_ASSERT_TRUE(pet_pack_dark(0x000000));
+    TEST_ASSERT_TRUE(pet_pack_dark(0x2A3550));
+    TEST_ASSERT_TRUE(pet_pack_dark(0x1A1D26));
+    TEST_ASSERT_FALSE(pet_pack_dark(0xF4F1EA));
+    /* Every colour the other pets' bodies take stays on ink. */
+    static const char *const IDS[] = {"mochi", "ember"};
+    for (size_t i = 0; i < sizeof(IDS) / sizeof(IDS[0]); i++) {
+        const pet_builtin_t *b = pet_builtin_find(IDS[i]);
+        TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(b->bytes, b->len, &s_def));
+        for (unsigned m = 0; m < PET_PACK_MOODS; m++) {
+            TEST_ASSERT_FALSE_MESSAGE(pet_pack_dark(pet_pack_body_color(&s_def, pet_pack_mood_color(&s_def, m))), IDS[i]);
+        }
+    }
+    /* The boundary is a luma of a quarter: 54 R + 183 G + 19 B under 64 * 256. */
+    TEST_ASSERT_TRUE(pet_pack_dark(0x3F3F3F));
+    TEST_ASSERT_FALSE(pet_pack_dark(0x404040));
+}
+
 static void test_counts(void)
 {
     TEST_ASSERT_EQUAL(PET_PACK_ERR_COUNT, build_check(RRECT, sizeof(RRECT), 0, 0, 0));
@@ -482,6 +510,7 @@ int main(void)
     RUN_TEST(test_resealed_fuzz);
     RUN_TEST(test_size_and_format);
     RUN_TEST(test_header_fields);
+    RUN_TEST(test_dark_bodies);
     RUN_TEST(test_counts);
     RUN_TEST(test_overrides_and_oscillators);
     RUN_TEST(test_parts);

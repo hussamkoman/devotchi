@@ -292,5 +292,11 @@ uint32_t pet_pack_mood_color(const pet_def_t *def, unsigned mood);
 /** Body colour while the mood colour is mood_color: the base in a glow palette, else the mood colour itself. */
 uint32_t pet_pack_body_color(const pet_def_t *def, uint32_t mood_color);
 
+/**
+ * True for a body colour too dark for pet ink (luma under a quarter): the rig then draws the face lines
+ * (mouth, brows, closed eyes, dot pupils) in the pack's cream and the lid edge in the light shade.
+ */
+bool pet_pack_dark(uint32_t rgb);
+
 /** a mixed towards b by t/255 per channel, rounded. */
 uint32_t pet_pack_mix(uint32_t a, uint32_t b, unsigned t);

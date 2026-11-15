@@ -142,10 +142,10 @@ class Lint(unittest.TestCase):
         self.assertEqual(glow["palette"]["mode"], "glow")
         glow["palette"]["moods"]["happy"] = "#FFB84D"
         dec = petpack.lint_input(glow)
-        self.assertEqual(petpack.body_rgb(dec, "happy"), 0xF4F1EA)
+        self.assertEqual(petpack.body_rgb(dec, "happy"), 0x2A3550)
         self.assertEqual(petpack.role_rgb(dec, "mood", "happy"), 0xFFB84D)
-        self.assertEqual(petpack.role_rgb(dec, "dark", "happy"), petpack.mix(0xF4F1EA, petpack.INK, petpack.DARK_T))
-        # Thin traces in the mood colour stay under the share the hue rule looks at.
+        self.assertEqual(petpack.role_rgb(dec, "dark", "happy"), petpack.mix(0x2A3550, petpack.INK, petpack.DARK_T))
+        # The ball and the chip light in the mood colour stay under the share the hue rule looks at.
         errors, warnings = self.lint(glow, others=())
         self.assertEqual((errors, [w for w in warnings if "amber" in w]), ([], []))
         # Parts with the night role are the outline's alone: not in the filled pet, all there is of it at night.
@@ -180,11 +180,13 @@ class Format(unittest.TestCase):
         src = source("devo")
         pack = petpack.encode(src)
         self.assertEqual(pack[28], petpack.FLAG_GLOW)
-        self.assertEqual(pack[88], petpack.EYES.index("ring"))
+        self.assertEqual(pack[88], petpack.EYES.index("round"))
         dec = petpack.decode(pack)
         self.assertEqual(dec["palette"]["mode"], "glow")
         self.assertEqual(dec["palette"]["moods"]["idle"], src["palette"]["moods"]["idle"])
-        self.assertEqual(dec["face"]["eyes"], "ring")
+        self.assertEqual(dec["face"]["eyes"], "round")
+        ring = petpack.decode(petpack.encode({**src, "face": {**src["face"], "eyes": "ring"}}))
+        self.assertEqual(ring["face"]["eyes"], "ring")
         self.assertIn("mood", [p["role"] for p in dec["parts"]])
         self.assertEqual((petpack.ROLES.index("mood"), petpack.ROLES.index("night")), (13, 14))
         self.assertEqual(petpack.encode({**src, "parts": dec["parts"], "aux": dec["aux"]}), pack)
