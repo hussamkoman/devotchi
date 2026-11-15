@@ -456,6 +456,7 @@ static console_rc_t show(void)
     cJSON_AddNumberToObject(root, "cpuMhz", pm.cpu_mhz);
     cJSON_AddBoolToObject(root, "pmConfigured", pm.configured);
     cJSON_AddBoolToObject(root, "panelAsleep", display_is_asleep());
+    cJSON_AddNumberToObject(root, "backlightPct", display_backlight_pct());
     cJSON_AddBoolToObject(root, "uiParked", !ui_is_running());
     cJSON_AddStringToObject(root, "wifiPs", out.wifi_ps == POWER_WIFI_PS_MAX ? "max" : "min");
     cJSON_AddBoolToObject(root, "deepSleepWake", wake.deep_sleep);

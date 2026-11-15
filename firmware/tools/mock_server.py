@@ -15,6 +15,9 @@ Control, as lines on stdin or as the body of POST /_ctl:
   send-fragmented <json> <n>       the same as a text frame (FIN=0) plus continuation frames, n frames in all
   send-fragmented-ping <json> <n>  like send-fragmented, with a ping frame between the fragments
   send-binary <hex>                one binary frame
+  send-text <text>                 one text frame with any content (not checked to be JSON)
+  send-continuation <text>         one continuation frame that no text frame started
+  flood <count> <seconds>          count numbered status frames spread evenly over seconds
   close <code>                     close every WebSocket with this code (4003 also revokes its token)
   drop                             cut every WebSocket without a close frame
   confirm                          confirm every pending flow A code
@@ -266,6 +269,17 @@ class State:
     def broadcast(self, obj):
         return sum(1 for c in self.live() if c.send_json(obj))
 
+    def flood(self, count, seconds):
+        """Sends count numbered status frames spread evenly over seconds; returns how many were written."""
+        started = time.monotonic()
+        sent = 0
+        for i in range(count):
+            delay = started + seconds * i / count - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            sent += self.broadcast({"type": "status", "msg": f"flood {i:03d}"})
+        return sent
+
     def status(self):
         live = self.live()
         with self.lock:
@@ -303,6 +317,15 @@ class State:
             if command == "send-binary":
                 data = encode_frame(OP_BINARY, bytes.fromhex(rest))
                 return {"ok": True, "sent": sum(1 for c in self.live() if c.send_raw(data))}
+            if command == "send-text":
+                data = encode_frame(OP_TEXT, rest.encode())
+                return {"ok": True, "sent": sum(1 for c in self.live() if c.send_raw(data)), "bytes": len(rest.encode())}
+            if command == "send-continuation":
+                data = encode_frame(OP_CONT, rest.encode())
+                return {"ok": True, "sent": sum(1 for c in self.live() if c.send_raw(data))}
+            if command == "flood":
+                count, seconds = rest.split()
+                return {"ok": True, "sent": self.flood(int(count), float(seconds)), "frames": int(count)}
             if command == "close":
                 code = int(rest)
                 closed = self.live()
