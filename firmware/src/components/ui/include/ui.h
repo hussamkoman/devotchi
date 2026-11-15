@@ -1,5 +1,6 @@
 #pragma once
 
+#include "card_fsm.h"
 #include "pet_pose.h"
 #include "proto.h"
 
@@ -122,6 +123,9 @@ void ui_tabs_hold_progress(ui_tab_btn_t btn, uint16_t permille);
 /** A click on a hold-only tab: shake, and the tab says label (amber ring) for 1.5 s. */
 void ui_tabs_nudge(ui_tab_btn_t btn, const char *label);
 
+/** A press on an inactive tab: the tab shakes and nothing else changes. */
+void ui_tabs_shake(ui_tab_btn_t btn);
+
 /* ---- start-up screens ---- */
 
 /** Service name and proof-of-possession the phone app asks for, and what the attempt is doing. */
@@ -205,8 +209,11 @@ void ui_toast(const char *text, uint32_t ms);
 void ui_banner_show(const char *text, bool attention);
 void ui_banner_hide(void);
 
-/** Copies the visible toast and banner texts ("" when hidden). */
-void ui_overlay_get(char toast[UI_TEXT_SIZE], char banner[UI_TEXT_SIZE]);
+/** Receipt strip in the status bar's place for ms milliseconds (28b), with the icon and colour of kind. */
+void ui_receipt_strip(ui_toast_kind_t kind, const char *text, uint32_t ms);
+
+/** Copies the titles of the visible toast and banner and the receipt strip's text ("" when hidden). */
+void ui_overlay_get(char toast[UI_TEXT_SIZE], char banner[UI_TEXT_SIZE], char strip[UI_TEXT_SIZE]);
 
 /** Pet screen: project header, face for the mood, status line. */
 void ui_pet_set(const char *project, proto_mood_t mood, const char *status);
@@ -307,9 +314,16 @@ typedef struct {
     const char *tool;
     proto_risk_t risk;
     const char *project;
-    const char *summary;
-    /** The wrapped lines of the details page on screen. */
+    const char *sid;
+    /** Claude's own description, labelled `Claude:` when words_claude; a phase-1 server's summary is not. */
+    const char *words;
+    bool words_claude;
+    /** The server's reason for a medium or high risk; "" for none. */
+    const char *reason;
+    /** The wrapped lines of the command page on screen. */
     const char *details;
+    /** A shell command's first page: a "$" prompt fills the two blank columns of its first line. */
+    bool prompt;
     /** 1-based queue position of the request on screen and the queue length. */
     uint8_t position;
     uint8_t count;
@@ -323,14 +337,25 @@ typedef struct {
     uint16_t remaining_s;
     /** The answer was sent: the button hints give way to "Sent...". */
     bool sent;
+    /** The arming delay is over: the tabs are active. */
+    bool armed;
+    card_allow_t allow;
+    card_view_t view;
+    /* The decision menu (25-27). */
+    /** The command's first line, for the menu header. */
+    const char *cmd_line;
+    uint8_t rows;
+    card_row_t row[CARD_MENU_ROWS];
+    uint8_t cursor;
+    card_session_t session;
+    /** The session rule word for word, and whether it matches as a prefix ("pnpm test …"). */
+    const char *rule;
+    bool rule_prefix;
 } ui_approval_t;
 
 /** Approval card; the content is updated in place. */
 void ui_approval_set(const ui_approval_t *a);
 
-/** A details page: lines of the code well and their width in mono columns (design-system 3). */
-#define UI_DETAILS_COLS   34
-#define UI_DETAILS_LINES  3
 
 void ui_identify_set(const char *name);
 

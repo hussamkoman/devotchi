@@ -14,6 +14,8 @@
 #include "ui.h"
 
 #include "esp_check.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -23,6 +25,9 @@
 static const char *TAG = "app_cmds_io";
 
 #define INJECT_MV_MAX     5000
+/* A `long` press outlasts both hold thresholds, so it is the hold or the commit, whichever the mode allows. */
+#define BTN_LONG_MS       (BTN_FSM_COMMIT_HOLD_MS + 100)
+#define BTN_HOLD_MAX_MS   10000
 #define FB_DURATION_MAX   600000
 
 /* Settings that are also on the Settings screen share its value tables (settings_menu.c). */
@@ -90,23 +95,42 @@ static console_rc_t post(const app_event_t *ev)
     return app_post(ev) ? CONSOLE_OK : console_fail(CONSOLE_ERR_BUSY, "app queue full");
 }
 
+static bool post_raw(btn_id_t id, btn_raw_t raw)
+{
+    const app_event_t ev = {.id = APP_EV_BTN_RAW, .t_ms = app_now_ms(), .arg.u8 = {(uint8_t)id, (uint8_t)raw}};
+    return app_post(&ev);
+}
+
+/* Down, the hold in real time (the app's button tick runs meanwhile), up; the up is always posted. */
 static console_rc_t cmd_btn(int argc, char **argv, const char *raw_args)
 {
     (void)raw_args;
+    static const char *const USAGE = "btn <approve|reject|action> <press|long|hold MS>";
     btn_id_t id;
-    if (argc != 3 || !btn_id_parse(argv[1], &id)) {
-        return console_fail(CONSOLE_ERR_BAD_ARGS, "btn <approve|reject|action> <press|long>");
+    if ((argc != 3 && argc != 4) || !btn_id_parse(argv[1], &id)) {
+        return console_fail(CONSOLE_ERR_BAD_ARGS, USAGE);
     }
-    btn_kind_t kind;
-    if (strcmp(argv[2], "press") == 0) {
-        kind = BTN_CLICK;
-    } else if (strcmp(argv[2], "long") == 0) {
-        kind = BTN_LONG;
-    } else {
-        return console_fail(CONSOLE_ERR_BAD_ARGS, "btn <approve|reject|action> <press|long>");
+    long ms = -1;
+    if (argc == 3 && strcmp(argv[2], "press") == 0) {
+        ms = 0;
+    } else if (argc == 3 && strcmp(argv[2], "long") == 0) {
+        ms = BTN_LONG_MS;
+    } else if (argc == 4 && strcmp(argv[2], "hold") == 0 && !parse_long(argv[3], 0, BTN_HOLD_MAX_MS, &ms)) {
+        ms = -1;
     }
-    const app_event_t ev = {.id = APP_EV_BTN_INJECT, .t_ms = app_now_ms(), .arg.u8 = {(uint8_t)id, (uint8_t)kind}};
-    return post(&ev);
+    if (ms < 0) {
+        return console_fail(CONSOLE_ERR_BAD_ARGS, USAGE);
+    }
+    if (!post_raw(id, BTN_RAW_DOWN)) {
+        return console_fail(CONSOLE_ERR_BUSY, "app queue full");
+    }
+    if (ms > 0) {
+        vTaskDelay(pdMS_TO_TICKS(ms));
+    }
+    while (!post_raw(id, BTN_RAW_UP)) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return CONSOLE_OK;
 }
 
 static console_rc_t cmd_wake(int argc, char **argv, const char *raw_args)
@@ -391,7 +415,7 @@ static console_rc_t cmd_factory_reset(int argc, char **argv, const char *raw_arg
 }
 
 static const console_cmd_t CMDS[] = {
-    {"btn", "btn <approve|reject|action> <press|long>: inject a click or long press (wake rule applies)", cmd_btn},
+    {"btn", "btn <approve|reject|action> <press|long|hold MS>: press a button (long: 1.3 s, past both hold thresholds)", cmd_btn},
     {"wake", "user activity without a button", cmd_wake},
     {"fb", "fb list | fb play <pattern> [ms] | fb stop: feedback patterns, steps reported as EVT fb", cmd_fb},
     {"batt", "batt | batt inject <mv> <chrg 0|1> <stdby 0|1> | batt inject off | batt present auto|yes|no "

@@ -6,10 +6,6 @@ menu "Devotchi"
         help
             Used while the NVS key server_url is absent or empty. ws:// or wss://.
 
-    config DEVOTCHI_LONG_PRESS_MS
-        int "Long press threshold (ms)"
-        default 1000
-
     config DEVOTCHI_DISPLAY_SPI_HZ
         int "Display SPI clock (Hz)"
         default 40000000

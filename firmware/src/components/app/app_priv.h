@@ -48,8 +48,26 @@ void app_link_start(void);
 /** App task: handles the link events of app_event_id_t; false for an event that is not one. */
 bool app_link_handle_event(const app_event_t *ev);
 
-/** App task: a click or long press that was not swallowed. */
+/** App task: a button output that was not swallowed. */
 void app_link_on_button(const btn_fsm_out_t *out);
+
+/** App task: the mode a press of id gets on the screen shown now (btn_fsm latches it at DOWN). */
+btn_mode_t app_link_btn_mode(btn_id_t id, uint32_t now);
+
+/** PROTO_CAP_* the server listed in its register_ack (0 for a phase-1 server). */
+uint32_t app_link_server_caps(void);
+
+/** The last render drew a flow screen (pet, approval, identify). */
+bool app_link_flow_shown(void);
+
+/* ---- app.c: the button machine ---- */
+
+/** App task: swallows presses until every button is up and delay_ms passed (btn_fsm_arm). */
+void app_btn_arm(uint32_t now, uint32_t delay_ms);
+/** App task: no arming delay runs. */
+bool app_btn_armed(uint32_t now);
+/** App task: when the arming delay ends if no button goes down; false when none runs or a button is down. */
+bool app_btn_arm_end(uint32_t *out);
 
 /** App task: hands a frame to the socket and reports `@@EVT {"evt":"tx",...}`; extra is appended to the event. */
 bool app_link_send(uint32_t now, const char *type, const char *frame, int len, const char *extra);
@@ -134,8 +152,18 @@ typedef struct {
         uint8_t count;
         uint8_t page;
         uint8_t pages;
+        uint8_t seen;
         uint32_t deadline_ms;
         bool answered;
+        bool armed;
+        bool cut;
+        bool decide;
+        bool menu;
+        card_allow_t allow;
+        card_session_t session;
+        uint8_t rows;
+        card_row_t row[CARD_MENU_ROWS];
+        uint8_t cursor;
     } request;
 } app_flow_view_t;
 
@@ -149,6 +177,12 @@ void app_flow_on_link_lost(uint32_t now);
 
 /** App task: a button while a flow screen (pet, approval, identify) is shown; false when it was not used. */
 bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now);
+
+/** App task: the mode of a press on the flow screen shown now. */
+btn_mode_t app_flow_btn_mode(btn_id_t id, uint32_t now);
+
+/** App task: a request card or its menu is on screen (power_fsm holds the active stage). */
+bool app_flow_card_visible(void);
 
 /** App task: switches the pet screen to its About page. */
 void app_flow_show_about(uint32_t now);

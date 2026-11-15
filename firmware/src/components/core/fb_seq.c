@@ -54,6 +54,11 @@ static const fb_seq_step_t PENDING[] = {
     {100, 0, 250}, {75, 0, 250}, {50, 0, 250}, {25, 0, 250},
 };
 
+/* Motor 60 x60, off 80, 100 x180. */
+static const fb_seq_step_t NEXT[] = {
+    {0, 60, 60}, {0, 0, 80}, {0, 100, 180},
+};
+
 static const fb_seq_pattern_t PATTERNS[FB_SEQ_COUNT] = {
     [FB_SEQ_IDENTIFY] = {"identify", IDENTIFY, COUNT_OF(IDENTIFY), 0, true, 3},
     [FB_SEQ_REQUEST] = {"request", REQUEST, COUNT_OF(REQUEST), 3, true, 2},
@@ -65,6 +70,7 @@ static const fb_seq_pattern_t PATTERNS[FB_SEQ_COUNT] = {
     [FB_SEQ_TICK] = {"tick", TICK, COUNT_OF(TICK), 0, false, 0},
     [FB_SEQ_CLICK] = {"click", CLICK, COUNT_OF(CLICK), 0, false, 0},
     [FB_SEQ_PENDING] = {"pending", PENDING, COUNT_OF(PENDING), 0, true, 0},
+    [FB_SEQ_NEXT] = {"next", NEXT, COUNT_OF(NEXT), 0, false, 1},
 };
 
 const fb_seq_pattern_t *fb_seq_pattern(fb_seq_id_t id)

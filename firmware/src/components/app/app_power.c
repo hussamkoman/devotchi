@@ -92,6 +92,7 @@ static void build_input(uint32_t now, power_fsm_input_t *in)
         .last_user_ms = act.last_user_ms,
         .last_agent_ms = act.last_agent_ms,
         .pending_count = app_flow_pending_count(),
+        .card_visible = app_flow_card_visible(),
         .ext_power = b.ext_power,
         .usb_host = usb_host,
         .provisioning = act.state == APP_STATE_PROVISIONING,
@@ -283,6 +284,7 @@ static void wake_input(const wake_sample_t *s, uint32_t now, bool dry, power_fsm
     in->wake_reason_battery = true;
     in->dry_run = dry;
     in->pending_count = 0;
+    in->card_visible = false;
 }
 
 /* A burst of readings: the filter has no history yet at this point of the boot. */
@@ -441,6 +443,7 @@ static console_rc_t show(void)
     cJSON_AddNumberToObject(root, "idleS", out.idle_ms / 1000);
     cJSON_AddNumberToObject(root, "agentIdleS", out.agent_idle_ms / 1000);
     cJSON_AddNumberToObject(root, "pending", in.pending_count);
+    cJSON_AddBoolToObject(root, "cardVisible", in.card_visible);
     cJSON *t = cJSON_AddObjectToObject(root, "timeouts");
     cJSON_AddNumberToObject(t, "dimS", out.dim_ms / 1000);
     cJSON_AddNumberToObject(t, "offS", out.off_ms / 1000);

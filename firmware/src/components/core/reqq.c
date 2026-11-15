@@ -42,7 +42,17 @@ reqq_add_t reqq_add(reqq_t *q, const proto_permission_t *msg, uint32_t now_ms)
     e->id[sizeof(e->id) - 1] = '\0';
     text_sanitize_ascii(e->tool, sizeof(e->tool), msg->tool);
     text_sanitize_ascii(e->summary, sizeof(e->summary), msg->summary);
-    text_sanitize_ascii(e->details, sizeof(e->details), msg->details);
+    text_sanitize_ascii(e->cmd, sizeof(e->cmd), msg->has_cmd ? msg->cmd : msg->details);
+    e->has_cmd = msg->has_cmd;
+    e->cut = msg->cut;
+    text_sanitize_ascii(e->desc, sizeof(e->desc), msg->desc);
+    text_sanitize_ascii(e->reason, sizeof(e->reason), msg->reason);
+    /* The parser keeps only a printable ASCII rule, so sanitising cannot change what is shown. */
+    e->has_grant = msg->has_grant && !msg->cut;
+    if (e->has_grant) {
+        text_sanitize_ascii(e->grant_rule, sizeof(e->grant_rule), msg->grant_rule);
+        e->grant_prefix = msg->grant_prefix;
+    }
     text_sanitize_ascii(e->project, sizeof(e->project), msg->project);
     text_sanitize_ascii(e->sid, sizeof(e->sid), msg->sid);
     e->risk = msg->risk;

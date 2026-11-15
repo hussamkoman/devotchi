@@ -21,15 +21,24 @@ typedef struct {
     char id[PROTO_ID_SIZE];
     char tool[PROTO_TOOL_SIZE];
     char summary[PROTO_SUMMARY_SIZE];
-    char details[PROTO_DETAILS_SIZE];
+    /** The exact command (`cmd`), or the phase-1 `details` when the server sent no `cmd`. */
+    char cmd[PROTO_CMD_SIZE];
+    /** The server sent `cmd` (protocol 14.2); otherwise cmd holds `details`. */
+    bool has_cmd;
+    bool cut;
+    /** Claude's own description of the call. */
+    char desc[PROTO_DESC_SIZE];
+    /** Why the risk is med or high. */
+    char reason[PROTO_RISK_REASON_SIZE];
+    bool has_grant;
+    char grant_rule[PROTO_RULE_SIZE];
+    bool grant_prefix;
     proto_risk_t risk;
     char project[PROTO_PROJECT_SIZE];
     char sid[PROTO_SID_SIZE];
     /** Hold time the server reported at receipt; the countdown runs from it to the deadline. */
     uint32_t timeout_ms;
     uint32_t deadline_ms;
-    /** Details page on screen, 0-based. */
-    uint8_t page;
     /** Named by a holding frame. */
     bool acked;
     /** An answer was sent and its dismiss or error has not arrived yet. */

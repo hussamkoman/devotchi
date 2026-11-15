@@ -11,6 +11,7 @@
 #define DESC_LINE_H  17
 #define DESC_LINES   3
 #define DESC_PAD     5
+#define CODE_H       17
 #define VALUE_W      110
 #define THUMB_W      3
 #define THUMB_GAP    5
@@ -28,7 +29,8 @@ struct w_list {
     lv_obj_t *focus;
     lv_obj_t *track;
     lv_obj_t *thumb;
-    /* One description, under whichever row has the focus. */
+    /* One code line and one description, under whichever row has the focus. */
+    lv_obj_t *code;
     lv_obj_t *desc;
     row_obj_t rows[W_LIST_MAX_ROWS];
     uint8_t made;
@@ -59,6 +61,9 @@ w_list_t *w_list_create(lv_obj_t *parent, int32_t y, int32_t h, int32_t row_h)
     l->content = ui_box(l->clip, 0, 0, UI_WIDTH_SURFACE, LV_SIZE_CONTENT);
     l->focus = ui_box(l->content, 0, 0, UI_WIDTH_SURFACE, row_h);
     lv_obj_add_style(l->focus, &ui_style_focus, 0);
+    l->code = ui_text(l->content, UI_FONT_MONO, UI_C_INK, PAD_H, 0, 0, true);
+    lv_label_set_long_mode(l->code, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_add_flag(l->code, LV_OBJ_FLAG_HIDDEN);
     l->desc = ui_text(l->content, UI_FONT_SMALL, UI_C_SUB_ON_CREAM, PAD_H, 0, 0, false);
     lv_obj_set_style_text_line_space(l->desc, DESC_LINE_H - lv_font_get_line_height(UI_FONT_SMALL), 0);
     lv_label_set_long_mode(l->desc, LV_LABEL_LONG_MODE_DOTS);
@@ -114,20 +119,24 @@ static lv_color_t focus_color(w_list_focus_t style)
         return UI_C_AMBER;
     case W_LIST_FOCUS_CORAL:
         return UI_C_CORAL;
+    case W_LIST_FOCUS_MUTED:
+        return UI_C_SURFACE2;
     case W_LIST_FOCUS_CREAM:
         break;
     }
     return UI_C_CREAM;
 }
 
-static uint8_t desc_lines(const w_list_t *l, const w_list_row_t *row)
+static uint8_t desc_lines(const w_list_t *l, const w_list_row_t *row, int32_t x)
 {
     if (row->desc == NULL || row->desc[0] == '\0') {
         return 0;
     }
+    /* With the label's line spacing, n lines measure n * DESC_LINE_H - space. */
+    const int32_t space = DESC_LINE_H - lv_font_get_line_height(UI_FONT_SMALL);
     lv_point_t size;
-    lv_text_get_size(&size, row->desc, UI_FONT_SMALL, 0, 0, l->width - 2 * PAD_H, LV_TEXT_FLAG_NONE);
-    const int32_t n = (size.y + DESC_LINE_H - 1) / DESC_LINE_H;
+    lv_text_get_size(&size, row->desc, UI_FONT_SMALL, 0, space, l->width - PAD_H - x, LV_TEXT_FLAG_NONE);
+    const int32_t n = (size.y + space) / DESC_LINE_H;
     return (uint8_t)(n > DESC_LINES ? DESC_LINES : n < 1 ? 1 : n);
 }
 
@@ -144,7 +153,9 @@ static uint32_t rows_hash(const w_list_row_t *rows, uint8_t count, uint8_t focus
 {
     uint32_t h = 2166136261u ^ ((uint32_t)count << 16 | (uint32_t)focus << 8 | (uint32_t)style);
     for (uint8_t i = 0; i < count; i++) {
-        h = fnv1a(fnv1a(fnv1a(fnv1a(h, rows[i].icon), rows[i].label), rows[i].value), rows[i].desc);
+        h = fnv1a(fnv1a(fnv1a(fnv1a(fnv1a(h, rows[i].icon), rows[i].label), rows[i].value), rows[i].code),
+                  rows[i].desc);
+        h = (h ^ (rows[i].muted ? 1u : 0u)) * 16777619u;
     }
     return h;
 }
@@ -176,6 +187,9 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
     int32_t focus_h = l->row_h;
     int32_t row_y[W_LIST_MAX_ROWS];
     uint8_t focus_lines = 0;
+    bool focus_code = false;
+    bool focus_icon = false;
+    const bool muted_bar = style == W_LIST_FOCUS_MUTED;
     for (uint8_t i = 0; i < l->made; i++) {
         row_obj_t *r = &l->rows[i];
         if (i >= count) {
@@ -184,9 +198,11 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
         }
         const w_list_row_t *row = &rows[i];
         const bool on = i == focus;
-        const uint8_t lines = on ? desc_lines(l, row) : 0;
-        const int32_t h = l->row_h + (lines > 0 ? lines * DESC_LINE_H + DESC_PAD : 0);
         const bool has_icon = row->icon != NULL && row->icon[0] != '\0';
+        const uint8_t lines = on ? desc_lines(l, row, has_icon ? PAD_H + ICON_W + ICON_GAP : PAD_H) : 0;
+        const bool code = on && row->code != NULL && row->code[0] != '\0';
+        const int32_t extra = (code ? CODE_H : 0) + lines * DESC_LINE_H;
+        const int32_t h = l->row_h + (extra > 0 ? extra + DESC_PAD : 0);
         if (strcmp(lv_label_get_text(r->icon), has_icon ? row->icon : "") != 0) {
             lv_label_set_text_static(r->icon, has_icon ? row->icon : "");
         }
@@ -200,11 +216,15 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
         lv_obj_set_x(r->value, l->width - PAD_H - VALUE_W);
         if (on) {
             focus_lines = lines;
+            focus_code = code;
+            focus_icon = has_icon;
             ui_label_set(l->desc, lines > 0 ? row->desc : "");
+            ui_label_set(l->code, code ? row->code : "");
         }
-        lv_obj_set_style_text_color(r->icon, on ? UI_C_INK : UI_C_FOG, 0);
-        lv_obj_set_style_text_color(r->label, on ? UI_C_INK : UI_C_CREAM, 0);
-        lv_obj_set_style_text_color(r->value, on ? UI_C_SUB_ON_CREAM : UI_C_FOG, 0);
+        const bool dark = !on || muted_bar;
+        lv_obj_set_style_text_color(r->icon, row->muted ? UI_C_SLATE : dark ? UI_C_FOG : UI_C_INK, 0);
+        lv_obj_set_style_text_color(r->label, row->muted ? UI_C_SLATE : dark ? UI_C_CREAM : UI_C_INK, 0);
+        lv_obj_set_style_text_color(r->value, dark ? UI_C_FOG : UI_C_SUB_ON_CREAM, 0);
         lv_obj_set_size(r->box, l->width, h);
         lv_obj_set_y(r->box, y);
         ui_set_hidden(r->box, false);
@@ -216,10 +236,19 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
         y += h + ROW_GAP;
     }
     const int32_t total = y > 0 ? y - ROW_GAP : 0;
+    /* The focused row's extra lines line up with its label. */
+    const int32_t sub_x = focus_icon ? PAD_H + ICON_W + ICON_GAP : PAD_H;
+    ui_set_hidden(l->code, !focus_code);
+    if (focus_code) {
+        lv_obj_set_pos(l->code, sub_x, focus_y + l->row_h - DESC_PAD);
+        lv_obj_set_width(l->code, l->width - PAD_H - sub_x);
+    }
     ui_set_hidden(l->desc, focus_lines == 0);
     if (focus_lines > 0) {
-        lv_obj_set_pos(l->desc, PAD_H, focus_y + l->row_h - DESC_PAD);
-        lv_obj_set_size(l->desc, l->width - 2 * PAD_H, focus_lines * DESC_LINE_H);
+        const int32_t x = sub_x;
+        lv_obj_set_pos(l->desc, x, focus_y + l->row_h - DESC_PAD + (focus_code ? CODE_H : 0));
+        lv_obj_set_size(l->desc, l->width - PAD_H - x, focus_lines * DESC_LINE_H);
+        lv_obj_set_style_text_color(l->desc, muted_bar ? UI_C_FOG : UI_C_SUB_ON_CREAM, 0);
     }
 
     /* Whole-row scrolling: the first visible row moves only as far as the focused row needs. */

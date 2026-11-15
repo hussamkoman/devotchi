@@ -15,6 +15,11 @@
 #define PROTO_TOOL_SIZE        41
 #define PROTO_SUMMARY_SIZE     201
 #define PROTO_DETAILS_SIZE     601
+/* Protocol 14.10. */
+#define PROTO_CMD_SIZE         601
+#define PROTO_DESC_SIZE        201
+#define PROTO_RISK_REASON_SIZE 41
+#define PROTO_RULE_SIZE        121
 #define PROTO_MSG_SIZE         201
 #define PROTO_DETAIL_SIZE      301
 #define PROTO_REASON_SIZE      201
@@ -27,6 +32,13 @@
 #define PROTO_CODE_SIZE        25
 #define PROTO_DEVICE_ID_SIZE   25
 #define PROTO_HOLDING_MAX_IDS  8
+
+/** Capabilities of protocol 14.1, as bits of a mask. */
+#define PROTO_CAP_DECIDE  (1u << 0)
+#define PROTO_CAP_ASK     (1u << 1)
+#define PROTO_CAP_PLAN    (1u << 2)
+#define PROTO_CAP_PETS    (1u << 3)
+#define PROTO_CAP_COUNT   4
 
 #define PROTO_IDENTIFY_MIN_MS      1000
 #define PROTO_IDENTIFY_MAX_MS      10000
@@ -83,6 +95,20 @@ typedef enum {
     PROTO_OUTCOME_DENY,
 } proto_outcome_t;
 
+/** `decide` choices (protocol 14.3); `dismiss.choice` adds ANSWERED. */
+typedef enum {
+    PROTO_CHOICE_NONE,
+    PROTO_CHOICE_ALLOW_SESSION,
+    PROTO_CHOICE_DENY_ASK_WHY,
+    PROTO_CHOICE_DENY_STOP,
+    PROTO_CHOICE_APPROVE,
+    PROTO_CHOICE_APPROVE_ACCEPT_EDITS,
+    PROTO_CHOICE_REVISE,
+    PROTO_CHOICE_DECLINE,
+    PROTO_CHOICE_ANSWERED,
+    PROTO_CHOICE_COUNT,
+} proto_choice_t;
+
 typedef enum {
     PROTO_MODE_ASK,
     PROTO_MODE_DESK,
@@ -103,6 +129,8 @@ typedef struct {
     char room[PROTO_ROOM_SIZE];
     char device_id[PROTO_DEVICE_ID_SIZE];
     char name[PROTO_NAME_SIZE];
+    /** PROTO_CAP_* the server listed; 0 for a phase-1 server. */
+    uint32_t caps;
 } proto_register_ack_t;
 
 typedef struct {
@@ -146,6 +174,21 @@ typedef struct {
     char project[PROTO_PROJECT_SIZE];
     /** Remaining hold time when the server sent the message. */
     uint32_t timeout_ms;
+    /* Card fields (protocol 14.2), sent only to consumers with `decide`. */
+    bool has_cmd;
+    char cmd[PROTO_CMD_SIZE];
+    /** The server shortened cmd, or cmd did not fit its buffer: no allow from this device. */
+    bool cut;
+    char desc[PROTO_DESC_SIZE];
+    char reason[PROTO_RISK_REASON_SIZE];
+    /**
+     * A session grant may be offered. Never together with cut; a grant that
+     * cannot be shown word for word (too long, not printable ASCII, unknown
+     * match) is dropped.
+     */
+    bool has_grant;
+    char grant_rule[PROTO_RULE_SIZE];
+    bool grant_prefix;
 } proto_permission_t;
 
 typedef struct {
@@ -153,6 +196,8 @@ typedef struct {
     proto_dismiss_reason_t reason;
     proto_outcome_t outcome;
     char by[PROTO_NAME_SIZE];
+    /** PROTO_CHOICE_NONE for a plain permission_response or an unknown choice. */
+    proto_choice_t choice;
 } proto_dismiss_t;
 
 typedef struct {
@@ -200,6 +245,7 @@ bool proto_parse(const char *json, size_t len, proto_msg_t *out);
 const char *proto_type_name(proto_type_t type);
 const char *proto_mood_name(proto_mood_t mood);
 const char *proto_mode_name(proto_mode_t mode);
+const char *proto_choice_name(proto_choice_t choice);
 
 /** Unknown names map to MOOD_IDLE (protocol 5.1). */
 proto_mood_t proto_mood_from_name(const char *name);
@@ -209,11 +255,15 @@ bool proto_id_is_valid(const char *id);
 
 /* Serialisers write a NUL-terminated frame and return its length, or -1 when it does not fit. */
 
-int proto_write_register(char *buf, size_t cap, const char *device_id, const char *model, const char *version);
+/** caps: PROTO_CAP_* this consumer can present; 0 leaves `client.caps` out. */
+int proto_write_register(char *buf, size_t cap, const char *device_id, const char *model, const char *version,
+                         uint32_t caps);
 int proto_write_pong(char *buf, size_t cap);
 int proto_write_holding(char *buf, size_t cap, const char ids[][PROTO_ID_SIZE], size_t count);
 int proto_write_permission_response(char *buf, size_t cap, const char *id, bool granted);
 int proto_write_permission_defer(char *buf, size_t cap, const char *id);
+/** Fails for PROTO_CHOICE_NONE and ANSWERED, which are not `decide` choices. */
+int proto_write_decide(char *buf, size_t cap, const char *id, proto_choice_t choice);
 int proto_write_set_mode(char *buf, size_t cap, proto_mode_t mode);
 
 /** Also fails when the frame would exceed PROTO_TELEMETRY_MAX bytes. */

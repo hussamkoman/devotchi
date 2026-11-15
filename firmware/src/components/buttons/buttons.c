@@ -24,7 +24,6 @@ static const struct {
 } EVENTS[] = {
     {BUTTON_PRESS_DOWN, BTN_RAW_DOWN},
     {BUTTON_PRESS_UP, BTN_RAW_UP},
-    {BUTTON_LONG_PRESS_START, BTN_RAW_LONG_START},
 };
 
 #define EVENT_COUNT (sizeof(EVENTS) / sizeof(EVENTS[0]))
@@ -58,10 +57,8 @@ esp_err_t buttons_init(buttons_cb_t cb)
     ESP_RETURN_ON_FALSE(cb != NULL, ESP_ERR_INVALID_ARG, TAG, "callback");
     s_cb = cb;
 
-    const button_config_t cfg = {
-        .long_press_time = CONFIG_DEVOTCHI_LONG_PRESS_MS,
-        .short_press_time = 0,
-    };
+    /* Holds are timed by btn_fsm from DOWN and UP; the library's own long press is not used. */
+    const button_config_t cfg = {0};
     for (int i = 0; i < BTN_COUNT; i++) {
         /*
          * Power-save mode stops the library's 5 ms polling timer while no
@@ -82,7 +79,6 @@ esp_err_t buttons_init(buttons_cb_t cb)
                                 "register");
         }
     }
-    ESP_LOGI(TAG, "ready, long press %d ms, power save %s", CONFIG_DEVOTCHI_LONG_PRESS_MS,
-             POWER_SAVE ? "on" : "off");
+    ESP_LOGI(TAG, "ready, power save %s", POWER_SAVE ? "on" : "off");
     return ESP_OK;
 }

@@ -12,6 +12,7 @@
 struct w_well {
     lv_obj_t *box;
     lv_obj_t *text;
+    lv_obj_t *prompt;
     lv_obj_t *foot_left;
     lv_obj_t *foot_right;
     int32_t height;
@@ -37,11 +38,21 @@ w_well_t *w_well_create(lv_obj_t *parent, int32_t y)
     /* The lines arrive wrapped to the well's columns, so LVGL never wraps them again. */
     w->text = ui_text(w->box, UI_FONT_MONO, UI_C_CREAM, PAD_H, PAD_V, TEXT_W, false);
     lv_label_set_long_mode(w->text, LV_LABEL_LONG_MODE_CLIP);
+    w->prompt = ui_text(w->box, UI_FONT_MONO, UI_C_SLATE, PAD_H, PAD_V, 0, true);
+    lv_label_set_text_static(w->prompt, "$");
+    lv_obj_add_flag(w->prompt, LV_OBJ_FLAG_HIDDEN);
     w->foot_left = ui_text(w->box, UI_FONT_SMALL, UI_C_FOG, PAD_H, 0, TEXT_W - 60, true);
     w->foot_right = ui_text(w->box, UI_FONT_MONO, UI_C_FOG, UI_WIDTH_SURFACE - PAD_H - 60, 0, 60, true);
     lv_obj_set_style_text_align(w->foot_right, LV_TEXT_ALIGN_RIGHT, 0);
     w->valid = false;
     return w;
+}
+
+void w_well_set_prompt(w_well_t *w, bool on)
+{
+    if (w != NULL) {
+        ui_set_hidden(w->prompt, !on);
+    }
 }
 
 lv_obj_t *w_well_obj(w_well_t *w)

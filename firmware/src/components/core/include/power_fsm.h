@@ -46,6 +46,11 @@ typedef struct {
     uint32_t last_user_ms;
     uint32_t last_agent_ms;
     uint8_t pending_count;
+    /**
+     * A request card or one of its menus is on screen: the stage is held at
+     * active (ux-flows 7); when it closes the idle timers start again.
+     */
+    bool card_visible;
     /** The debounced value from battery_update. */
     bool ext_power;
     bool usb_host;
@@ -109,6 +114,9 @@ typedef struct {
     bool wake_done;
     bool wake_timing;
     uint32_t wake_since_ms;
+    bool card_shown;
+    bool card_closed;
+    uint32_t card_closed_ms;
 } power_fsm_t;
 
 void power_fsm_init(power_fsm_t *f);

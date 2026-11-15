@@ -166,7 +166,7 @@ settings_act_t settings_menu_button(settings_menu_t *m, const btn_fsm_out_t *out
         return NONE;
     }
     const settings_act_t expired = settings_menu_tick(m, now_ms);
-    if (out->id == BTN_ACTION && out->kind == BTN_LONG) {
+    if (out->id == BTN_ACTION && out->kind == BTN_HOLD) {
         m->confirming = false;
         return (settings_act_t){.kind = SETTINGS_ACT_EXIT, .row = m->cursor};
     }

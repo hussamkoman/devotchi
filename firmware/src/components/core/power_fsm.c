@@ -52,18 +52,26 @@ static power_stage_t idle_stage(const power_fsm_input_t *in, power_fsm_output_t 
     return out->idle_ms >= out->dim_ms ? POWER_STAGE_DIM : POWER_STAGE_ACTIVE;
 }
 
-static power_stage_t screen_stage(power_fsm_t *f, const power_fsm_input_t *in, power_fsm_output_t *out)
+static power_stage_t screen_stage(power_fsm_t *f, const power_fsm_input_t *in, power_fsm_output_t *out,
+                                  uint32_t last_user_ms)
 {
     const power_stage_t computed = idle_stage(in, out);
+    if (in->card_visible) {
+        f->stage = POWER_STAGE_ACTIVE;
+        f->forced = false;
+        f->started = true;
+        f->seen_user_ms = last_user_ms;
+        return POWER_STAGE_ACTIVE;
+    }
     /* Only user activity brightens the screen; a longer timeout set mid-idle does not. */
-    if (!f->started || newer(in->last_user_ms, f->seen_user_ms)) {
+    if (!f->started || newer(last_user_ms, f->seen_user_ms)) {
         f->stage = computed;
         f->forced = false;
     } else if (computed > f->stage) {
         f->stage = computed;
     }
     f->started = true;
-    f->seen_user_ms = in->last_user_ms;
+    f->seen_user_ms = last_user_ms;
 
     power_stage_t stage = f->forced ? f->forced_stage : f->stage;
     if (in->pending_count > 0 && stage > POWER_STAGE_DIM) {
@@ -146,15 +154,27 @@ static bool battery_sleep(power_fsm_t *f, const power_fsm_input_t *in, power_fsm
 void power_fsm_update(power_fsm_t *f, const power_fsm_input_t *in, power_fsm_output_t *out)
 {
     memset(out, 0, sizeof(*out));
-    out->idle_ms = since(in->now_ms, in->last_user_ms);
-    const uint32_t last_any = newer(in->last_agent_ms, in->last_user_ms) ? in->last_agent_ms : in->last_user_ms;
+    /* A card that closes counts as user activity at that moment: the idle timers restart from it. */
+    if (in->card_visible) {
+        f->card_shown = true;
+    } else if (f->card_shown) {
+        f->card_shown = false;
+        f->card_closed = true;
+        f->card_closed_ms = in->now_ms;
+    }
+    uint32_t last_user = in->last_user_ms;
+    if (f->card_closed && newer(f->card_closed_ms, last_user)) {
+        last_user = f->card_closed_ms;
+    }
+    out->idle_ms = in->card_visible ? 0 : since(in->now_ms, last_user);
+    const uint32_t last_any = newer(in->last_agent_ms, last_user) ? in->last_agent_ms : last_user;
     out->agent_idle_ms = since(in->now_ms, last_any);
     out->deep_ms = in->ext_power ? in->usb_deep_timeout_ms : in->deep_timeout_ms;
 
     const bool usb_blocks = in->usb_host && !in->dry_run;
     const bool in_grace = since(in->now_ms, in->boot_ms) < (uint32_t)in->boot_grace_s * 1000u;
 
-    power_stage_t stage = screen_stage(f, in, out);
+    power_stage_t stage = screen_stage(f, in, out, last_user);
     out->blockers = idle_blockers(in, out, stage, usb_blocks, in_grace);
 
     const bool battery_due = battery_sleep(f, in, out, usb_blocks, in_grace);

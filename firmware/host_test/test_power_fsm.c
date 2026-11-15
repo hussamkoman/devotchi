@@ -647,6 +647,58 @@ static void test_names(void)
     TEST_ASSERT_EQUAL_STRING("", power_stage_name(POWER_STAGE_COUNT));
 }
 
+static void test_card_visible_holds_active(void)
+{
+    reset(0);
+    s_in.pending_count = 1;
+    s_in.card_visible = true;
+    at(10 * T_MS);
+    expect_stage(POWER_STAGE_ACTIVE);
+    TEST_ASSERT_EQUAL(75, s_out.backlight_pct);
+    TEST_ASSERT_TRUE(s_out.blockers & POWER_BLOCK_STAGE);
+    TEST_ASSERT_FALSE(s_out.enter_deep_sleep);
+    /* A console-forced stage does not darken a card either. */
+    power_fsm_force_stage(&s_fsm, POWER_STAGE_OFF, s_in.last_user_ms);
+    at(10 * T_MS + 10);
+    expect_stage(POWER_STAGE_ACTIVE);
+}
+
+static void test_card_close_restarts_timers(void)
+{
+    reset(0);
+    at(T_MS / 2);
+    s_in.pending_count = 1;
+    s_in.card_visible = true;
+    at(5 * T_MS);
+    expect_stage(POWER_STAGE_ACTIVE);
+    /* The card closes long after the last press: the timers count from the close. */
+    s_in.pending_count = 0;
+    s_in.card_visible = false;
+    const uint32_t closed = 6 * T_MS;
+    at(closed);
+    expect_stage(POWER_STAGE_ACTIVE);
+    TEST_ASSERT_EQUAL_UINT32(0, s_out.idle_ms);
+    at(closed + T_MS - 1);
+    expect_stage(POWER_STAGE_ACTIVE);
+    at(closed + T_MS);
+    expect_stage(POWER_STAGE_DIM);
+    at(closed + 2 * T_MS);
+    expect_stage(POWER_STAGE_OFF);
+    /* A newer press still counts from the press. */
+    s_in.last_user_ms = closed + 3 * T_MS;
+    at(closed + 3 * T_MS + 10);
+    expect_stage(POWER_STAGE_ACTIVE);
+}
+
+static void test_card_hidden_keeps_the_pending_cap(void)
+{
+    reset(0);
+    s_in.pending_count = 1;
+    s_in.card_visible = false;
+    at(3 * T_MS);
+    expect_stage(POWER_STAGE_DIM);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -686,5 +738,8 @@ int main(void)
     RUN_TEST(test_timestamp_ahead_of_now);
     RUN_TEST(test_reconnect_loop_on_battery_reaches_deep_sleep);
     RUN_TEST(test_names);
+    RUN_TEST(test_card_visible_holds_active);
+    RUN_TEST(test_card_close_restarts_timers);
+    RUN_TEST(test_card_hidden_keeps_the_pending_cap);
     return UNITY_END();
 }
