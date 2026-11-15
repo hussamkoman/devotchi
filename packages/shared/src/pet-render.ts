@@ -11,6 +11,7 @@ import {
   PET_MOODS,
   PET_REACTIONS,
   parsePet,
+  petBodyColor,
   petMix,
   petMoodColor,
   type PetDef,
@@ -39,6 +40,12 @@ const CHEEK_T = 107;
 const ACC_DARK_T = 64;
 const EYE_SHUT_OPEN = 15;
 const BROW_MIN_ANGLE = 4;
+/** Ring eyes: the ring is the eye size / RING_DIV wide and the pupil RING_PUPIL of a round eye's. */
+const RING_DIV = 7;
+const RING_PUPIL = 0.6;
+
+/** Colour role of a part that only the night outline draws. */
+const ROLE_NIGHT = 14;
 
 const ACC_ZZZ = 1;
 const ACC_SWEAT = 2;
@@ -291,7 +298,8 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
   const ink = night ? NIGHT : INK;
   const stroke = night ? 2 : 4;
   const face = def.face;
-  const body = petMoodColor(def, moodIndex);
+  const moodColor = petMoodColor(def, moodIndex);
+  const body = petBodyColor(def, moodIndex);
   const dark = petMix(body, INK, DARK_T);
   const roleColor = (role: number): number =>
     [
@@ -308,6 +316,7 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
       SURFACE,
       FOG,
       YELLOW,
+      moodColor,
     ][role] ?? body;
   const aux = def.aux[reaction !== undefined ? PET_MOODS.length + reactIndex : moodIndex];
   const squish = reaction === undefined && PET_MOODS[moodIndex] === "sleeping" ? face.sleepDrop : 0;
@@ -325,7 +334,7 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
   const anchorEnd: [number, number][][] = def.parts.map(() => [[0, 0], [0, 0]]);
   def.parts.forEach((part, index) => {
     const shown =
-      !(night && part.noOutline) && part.drivers.every((d) => (d.op === 2 ? aux[d.aux] !== 0 : d.op === 3 ? aux[d.aux] === d.arg : true));
+      !(night ? part.noOutline : part.role === ROLE_NIGHT) && part.drivers.every((d) => (d.op === 2 ? aux[d.aux] !== 0 : d.op === 3 ? aux[d.aux] === d.arg : true));
     for (let side = 0; side < (part.mirror ? 2 : 1); side++) {
       const sx = side === 0 ? 1 : -1;
       const p: [number, number][] = part.points.map(([x, y]) => [x * sx, y]);
@@ -407,10 +416,12 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
       continue;
     }
     const dot = face.eyeStyle === 2;
+    const ring = face.eyeStyle === 3;
     let clip: string | undefined;
     if (!dot) {
       clip = svg.clip(x, y, w, h, r);
       svg.rect(x, y, w, h, r, def.sclera);
+      if (ring) svg.ring(x, y, w, h, r, INK, Math.max(2, w / RING_DIV));
     }
     const visTop = hasLid ? y + hf / 2 - (hf * eo) / 100 : y - h / 2;
     const visH = y + h / 2 - visTop;
@@ -423,11 +434,12 @@ export function renderPetSvg(pet: PetDef | Uint8Array, mood: PetMood | PetReacti
       svg.rect(x + tx, visCy + ty, pw, ph, pw / 2, INK, clip);
       svg.circle(x + tx + pw / 5 + 2, visCy + ty - ph * 0.26, 1.6, WHITE, clip);
     } else {
-      const pr = (w * pose.pupilSize) / 200;
-      const tx = ((w / 2 - pr - 2) * pdx) / 100;
-      const ty = (Math.max(0, visH / 2 - pr - 2) * pdy) / 100;
+      const pr = ((w * pose.pupilSize) / 200) * (ring ? RING_PUPIL : 1);
+      const edge = ring ? w / RING_DIV + 1 : 2;
+      const tx = ((w / 2 - pr - edge) * pdx) / 100;
+      const ty = (Math.max(0, visH / 2 - pr - edge) * pdy) / 100;
       svg.circle(x + tx, visCy + ty, dot ? w / 2 : pr, INK, clip);
-      svg.circle(x + tx + pr * 0.35, visCy + ty - pr * 0.35, Math.max(1.5, pr * 0.28), WHITE, clip);
+      if (!ring) svg.circle(x + tx + pr * 0.35, visCy + ty - pr * 0.35, Math.max(1.5, pr * 0.28), WHITE, clip);
     }
     if (hasLid) {
       const k = (sinDeg(lid) / Math.max(1e-3, cosDeg(lid))) * (w / 2);

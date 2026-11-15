@@ -139,7 +139,7 @@ describe("the sim's pet store", () => {
       slots: 8,
       free: 8,
       installed: [
-        { id: "devo", rev: 2, builtin: true },
+        { id: "devo", rev: 3, builtin: true },
         { id: "mochi", rev: 1, builtin: true },
         { id: "ember", rev: 1, builtin: true },
       ],
