@@ -556,7 +556,7 @@ come from one table. In short:
 
 Settings is a tree (`core/settings_menu`, host-tested). Top list: Pet,
 Display (Brightness, Screen timeout, Deep sleep), Clock (Show clock, Clock
-brightness, 12/24 h, Night dimming), Haptics and LED, Desk mode (toggles in
+brightness, 12/24 h, Night dimming), Haptics and LED (Haptics, Button clicks, LED), Desk mode (toggles in
 place), Network (Wi-Fi setup, Unpair, Factory reset), Showcase, About. Unpair
 and Factory reset go through the destructive confirm (APPROVE hold, coral).
 Lists close after 60 s without a press, the editor cancels after 30 s, the
@@ -631,6 +631,7 @@ Namespace `devotchi`:
 | `s_batt` | u8 | new | Battery presence: 0 auto, 1 present, 2 absent; default 0 |
 | `prov_req` | u8 | new | 1 = enter provisioning on next boot; cleared when provisioning starts |
 | `s_pet`, `s_clock`, `s_clk_bri`, `s_24h`, `s_night` | | phase 2 | Selected pet and the clock settings (7.3) |
+| `s_clicks` | | phase 2 | Button clicks: a short buzz (`press` pattern) on every press, u8, default 1 |
 
 Token and room id are written together, `room_id` first and `token` last.
 NVS has no multi-key transaction; `room_id` is informational and never used

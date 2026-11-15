@@ -15,6 +15,7 @@ static const uint16_t DEFAULTS[SETTINGS_VALUE_COUNT] = {
     [V(SETTINGS_ITEM_BRIGHTNESS)] = 75, [V(SETTINGS_ITEM_SCREEN_TIMEOUT)] = 30, [V(SETTINGS_ITEM_DEEP_SLEEP)] = 20,
     [V(SETTINGS_ITEM_SHOW_CLOCK)] = 0,  [V(SETTINGS_ITEM_CLOCK_BRIGHTNESS)] = 30, [V(SETTINGS_ITEM_H24)] = 1,
     [V(SETTINGS_ITEM_NIGHT)] = 1,       [V(SETTINGS_ITEM_HAPTICS)] = 2,         [V(SETTINGS_ITEM_LED)] = 1,
+    [V(SETTINGS_ITEM_CLICKS)] = 1,
 };
 
 static settings_act_t press(settings_menu_t *m, btn_id_t id, btn_kind_t kind, uint32_t now)
