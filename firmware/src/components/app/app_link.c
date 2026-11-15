@@ -1487,6 +1487,11 @@ static void render(uint32_t now)
         }
         return;
     }
+    /* About is opened from Settings, which every start-up screen reaches: it must show before the first registration too. */
+    if (app_flow_about_open() && s_state != APP_STATE_BOOT) {
+        render_flow(now, APP_FLOW_PREVIEW_OFF);
+        return;
+    }
     switch (s_state) {
     case APP_STATE_BOOT:
         break;

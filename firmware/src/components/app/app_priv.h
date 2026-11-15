@@ -210,6 +210,8 @@ bool app_flow_mood_idle(void);
 
 /* Showcase (protocol 14.7, ux-flows 8). */
 bool app_flow_showcase_active(void);
+/** True while About 1/2 or 2/2 is open. */
+bool app_flow_about_open(void);
 /** Drops the offline banner (an attention banner stays): used by the showcase menu. */
 void app_flow_drop_offline_banner(void);
 /** False, and nothing changes, while a real request is queued. */
