@@ -49,9 +49,10 @@ static const fb_seq_step_t CLICK[] = {
     {100, 0, 40},
 };
 
-/* Motor 60 x35 with the click's LED flash, so the press's own click adds nothing. */
+/* A coin motor needs a full-strength kick of about 50 ms to spin up at all; a gentler pulse is not felt.
+ * The click's LED flash comes with it, so the press's own click adds nothing. */
 static const fb_seq_step_t PRESS[] = {
-    {100, 60, 35},
+    {100, 100, 50},
     {100, 0, 5},
 };
 

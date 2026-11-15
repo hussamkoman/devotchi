@@ -328,8 +328,8 @@ static void test_scaling(void)
 
 static void test_press_and_clicks_switch(void)
 {
-    static const timed_t press[] = {{0, 100, 60}, {35, 100, 0}};
-    play_once(FB_SEQ_PRESS, press, 2, 40);
+    static const timed_t press[] = {{0, 100, 100}, {50, 100, 0}};
+    play_once(FB_SEQ_PRESS, press, 2, 55);
 
     fb_seq_t s;
     fb_seq_out_t out;
