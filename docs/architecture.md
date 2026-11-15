@@ -1085,13 +1085,19 @@ rev 3; `fmt` stays 1 because no existing number changed its meaning). In a
 table or shift palette the body takes the mood colour and `mood` is the same
 colour as `body`. In a glow palette the body, and with it `dark`, `light`,
 `cheek` and the lids, keeps `base` in every mood, and only `mood` parts take
-the mood's table colour (Devo's traces, vias, chips and antenna ball). A ring
+the mood's table colour (Devo's antenna ball and chip light). A ring
 eye is a round eye with an ink ring 1/7 of the eye size wide inside the
 sclera, a pupil of 60 % of a round eye's radius and no glint. A `night`
 part has no fill colour: it is left out of the filled pet and drawn only in
 outline mode (the night clock), so a pet whose overlapping shapes would
 show inner lines there marks them `outline: false` and traces its silhouette
-with `night` lines, at no cost to a normal frame. A device whose
+with `night` lines, at no cost to a normal frame. Not a format number but
+a rule of the rig every renderer follows: on a body whose luma
+(54 R + 183 G + 19 B) / 256 is under 64, the face lines (mouth, brows,
+closed, `^` and spiral eyes, dot pupils) take the pack's `cream` instead of
+pet ink, and the lid edge is the `light` shade instead of `dark`
+(`pet_pack_dark()`); no body colour of Mochi, Ember or Sprout is that dark.
+A device whose
 firmware predates these numbers refuses such a pack with `format`, as it
 does for any number outside its tables.
 
@@ -1112,7 +1118,7 @@ HTTP, may be 2048 bytes, and live in their own partition.
 
 **Which pets a device has.** Devo (the ghost, signature pet and default),
 Mochi (the square pet with an antenna) and Ember (a small dragon) are
-compiled in (530, 344 and 546 bytes); Sprout is a catalog pet a dashboard
+compiled in (524, 344 and 546 bytes); Sprout is a catalog pet a dashboard
 can send. Up to **8 more** live in the `pets`
 partition; the server offers its catalog plus up to 16 uploads per room, and
 the dashboard sends one with "Send to device" (protocol 14.8). Settings > Pet lists built-ins, stored pets and a "More
@@ -1219,7 +1225,10 @@ USB power, 2 never; default 0), `s_clk_bri` (u8 percent, default 30),
 - **Frame budget.** Two DMA draw buffers of 40 lines so LVGL renders during
   the flush; per-part invalidation in the pet; at most 170x170 px invalidated
   per frame at 30 fps; the About diagnostics page and `ui_get_stats()` report
-  frame time. Target: average frame under 20 ms on home with Devo, under
+  frame time. A rounded fill costs a masked blend per row, so the pet does
+  not draw the rows of a shape that a later plain fill covers from edge to
+  edge (the lower arc of Devo's domes under its skirts; the pixels are the
+  same). Target: average frame under 20 ms on home with Devo, under
   33 ms with Ember (else its wing flap runs at 15 fps). LVGL heap stays at
   64 kB; the internal heap low-water mark must not fall below 40 kB with all
   screens created.
