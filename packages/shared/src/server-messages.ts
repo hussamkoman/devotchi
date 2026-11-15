@@ -100,6 +100,18 @@ function valid(m: Obj): boolean {
       return oneOf(ROOM_MODES, m.mode);
     case "identify":
       return isInt(m.durationMs);
+    case "pet_cmd":
+      return isStr(m.op) && isStr(m.pet);
+    case "pets":
+      return (
+        optStr(m.device) &&
+        isStr(m.selected) &&
+        isInt(m.slots) &&
+        isInt(m.free) &&
+        Array.isArray(m.installed) &&
+        m.installed.every((p) => isObj(p) && isStr(p.id) && isInt(p.rev) && optBool(p.builtin)) &&
+        (m.result === undefined || (isObj(m.result) && isStr(m.result.op) && isStr(m.result.pet) && typeof m.result.ok === "boolean" && optStr(m.result.error)))
+      );
     default:
       return false;
   }

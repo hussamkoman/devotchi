@@ -70,7 +70,7 @@ describe("questions with a sim", () => {
     expect(decisionOf(await world.hook(questionHook())).behavior).toBe("allow");
     expect(fresh.events.some((e) => e.event === "request" && e.kind === "question")).toBe(true);
     expect(old.events.some((e) => (e.msg as Json | undefined)?.type === "question")).toBe(false);
-    expect(old.events.find((e) => e.event === "registered")?.caps).toEqual(["decide", "ask", "plan"]);
+    expect(old.events.find((e) => e.event === "registered")?.caps).toEqual(["decide", "ask", "plan", "pets"]);
     await fresh.sim.stop();
 
     const started = Date.now();

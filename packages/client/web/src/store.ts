@@ -11,6 +11,10 @@ import {
   type Mood,
   type PermissionGrant,
   type Peers,
+  type PetListEntry,
+  type PetResultError,
+  type PetsMessage,
+  type PetsResult,
   type QuestionAnswer,
   type QuestionMessage,
   type Risk,
@@ -148,6 +152,10 @@ export interface State {
   nextToastId: number;
   diagnostics: RoomDiagnostics | null;
   config: DashboardConfig | null;
+  /** Protocol 14.8: the catalog and the room's uploads; null until loaded. */
+  pets: PetListEntry[] | null;
+  /** The last answer of each device to a pet command, by device id. */
+  petResults: Record<string, { result: PetsResult; at: number }>;
 }
 
 export type Action =
@@ -161,6 +169,7 @@ export type Action =
   | { type: "room"; room: Room; now: number }
   | { type: "settings"; settings: RoomSettings }
   | { type: "config"; config: DashboardConfig }
+  | { type: "pets"; pets: PetListEntry[] }
   | { type: "toast"; text: string; now: number };
 
 export function initialState(): State {
@@ -178,6 +187,8 @@ export function initialState(): State {
     nextToastId: 1,
     diagnostics: null,
     config: null,
+    pets: null,
+    petResults: {},
   };
 }
 
@@ -294,6 +305,39 @@ function onQuestion(state: State, msg: QuestionMessage, now: number): State {
   return added(state, card, `Question: ${msg.text}`, now, msg.timestamp);
 }
 
+/** What a device's `pets.result.error` means (protocol 14.8). */
+export const PET_ERROR_TEXT: Record<PetResultError, string> = {
+  http: "the download from the server failed",
+  size: "the pack size did not match",
+  crc: "the pack was damaged on the way (CRC)",
+  format: "the device cannot read this pack",
+  mismatch: "the pack changed on the server; send it again",
+  full: "all slots are full; remove a pet on the device first",
+  unknown: "the device does not have that pet",
+  builtin: "built-in pets cannot be replaced or removed",
+  busy: "the device is busy with another download",
+  storage: "the device could not store it",
+};
+
+export function petResultText(result: PetsResult): string {
+  const verb = result.op === "install" ? "install" : result.op === "select" ? "switch to" : result.op === "remove" ? "remove" : result.op;
+  const pet = result.pet === "" ? "the pet" : result.pet;
+  if (result.ok) return result.op === "install" ? `${pet} installed` : result.op === "select" ? `now shows ${pet}` : `${pet} removed`;
+  return `could not ${verb} ${pet}: ${result.error !== undefined ? PET_ERROR_TEXT[result.error] : "unknown error"}`;
+}
+
+function onPets(state: State, msg: PetsMessage, now: number): State {
+  if (msg.device === undefined) return state;
+  const { type: _type, device, result, ...pets } = msg;
+  let next: State = { ...state, devices: state.devices.map((d) => (d.id === device ? { ...d, pets } : d)) };
+  if (result !== undefined) {
+    next = { ...next, petResults: { ...next.petResults, [device]: { result, at: now } } };
+    const text = `${deviceName(state, device)}: ${petResultText(result)}`;
+    next = logged(toasted(next, text, now), "pets", text, now);
+  }
+  return next;
+}
+
 function onFrame(state: State, msg: ServerToConsumerMessage, now: number): State {
   switch (msg.type) {
     case "register_ack":
@@ -368,7 +412,10 @@ function onFrame(state: State, msg: ServerToConsumerMessage, now: number): State
         msg.mode === "desk" ? "at desk: requests go to the terminal" : "ask: requests go to devices",
         now,
       );
-    // The dashboard shows the PC's own clock.
+    case "pets":
+      return onPets(state, msg, now);
+    // The dashboard shows the PC's own clock; pet_cmd goes to devices only.
+    case "pet_cmd":
     case "time":
     case "identify":
     case "ping":
@@ -421,6 +468,8 @@ export function reduce(state: State, action: Action): State {
       return { ...state, settings: action.settings, mode: action.settings.mode };
     case "config":
       return { ...state, config: action.config };
+    case "pets":
+      return { ...state, pets: action.pets };
     case "toast":
       return toasted(state, action.text, action.now);
   }

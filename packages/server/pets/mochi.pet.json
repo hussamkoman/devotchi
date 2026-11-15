@@ -1,0 +1,59 @@
+{
+  "id": "mochi",
+  "name": "Mochi",
+  "rev": 1,
+  "palette": {
+    "mode": "shift",
+    "base": "#F2B8C6",
+    "accent": "#7DBE6A",
+    "cream": "#FFF4E8",
+    "sclera": "#FFFFFF",
+    "moods": {
+      "happy": ["#FFFFFF", 0.1], "sad": ["#8E9BB5", 0.45], "excited": ["#FF7FA8", 0.3],
+      "anxious": ["#C9B8E0", 0.4], "sleeping": ["#3F5A8C", 0.35], "angry": ["#B8325E", 0.4],
+      "proud": ["#FFFFFF", 0.05], "idle": ["#FFFFFF", 0], "focused": ["#6B5FB0", 0.2],
+      "working": ["#FFFFFF", 0], "thinking": ["#9A8AE0", 0.3]
+    }
+  },
+  "face": {
+    "eyes": "dot", "mouth": "plain", "brows": true, "eye_dx": 22, "eye_y": 2, "mouth_y": 26, "mouth_hw": 12,
+    "sleep_drop": 8, "replaces": [], "eye_sq": 16, "mouth_sq": 12, "sweat_y": -40
+  },
+  "aux_names": ["leaf tilt", "leaf droop", "", ""],
+  "aux": {
+    "happy": [4, -4, 0, 0], "sad": [-6, 14, 0, 0], "excited": [8, -8, 0, 0], "anxious": [-2, 6, 0, 0],
+    "sleeping": [-8, 16, 0, 0], "angry": [6, 4, 0, 0], "proud": [2, -8, 0, 0], "idle": [0, 0, 0, 0],
+    "focused": [0, -2, 0, 0], "working": [4, 0, 0, 0], "thinking": [-4, -6, 0, 0],
+    "pat": [6, -6, 0, 0], "poke": [-8, 10, 0, 0], "dizzy": [10, 6, 0, 0], "wake": [2, -6, 0, 0],
+    "attention": [0, -10, 0, 0]
+  },
+  "overrides": {
+    "happy": {"eye_size": 16}, "sad": {"eye_size": 15}, "excited": {"eye_size": 19}, "anxious": {"eye_size": 17},
+    "sleeping": {"eye_size": 16}, "angry": {"eye_size": 15}, "proud": {"eye_size": 16}, "idle": {"eye_size": 16},
+    "focused": {"eye_size": 16}, "working": {"eye_size": 15}, "thinking": {"eye_size": 15}
+  },
+  "oscillators": [
+    {"mood": "idle", "aux": 0, "wave": "sine", "amp": 3, "period_ms": 3000},
+    {"mood": "working", "aux": 0, "wave": "scan", "amp": 6},
+    {"mood": "anxious", "aux": 0, "wave": "jitter", "amp": 2, "period_ms": 100},
+    {"mood": "pat", "aux": 0, "wave": "sine", "amp": 6, "period_ms": 500}
+  ],
+  "parts": [
+    {"name": "shadow", "shape": "rrect", "layer": "behind", "role": "surface", "x": 0, "y": 65, "w": 108, "h": 10, "r": 5,
+     "outline": false},
+    {"name": "feet", "shape": "rrect", "layer": "behind", "role": "dark", "mirror": true, "x": 26, "y": 56, "w": 24, "h": 12,
+     "r": 6},
+    {"name": "lower", "shape": "rrect", "layer": "body", "role": "body", "squash": true, "x": 0, "y": 16, "w": 120, "h": 84,
+     "r": 42},
+    {"name": "upper", "shape": "rrect", "layer": "head", "role": "body", "x": 0, "y": -18, "w": 92, "h": 76, "r": 38},
+    {"name": "stem", "shape": "line", "layer": "head", "role": "accent-dark", "width": 4, "points": [[0, -54], [2, -64]],
+     "drivers": [{"op": "move_x", "aux": 0, "point": 1, "scale": 8}, {"op": "move_y", "aux": 1, "point": 1, "scale": 4}]},
+    {"name": "leaf", "shape": "tri", "layer": "head", "role": "accent", "anchor": "stem", "points": [[0, 0], [22, -14], [24, 4]],
+     "drivers": [{"op": "move_x", "aux": 0, "point": 1}, {"op": "move_x", "aux": 0, "point": 2},
+                 {"op": "move_y", "aux": 1, "point": 1}, {"op": "move_y", "aux": 1, "point": 2, "scale": 8}]},
+    {"name": "sheen", "shape": "rrect", "layer": "front", "role": "light", "outline": false, "x": -24, "y": -38, "w": 22,
+     "h": 7, "r": 3},
+    {"name": "cheeks", "shape": "rrect", "layer": "front", "role": "cheek", "mirror": true, "outline": false, "x": 38,
+     "y": 20, "w": 14, "h": 8, "r": 4}
+  ]
+}

@@ -49,7 +49,8 @@ export type SystemMessageType =
   | "question_response"
   | "extend"
   | "set_mode"
-  | "telemetry";
+  | "telemetry"
+  | "pets";
 export type SystemMessage<T extends SystemMessageType> = Extract<InboundMessage, { type: T }>;
 export type SystemHandler<T extends SystemMessageType> = (conn: Conn, msg: SystemMessage<T>, room: Room) => void;
 export type ConnHook = (conn: Conn, room: Room) => void;
@@ -59,6 +60,7 @@ export function serverCaps(features: ServerFeatures): Cap[] {
   const caps: Cap[] = ["decide"];
   if (features.questions) caps.push("ask");
   if (features.plans) caps.push("plan");
+  caps.push("pets");
   return caps;
 }
 
@@ -310,7 +312,9 @@ export class WsServer {
     }
     conn.registration = registration;
     const caps = serverCaps(this.deps.config.features);
-    if (msg.role === "consumer") conn.caps = new Set((client.caps ?? []).filter((cap) => caps.includes(cap)));
+    // `pets` is for devices and sims only (protocol 14.1).
+    const usable = (cap: Cap) => caps.includes(cap) && (cap !== "pets" || client.kind === "device" || client.kind === "sim");
+    if (msg.role === "consumer") conn.caps = new Set((client.caps ?? []).filter(usable));
     rooms.join(conn);
 
     conn.send(

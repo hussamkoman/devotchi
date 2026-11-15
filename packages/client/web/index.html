@@ -63,6 +63,21 @@
       <p id="settings-error" class="error" role="alert"></p>
       <p id="server-info" class="hint"></p>
     </section>
+    <section id="pets" class="panel pets" aria-labelledby="pets-heading">
+      <h2 id="pets-heading">Pets</h2>
+      <div class="row pets-tools">
+        <label for="pet-preview-mood">Preview mood</label>
+        <select id="pet-preview-mood"></select>
+        <label class="upload" for="pet-file">Upload a pet (.pet or .pet.json)</label>
+        <input id="pet-file" type="file" accept=".pet,.json,application/json,application/octet-stream">
+      </div>
+      <p class="hint">Hover a pet to run through its moods, click it for the next one. "Send to device" installs the pet and shows it; built-in pets are already on every device.</p>
+      <p id="pets-error" class="error" role="alert"></p>
+      <div id="pet-gallery" class="pet-gallery"></div>
+      <p id="pets-empty" class="empty">Loading pets…</p>
+      <h3>On devices</h3>
+      <ul id="pet-devices" class="pet-devices"></ul>
+    </section>
     <section class="panel log" aria-labelledby="log-heading">
       <h2 id="log-heading">Event log</h2>
       <ul id="log-list" class="log-list"></ul>

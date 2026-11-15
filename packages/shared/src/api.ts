@@ -2,7 +2,19 @@
 // (section 8.3).
 
 import type { ServerFeatures } from "./config.js";
-import type { Cap, DismissChoice, Mood, Peers, RequestKind, Risk, RoomMode, TelemetryMessage, TokenKind } from "./protocol.js";
+import type {
+  Cap,
+  DismissChoice,
+  Mood,
+  Peers,
+  PetOp,
+  PetsMessage,
+  RequestKind,
+  Risk,
+  RoomMode,
+  TelemetryMessage,
+  TokenKind,
+} from "./protocol.js";
 
 export type ServerMode = "single-user" | "multi-user";
 
@@ -186,7 +198,11 @@ export interface Device {
   holding: number;
   telemetry: DeviceTelemetry | null;
   telemetryAt: string | null;
+  /** Protocol 14.8: the last `pets` message of an online device, without `result`. */
+  pets?: DevicePets;
 }
+
+export type DevicePets = Omit<PetsMessage, "type" | "device" | "result">;
 
 export interface ListDevicesResponse {
   devices: Device[];
@@ -201,6 +217,32 @@ export interface IdentifyDeviceRequest {
 }
 
 export interface IdentifyDeviceResponse {
+  sent: true;
+}
+
+// --- Pets (14.8) ---
+
+export type PetSourceKind = "catalog" | "room";
+
+export interface PetListEntry {
+  id: string;
+  name: string;
+  rev: number;
+  size: number;
+  /** 8 lowercase hex digits: the pack's CRC-32 trailer. */
+  crc32: string;
+  source: PetSourceKind;
+}
+
+export interface ListPetsResponse {
+  pets: PetListEntry[];
+}
+
+export type DevicePetCommandRequest =
+  | { op: "install"; pet: string; select?: boolean }
+  | { op: Exclude<PetOp, "install">; pet: string };
+
+export interface DevicePetCommandResponse {
   sent: true;
 }
 

@@ -5,6 +5,10 @@ import {
   type CreatePairCodeResponse,
   type CreateTokenResponse,
   type Device,
+  type DevicePetCommandRequest,
+  type DevicePetCommandResponse,
+  type ListPetsResponse,
+  type PetListEntry,
   type HealthResponse,
   type ListDevicesResponse,
   type LoginResponse,
@@ -73,21 +77,39 @@ export class ApiClient {
     return new ApiClient(this.baseUrl, { ...this.options, token });
   }
 
+  /** A Uint8Array body is sent as application/octet-stream, anything else as JSON. */
   async request<T>(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
+    return (await this.exchange<T>(method, path, body, extraHeaders, false)) as T;
+  }
+
+  /** GET of a binary body (a pet pack); errors as in request(). */
+  async requestBytes(path: string): Promise<Uint8Array> {
+    return (await this.exchange("GET", path, undefined, { Accept: "application/octet-stream" }, true)) as Uint8Array;
+  }
+
+  private async exchange<T>(
+    method: string,
+    path: string,
+    body: unknown,
+    extraHeaders: Record<string, string>,
+    binary: boolean,
+  ): Promise<T | Uint8Array> {
     const headers: Record<string, string> = { Accept: "application/json", ...extraHeaders };
     if (this.options.token !== undefined) headers.Authorization = `Bearer ${this.options.token}`;
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const raw = body instanceof Uint8Array;
+    if (body !== undefined) headers["Content-Type"] = raw ? "application/octet-stream" : "application/json";
     let res: Response;
     try {
       res = await fetch(this.baseUrl + path, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : raw ? new Uint8Array(body).buffer : JSON.stringify(body),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
       throw new UnreachableError(`cannot reach ${this.baseUrl} (${networkReason(err)})`);
     }
+    if (binary && res.ok) return new Uint8Array(await res.arrayBuffer());
     const text = await res.text().catch(() => "");
     let data: unknown = undefined;
     if (text !== "") {
@@ -173,6 +195,28 @@ export class ApiClient {
 
   identifyDevice(id: string, durationMs?: number): Promise<{ sent: true }> {
     return this.request("POST", `/api/devices/${encodeURIComponent(id)}/identify`, durationMs === undefined ? {} : { durationMs });
+  }
+
+  /** Protocol 14.8. */
+  async pets(): Promise<PetListEntry[]> {
+    return (await this.request<ListPetsResponse>("GET", "/api/pets")).pets;
+  }
+
+  petPack(id: string): Promise<Uint8Array> {
+    return this.requestBytes(`/api/pets/${encodeURIComponent(id)}/pack`);
+  }
+
+  /** A pack (bytes) or its JSON source. */
+  uploadPet(body: Uint8Array | object): Promise<PetListEntry> {
+    return this.request("POST", "/api/pets", body);
+  }
+
+  async deletePet(id: string): Promise<void> {
+    await this.request("DELETE", `/api/pets/${encodeURIComponent(id)}`);
+  }
+
+  devicePet(id: string, cmd: DevicePetCommandRequest): Promise<DevicePetCommandResponse> {
+    return this.request("POST", `/api/devices/${encodeURIComponent(id)}/pet`, cmd);
   }
 
   async removeDevice(id: string): Promise<void> {

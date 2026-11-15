@@ -58,6 +58,7 @@ export function deviceLine(device: Device, now: number): string {
   ];
   if (live.rssi !== null) parts.push(`RSSI ${live.rssi} dBm`);
   if (live.fw !== null) parts.push(`fw ${live.fw}`);
+  if (device.telemetry?.pet !== undefined) parts.push(`pet ${device.telemetry.pet}`);
   return `${device.id} "${device.name}": ${parts.join(", ")}`;
 }
 

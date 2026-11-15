@@ -134,7 +134,7 @@ describe("migration from the v0 schema", () => {
     ts = undefined;
     const raw = new DatabaseSync(dbPath);
     raw.exec(
-      "ALTER TABLE device_pairings DROP COLUMN token_id; ALTER TABLE room_settings DROP COLUMN time_zone; PRAGMA user_version = 1",
+      "ALTER TABLE device_pairings DROP COLUMN token_id; ALTER TABLE room_settings DROP COLUMN time_zone; DROP TABLE pets; PRAGMA user_version = 1",
     );
     raw.close();
     ts = await startTestServer({ dir, dbPath });
@@ -144,6 +144,21 @@ describe("migration from the v0 schema", () => {
     expect(existsSync(`${dbPath}.v0.bak`)).toBe(false);
   });
 
+  it("adds the pets table to a version 3 database", async () => {
+    const dir = await tempDir();
+    ts = await startTestServer({ dir });
+    const { dbPath } = ts;
+    await ts.close();
+    ts = undefined;
+    const raw = new DatabaseSync(dbPath);
+    raw.exec("DROP TABLE pets; PRAGMA user_version = 3");
+    raw.close();
+    ts = await startTestServer({ dir, dbPath });
+    const { db } = ts.server.internals;
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(SCHEMA_VERSION);
+    expect(db.all<{ name: string }>("PRAGMA table_info(pets)").map((c) => c.name)).toEqual(["room_id", "id", "rev", "bytes", "created_at"]);
+  });
+
   it("adds room_settings.time_zone to a version 2 database, keeping the settings", async () => {
     const dir = await tempDir();
     ts = await startTestServer({ dir });
@@ -151,7 +166,7 @@ describe("migration from the v0 schema", () => {
     await ts.close();
     ts = undefined;
     const raw = new DatabaseSync(dbPath);
-    raw.exec(`ALTER TABLE room_settings DROP COLUMN time_zone;
+    raw.exec(`ALTER TABLE room_settings DROP COLUMN time_zone; DROP TABLE pets;
       INSERT INTO room_settings (room_id, mode, hold_ms, share_text, updated_at) VALUES ('0123456789ab', 'desk', 20000, 1, 'x');
       PRAGMA user_version = 2`);
     raw.close();

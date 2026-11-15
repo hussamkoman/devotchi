@@ -34,3 +34,30 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
   }
   return data as T;
 }
+
+/** GET of a binary body (a pet pack). */
+export async function apiBytes(path: string): Promise<Uint8Array> {
+  return new Uint8Array(await (await raw("GET", path, undefined, "application/octet-stream")).arrayBuffer());
+}
+
+/** POST of a pet pack as application/octet-stream. */
+export async function apiUpload<T>(path: string, bytes: Uint8Array): Promise<T> {
+  return (await (await raw("POST", path, bytes, "application/json")).json()) as T;
+}
+
+async function raw(method: string, path: string, body: Uint8Array | undefined, accept: string): Promise<Response> {
+  const headers: Record<string, string> = { Accept: accept, "X-Devotchi-Session": sessionSecret() };
+  if (body !== undefined) headers["Content-Type"] = "application/octet-stream";
+  let res: Response;
+  try {
+    res = await fetch(path, { method, headers, body: body === undefined ? undefined : new Uint8Array(body).buffer });
+  } catch {
+    throw new DashboardApiError("the dashboard is not reachable; is devotchi start still running?", 0, "unreachable");
+  }
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: unknown; code?: unknown } | null;
+    const message = typeof data?.error === "string" ? data.error : `HTTP ${res.status}`;
+    throw new DashboardApiError(message, res.status, typeof data?.code === "string" ? data.code : `http_${res.status}`);
+  }
+  return res;
+}

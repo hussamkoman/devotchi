@@ -12,12 +12,14 @@ import {
   serialize,
   type ConsumerToServerMessage,
   type Device,
+  type ListPetsResponse,
   type PairConfirmResponse,
+  type PetListEntry,
   type Room,
   type RoomRequestDetail,
   type RoomSettings,
 } from "@devotchi/shared";
-import { api, sessionSecret } from "./api.js";
+import { api, apiBytes, apiUpload, sessionSecret } from "./api.js";
 import { byId, h, setText } from "./dom.js";
 import { HoldingDriver } from "./holding.js";
 import {
@@ -37,6 +39,7 @@ import { DevicesPanel } from "./views/devices.js";
 import { updateHeader } from "./views/header.js";
 import { updateLog } from "./views/log.js";
 import { updatePet } from "./views/pet.js";
+import { PetsPanel } from "./views/pets.js";
 import { RequestList } from "./views/requests.js";
 import { SettingsPanel } from "./views/settings.js";
 import { WsClient } from "./ws-client.js";
@@ -93,6 +96,44 @@ const settings = new SettingsPanel({
   },
 });
 
+const petsPanel = new PetsPanel(
+  {
+    gallery: byId("pet-gallery"),
+    empty: byId("pets-empty"),
+    devices: byId("pet-devices"),
+    moodSelect: byId<HTMLSelectElement>("pet-preview-mood"),
+    file: byId<HTMLInputElement>("pet-file"),
+    error: byId("pets-error"),
+  },
+  {
+    loadPack: (id) => apiBytes(`/api/pets/${encodeURIComponent(id)}/pack`),
+    upload: async (file) => {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const json = file.name.endsWith(".json") || bytes[0] === 0x7b;
+      const pet = json
+        ? await api<PetListEntry>("POST", "/api/pets", JSON.parse(new TextDecoder().decode(bytes)) as unknown)
+        : await apiUpload<PetListEntry>("/api/pets", bytes);
+      dispatch({ type: "toast", text: `Added ${pet.name} (${pet.id}) to this room`, now: Date.now() });
+      await refreshPets();
+    },
+    remove: async (id) => {
+      await api("DELETE", `/api/pets/${encodeURIComponent(id)}`);
+      await refreshPets();
+    },
+    command: async (deviceId, cmd) => {
+      await api("POST", `/api/devices/${encodeURIComponent(deviceId)}/pet`, cmd);
+    },
+  },
+);
+
+async function refreshPets(): Promise<void> {
+  try {
+    dispatch({ type: "pets", pets: (await api<ListPetsResponse>("GET", "/api/pets")).pets });
+  } catch (err) {
+    dispatch({ type: "toast", text: `Could not load the pets: ${err instanceof Error ? err.message : String(err)}`, now: Date.now() });
+  }
+}
+
 function dispatch(action: Action): void {
   const before = new Set(state.requests.filter(isPresentable).map((r) => r.id));
   state = reduce(state, action);
@@ -112,6 +153,7 @@ function onFrame(raw: string): void {
   }
   dispatch({ type: "frame", msg, now: Date.now() });
   if (msg.type === "register_ack" || msg.type === "peers") void refreshRoom();
+  if (msg.type === "register_ack") void refreshPets();
 }
 
 function wire(id: string, choice: Reply): ConsumerToServerMessage {
@@ -208,6 +250,7 @@ function render(): void {
   updatePet(state);
   requests.update(state, now);
   devices.update(state, now);
+  petsPanel.update(state, now);
   settings.update(state, notificationState());
   updateLog(byId("log-list"), state.log);
   if (state.toasts !== renderedToasts) {
