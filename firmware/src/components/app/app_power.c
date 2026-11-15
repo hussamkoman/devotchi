@@ -206,7 +206,7 @@ static void apply(uint32_t now, const power_fsm_output_t *out)
         app_link_render(now);
     }
     if (out->low_toast) {
-        app_toast("Battery low");
+        app_toast_kind(UI_TOAST_BATTERY, "Battery low");
     }
 }
 

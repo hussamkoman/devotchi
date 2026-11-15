@@ -27,6 +27,8 @@ static const char *TAG = "app_cmds";
 #define B64_RAW_PER_LINE  57
 #define B64_LINE_SIZE     (4 + 76 + 1)
 
+#define REQUEST_TIMEOUT_MS  3000
+
 /* Console task only. */
 static char s_texts[UI_MAX_TEXTS][UI_TEXT_SIZE];
 static char s_toast[UI_TEXT_SIZE];
@@ -169,6 +171,55 @@ static console_rc_t cmd_state(int argc, char **argv, const char *raw_args)
     return send(root);
 }
 
+/* "tabs": one entry per button with its state and text, plus "any" for the single centred tab. */
+static void add_tabs(cJSON *root)
+{
+    ui_tab_info_t tabs[UI_TAB_COUNT];
+    const bool any = ui_tabs_get(tabs);
+    cJSON *obj = cJSON_AddObjectToObject(root, "tabs");
+    if (any) {
+        cJSON_AddStringToObject(obj, "any", tabs[UI_TAB_ACTION].text);
+        return;
+    }
+    for (int i = 0; i < UI_TAB_COUNT; i++) {
+        if (tabs[i].state == UI_TAB_NONE) {
+            cJSON_AddNullToObject(obj, ui_tab_btn_name((ui_tab_btn_t)i));
+            continue;
+        }
+        cJSON *tab = cJSON_AddObjectToObject(obj, ui_tab_btn_name((ui_tab_btn_t)i));
+        cJSON_AddStringToObject(tab, "state", ui_tab_state_name(tabs[i].state));
+        cJSON_AddStringToObject(tab, "text", tabs[i].text);
+    }
+}
+
+static console_rc_t cmd_ui(int argc, char **argv, const char *raw_args)
+{
+    (void)raw_args;
+    if (argc >= 3 && strcmp(argv[1], "demo") == 0) {
+        if (strcmp(argv[2], "off") == 0) {
+            ui_demo_off();
+            /* The screens drew sample data; the app draws its own state again. */
+            bool ok;
+            char message[APP_REQUEST_MESSAGE_SIZE];
+            if (app_request(APP_REQUEST_RENDER, "", NULL, REQUEST_TIMEOUT_MS, &ok, message) != APP_REQUEST_DONE) {
+                return console_fail(CONSOLE_ERR_BUSY, "demo off, but the app task did not redraw");
+            }
+            return CONSOLE_OK;
+        }
+        const esp_err_t err = ui_demo(argv[2], argc >= 4 ? argv[3] : NULL);
+        if (err == ESP_ERR_NOT_FOUND) {
+            return console_fail(CONSOLE_ERR_BAD_ARGS, "ui demo %s", ui_demo_usage());
+        }
+        return err == ESP_OK ? CONSOLE_OK : console_fail(CONSOLE_ERR_FAILED, "%s", esp_err_to_name(err));
+    }
+    if (argc == 2 && strcmp(argv[1], "tabs") == 0) {
+        cJSON *root = cJSON_CreateObject();
+        add_tabs(root);
+        return send(root);
+    }
+    return console_fail(CONSOLE_ERR_BAD_ARGS, "ui demo <name> [variant] | ui demo off | ui tabs");
+}
+
 static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
 {
     (void)argc;
@@ -186,7 +237,7 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
     cJSON_AddStringToObject(root, "id", ui_screen_name(screen));
     const char *page = "main";
     if (screen == UI_SCREEN_PET) {
-        page = s_view.page == UI_PET_PAGE_ABOUT ? "about" : "pet";
+        page = app_flow_page_name(s_view.page);
     }
     cJSON_AddStringToObject(root, "page", page);
     cJSON_AddBoolToObject(root, "preview", s_snap.link.preview);
@@ -195,6 +246,8 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
         cJSON_AddItemToArray(texts, cJSON_CreateString(s_texts[i]));
     }
     cJSON_AddStringToObject(root, "mood", proto_mood_name(s_view.mood));
+    cJSON_AddBoolToObject(root, "demo", ui_demo_is_active());
+    add_tabs(root);
 
     const bool bar_shown = screen != UI_SCREEN_SPLASH && screen != UI_SCREEN_LOWBATT && screen != UI_SCREEN_IDENTIFY;
     cJSON *sb = cJSON_AddObjectToObject(root, "statusBar");
@@ -353,7 +406,8 @@ static console_rc_t cmd_tasks(int argc, char **argv, const char *raw_args)
 
 static const console_cmd_t CMDS[] = {
     {"state", "application state as one JSON object", cmd_state},
-    {"screen", "current screen id and visible texts", cmd_screen},
+    {"screen", "current screen id, visible texts and button tabs", cmd_screen},
+    {"ui", "ui demo <name> [variant] | ui demo off: sample screens without touching app state; ui tabs: the button tabs", cmd_ui},
     {"screenshot", "dump the panel content (RGB565LE, base64, CRC-32)", cmd_screenshot},
     {"tasks", "stack high-water marks in bytes", cmd_tasks},
     /* Last: answering `version` tells host tools that every command exists. */

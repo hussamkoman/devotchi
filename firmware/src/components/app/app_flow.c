@@ -44,6 +44,8 @@ static const char *TAG = "flow";
 #define VIEW_LOCK_MS        100
 /* The About page gives way to the face after this long without a button press. */
 #define PAGE_IDLE_MS        20000
+/* Home shows its button tabs this long after a press (design-system 5). */
+#define HOME_TABS_MS        3000
 
 /* Everything below belongs to the app task, except s_view (guarded by s_view_lock). */
 
@@ -66,6 +68,7 @@ static bool s_attention;
 static char s_attention_text[TOAST_SIZE];
 static char s_banner_shown[TOAST_SIZE];
 static bool s_banner_visible;
+static bool s_banner_attention;
 
 static ui_screen_id_t s_screen = UI_SCREEN_PET;
 static ui_pet_page_t s_page = UI_PET_PAGE_PET;
@@ -97,7 +100,7 @@ static uint32_t earliest(uint32_t a, uint32_t b, uint32_t now)
     return (int32_t)(a - now) < (int32_t)(b - now) ? a : b;
 }
 
-/* Toasts and request fields are printable ASCII; only quotes, backslashes and newlines need escaping. */
+/* Toasts and request fields are sanitised UTF-8 without control characters but '\n'; only quotes, backslashes and newlines need escaping. */
 static void json_escape(char *dst, size_t cap, const char *src)
 {
     size_t n = 0;
@@ -115,15 +118,20 @@ static void json_escape(char *dst, size_t cap, const char *src)
     dst[n] = '\0';
 }
 
-void app_toast(const char *text)
+void app_toast_kind(ui_toast_kind_t kind, const char *text)
 {
-    ui_toast(text, UI_TOAST_DEFAULT_MS);
+    ui_toast_show(kind, text, NULL, UI_TOAST_DEFAULT_MS);
     /* Static: app task only, and too large for its stack. */
     static char escaped[2 * TOAST_SIZE];
     static char evt[EVT_SIZE + 2 * TOAST_SIZE];
     json_escape(escaped, sizeof(escaped), text);
     snprintf(evt, sizeof(evt), "{\"evt\":\"toast\",\"text\":\"%s\"}", escaped);
     console_evt(evt);
+}
+
+void app_toast(const char *text)
+{
+    app_toast_kind(UI_TOAST_INFO, text);
 }
 
 static void request_evt(const char *op, const char *id, const char *reason)
@@ -361,7 +369,7 @@ static void on_notify(const proto_notify_t *n, uint32_t now)
     app_user_activity(now);
     if (n->urgency >= 3) {
         if (n->detail[0] != '\0') {
-            text_sanitize_ascii(s_attention_text, sizeof(s_attention_text), n->detail);
+            text_sanitize_device(s_attention_text, sizeof(s_attention_text), n->detail);
         } else {
             pet_notify_text(s_attention_text, sizeof(s_attention_text), n);
         }
@@ -371,7 +379,11 @@ static void on_notify(const proto_notify_t *n, uint32_t now)
     }
     char text[TOAST_SIZE];
     pet_notify_text(text, sizeof(text), n);
-    app_toast(text);
+    app_toast_kind(cls == PET_EVENT_POSITIVE || cls == PET_EVENT_COMPLETE ? UI_TOAST_POSITIVE
+                   : cls == PET_EVENT_NEGATIVE                            ? UI_TOAST_NEGATIVE
+                   : cls == PET_EVENT_ATTENTION                           ? UI_TOAST_ATTENTION
+                                                                          : UI_TOAST_INFO,
+                   text);
     if (n->urgency < 2) {
         return;
     }
@@ -510,7 +522,9 @@ static void on_approval_button(const btn_fsm_out_t *out, uint32_t now)
     if (out->id == BTN_APPROVE && out->kind == BTN_CLICK) {
         play(FB_SEQ_CLICK, 0);
         if (e->risk == PROTO_RISK_HIGH) {
-            app_toast("Hold to approve");
+            /* A click on a hold-only tab only explains the hold (design-system 5). */
+            ui_tabs_nudge(UI_TAB_APPROVE, "Hold to allow");
+            console_evt("{\"evt\":\"nudge\",\"btn\":\"approve\",\"text\":\"Hold to allow\"}");
         } else {
             answer(e, true, now);
         }
@@ -539,17 +553,39 @@ static void pet_evt(ui_pet_reaction_t r)
     console_evt(evt);
 }
 
+const char *app_flow_page_name(ui_pet_page_t page)
+{
+    switch (page) {
+    case UI_PET_PAGE_ABOUT:
+        return "about";
+    case UI_PET_PAGE_ABOUT2:
+        return "about2";
+    case UI_PET_PAGE_PET:
+    case UI_PET_PAGE_COUNT:
+        break;
+    }
+    return "pet";
+}
+
+static bool on_about(void)
+{
+    return s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_ABOUT2;
+}
+
 static void set_page(ui_pet_page_t page, uint32_t now)
 {
     s_page = page;
     s_page_at = now;
     char evt[48];
-    snprintf(evt, sizeof(evt), "{\"evt\":\"page\",\"page\":\"%s\"}", page == UI_PET_PAGE_ABOUT ? "about" : "pet");
+    snprintf(evt, sizeof(evt), "{\"evt\":\"page\",\"page\":\"%s\"}", app_flow_page_name(page));
     console_evt(evt);
 }
 
 static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
 {
+    if (s_page == UI_PET_PAGE_PET) {
+        ui_pet_show_tabs(HOME_TABS_MS);
+    }
     if (out->id == BTN_ACTION && out->kind == BTN_LONG) {
         return false;
     }
@@ -558,12 +594,18 @@ static bool on_pet_button(const btn_fsm_out_t *out, uint32_t now)
         char extra[24];
         snprintf(extra, sizeof(extra), ",\"mode\":\"%s\"", proto_mode_name(next));
         app_link_send(now, "set_mode", s_tx, proto_write_set_mode(s_tx, sizeof(s_tx), next), extra);
-        app_toast(next == PROTO_MODE_DESK ? "At desk: on" : "At desk: off");
+        app_toast_kind(UI_TOAST_DESK, next == PROTO_MODE_DESK ? "At desk: on" : "At desk: off");
         play(FB_SEQ_TICK, 0);
     } else if (out->id == BTN_ACTION) {
-        set_page(s_page == UI_PET_PAGE_PET ? UI_PET_PAGE_ABOUT : UI_PET_PAGE_PET, now);
-    } else if (s_page == UI_PET_PAGE_ABOUT) {
-        s_page_at = now;
+        set_page(s_page == UI_PET_PAGE_PET ? UI_PET_PAGE_ABOUT : s_page == UI_PET_PAGE_ABOUT ? UI_PET_PAGE_ABOUT2
+                                                                                               : UI_PET_PAGE_PET,
+                 now);
+    } else if (on_about()) {
+        if (out->id == BTN_REJECT && out->kind == BTN_CLICK) {
+            set_page(UI_PET_PAGE_PET, now);
+        } else {
+            s_page_at = now;
+        }
     } else if (out->id == BTN_APPROVE) {
         ui_pet_react(UI_PET_REACT_PAT);
         play(FB_SEQ_TICK, 0);
@@ -587,6 +629,11 @@ bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
         return true;
     }
     if (identify_active(now)) {
+        /* The identify screen's one tab: any button says "OK, that is this device". */
+        s_identify_until = 0;
+        if (feedback_current() == FB_SEQ_IDENTIFY) {
+            feedback_stop();
+        }
         return true;
     }
     if (s_screen == UI_SCREEN_APPROVAL) {
@@ -652,7 +699,7 @@ static void run_deadlines(uint32_t now)
     if (s_identify_until != 0 && due(s_identify_until, now)) {
         s_identify_until = 0;
     }
-    if (s_page == UI_PET_PAGE_ABOUT && due(after(s_page_at, PAGE_IDLE_MS), now)) {
+    if (on_about() && due(after(s_page_at, PAGE_IDLE_MS), now)) {
         set_page(UI_PET_PAGE_PET, now);
     }
 }
@@ -679,7 +726,7 @@ void app_flow_arm_timer(uint32_t now)
     if (s_screen == UI_SCREEN_APPROVAL && reqq_count(&s_q) > 0) {
         at = earliest(at, after(now, BAR_REFRESH_MS), now);
     }
-    if (s_page == UI_PET_PAGE_ABOUT) {
+    if (on_about()) {
         at = earliest(at, after(s_page_at, PAGE_IDLE_MS), now);
     }
     esp_timer_stop(s_timer);
@@ -709,7 +756,7 @@ void app_flow_get_view(app_flow_view_t *out)
     }
 }
 
-static void set_banner(const char *text)
+static void set_banner(const char *text, bool attention)
 {
     if (text == NULL || text[0] == '\0') {
         if (s_banner_visible) {
@@ -719,16 +766,17 @@ static void set_banner(const char *text)
         }
         return;
     }
-    if (!s_banner_visible || strcmp(s_banner_shown, text) != 0) {
+    if (!s_banner_visible || attention != s_banner_attention || strcmp(s_banner_shown, text) != 0) {
         s_banner_visible = true;
+        s_banner_attention = attention;
         strlcpy(s_banner_shown, text, sizeof(s_banner_shown));
-        ui_banner_show(text);
+        ui_banner_show(text, attention);
     }
 }
 
 void app_flow_hide_banner(void)
 {
-    set_banner(NULL);
+    set_banner(NULL, false);
 }
 
 static void render_approval(const reqq_entry_t *e, uint8_t position, uint8_t count, uint32_t now,
@@ -743,6 +791,8 @@ static void render_approval(const reqq_entry_t *e, uint8_t position, uint8_t cou
         page_text[0] = '\0';
     }
     const int32_t left = (int32_t)(e->deadline_ms - now);
+    const size_t lines = text_wrap_lines(e->details, UI_DETAILS_COLS);
+    const size_t seen = (page + 1) * UI_DETAILS_LINES;
     uint16_t permille = 0;
     if (left > 0 && e->timeout_ms > 0) {
         const uint64_t p = (uint64_t)left * 1000 / e->timeout_ms;
@@ -758,7 +808,9 @@ static void render_approval(const reqq_entry_t *e, uint8_t position, uint8_t cou
         .count = count,
         .page = (uint8_t)(page + 1),
         .pages = (uint8_t)pages,
+        .lines_after = (uint16_t)(lines > seen ? lines - seen : 0),
         .remaining_permille = permille,
+        .remaining_s = (uint16_t)(left > 0 ? (left + 999) / 1000 : 0),
         .sent = e->answered,
     };
     ui_approval_set(&a);
@@ -849,7 +901,7 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
     view.mood = s_pet.mood;
     ui_screen_id_t screen;
     if (preview != APP_FLOW_PREVIEW_OFF) {
-        set_banner(NULL);
+        set_banner(NULL, false);
         if (preview == APP_FLOW_PREVIEW_IDENTIFY) {
             ui_identify_set(app_link_name());
             screen = UI_SCREEN_IDENTIFY;
@@ -870,8 +922,9 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
         s_page = UI_PET_PAGE_PET;
     }
     /* Identify is full-screen: the name must not sit under a banner; the About page shows the link itself. */
-    const bool about = s_page == UI_PET_PAGE_ABOUT;
-    set_banner(identify ? NULL : s_attention ? s_attention_text : about ? NULL : offline_banner);
+    const bool about = on_about();
+    set_banner(identify ? NULL : s_attention ? s_attention_text : about ? NULL : offline_banner,
+               !identify && s_attention);
     if (identify) {
         screen = UI_SCREEN_IDENTIFY;
     } else if (head != NULL) {

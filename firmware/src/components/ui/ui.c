@@ -41,6 +41,11 @@ static atomic_bool s_running = true;
 /* Everything below is guarded by the ui lock. */
 static lv_obj_t *s_screens[UI_SCREEN_COUNT];
 static ui_screen_id_t s_current = UI_SCREEN_SPLASH;
+/** The screen the app asked for; differs from s_current only during ui demo. */
+static ui_screen_id_t s_app_screen = UI_SCREEN_SPLASH;
+static ui_tabs_t s_tabs[UI_SCREEN_COUNT];
+static const char *s_titles[UI_SCREEN_COUNT];
+static bool s_demo;
 static uint16_t s_frame_ms_x10[FRAME_HISTORY];
 static uint32_t s_frames;
 
@@ -61,26 +66,68 @@ void ui_unlock(void)
 lv_obj_t *ui_screen_base_create(void)
 {
     lv_obj_t *scr = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(scr, UI_COLOR_BG, 0);
+    lv_obj_set_style_bg_color(scr, UI_C_INK, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(scr, UI_C_CREAM, 0);
+    lv_obj_set_style_text_font(scr, UI_FONT_SMALL, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     return scr;
 }
 
-lv_obj_t *ui_label_create(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, int32_t y, bool one_line)
+lv_obj_t *ui_box(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    lv_obj_t *o = lv_obj_create(parent);
+    lv_obj_remove_style_all(o);
+    lv_obj_set_pos(o, x, y);
+    lv_obj_set_size(o, w, h);
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    return o;
+}
+
+lv_obj_t *ui_rect(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t h, lv_color_t color, int32_t radius)
+{
+    lv_obj_t *o = ui_box(parent, x, y, w, h);
+    lv_obj_set_style_bg_color(o, color, 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(o, radius, 0);
+    return o;
+}
+
+lv_obj_t *ui_text(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, int32_t x, int32_t y, int32_t w,
+                  bool one_line)
 {
     lv_obj_t *label = lv_label_create(parent);
     lv_obj_set_style_text_font(label, font, 0);
     lv_obj_set_style_text_color(label, color, 0);
-    lv_obj_set_width(label, LV_HOR_RES - 2 * UI_PAD);
+    if (w > 0) {
+        lv_obj_set_width(label, w);
+    }
     if (one_line) {
         lv_obj_set_height(label, lv_font_get_line_height(font));
-        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+        lv_label_set_long_mode(label, w > 0 ? LV_LABEL_LONG_MODE_DOTS : LV_LABEL_LONG_MODE_CLIP);
     } else {
         lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
     }
     lv_label_set_text_static(label, "");
-    lv_obj_align(label, LV_ALIGN_TOP_LEFT, UI_PAD, y);
+    lv_obj_set_pos(label, x, y);
+    return label;
+}
+
+lv_obj_t *ui_text_line(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, int32_t y, lv_text_align_t align)
+{
+    lv_obj_t *label = ui_text(parent, font, color, UI_TEXT_X, y, UI_WIDTH_TEXT, true);
+    lv_obj_set_style_text_align(label, align, 0);
+    return label;
+}
+
+lv_obj_t *ui_icon(lv_obj_t *parent, const char *icon, lv_color_t color, int32_t x, int32_t y)
+{
+    lv_obj_t *label = lv_label_create(parent);
+    lv_obj_set_style_text_font(label, UI_FONT_ICONS, 0);
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_label_set_text_static(label, icon);
+    lv_obj_set_pos(label, x, y);
+    lv_obj_add_flag(label, UI_FLAG_NO_TEXT);
     return label;
 }
 
@@ -88,9 +135,44 @@ void ui_label_set(lv_obj_t *label, const char *text)
 {
     /* Static: callers hold the ui lock, and a details page does not belong on a task stack. */
     static char clean[UI_LABEL_TEXT_SIZE];
-    text_sanitize_ascii(clean, sizeof(clean), text != NULL ? text : "");
+    text_sanitize_device(clean, sizeof(clean), text != NULL ? text : "");
     if (strcmp(lv_label_get_text(label), clean) != 0) {
         lv_label_set_text(label, clean);
+    }
+}
+
+void ui_host_text(char *dst, size_t cap, const char *url, size_t cols)
+{
+    char host[UI_TEXT_SIZE];
+    const char *start = url != NULL ? strstr(url, "://") : NULL;
+    strlcpy(host, start != NULL ? start + 3 : url != NULL ? url : "", sizeof(host));
+    char *path = strchr(host, '/');
+    if (path != NULL) {
+        *path = '\0';
+    }
+    const size_t len = strlen(host);
+    static const char DEFAULT_PORT[] = ":8080";
+    if (len > sizeof(DEFAULT_PORT) - 1 && strcmp(host + len - (sizeof(DEFAULT_PORT) - 1), DEFAULT_PORT) == 0) {
+        host[len - (sizeof(DEFAULT_PORT) - 1)] = '\0';
+    }
+    text_truncate_middle(dst, cap, host, cols);
+}
+
+void ui_label_set_caps(lv_obj_t *label, const char *text)
+{
+    static char upper[UI_TEXT_SIZE];
+    text_upper_device(upper, sizeof(upper), text != NULL ? text : "");
+    ui_label_set(label, upper);
+}
+
+void ui_set_hidden(lv_obj_t *obj, bool hidden)
+{
+    if (hidden != lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) {
+        if (hidden) {
+            lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 
@@ -120,6 +202,8 @@ static void ui_task(void *arg)
             const uint32_t flushed = display_flush_count();
             const int64_t start = esp_timer_get_time();
             sleep_ms = lv_timer_handler();
+            /* The last strip is still on the wire; a frame ends when the panel has it. */
+            display_flush_wait();
             if (display_flush_count() != flushed) {
                 record_frame(esp_timer_get_time() - start);
             }
@@ -134,11 +218,59 @@ static void ui_task(void *arg)
     }
 }
 
+static bool shows_status_bar(ui_screen_id_t id)
+{
+    return id != UI_SCREEN_SPLASH && id != UI_SCREEN_LOWBATT && id != UI_SCREEN_IDENTIFY;
+}
+
+/* Caller holds the ui lock. */
+static void load(ui_screen_id_t id)
+{
+    s_current = id;
+    lv_screen_load(s_screens[id]);
+    screen_pet_set_shown(id == UI_SCREEN_PET);
+    w_status_set_visible(shows_status_bar(id));
+    w_status_set_title(s_titles[id] != NULL ? s_titles[id] : "");
+    w_tabs_set(&s_tabs[id]);
+}
+
+void ui_screen_set_tabs(ui_screen_id_t id, const ui_tabs_t *tabs)
+{
+    if (id >= UI_SCREEN_COUNT) {
+        return;
+    }
+    if (tabs != NULL) {
+        s_tabs[id] = *tabs;
+    } else {
+        memset(&s_tabs[id], 0, sizeof(s_tabs[id]));
+    }
+    if (id == s_current) {
+        w_tabs_set(&s_tabs[id]);
+    }
+}
+
+void ui_screen_set_title(ui_screen_id_t id, const char *title)
+{
+    if (id >= UI_SCREEN_COUNT) {
+        return;
+    }
+    s_titles[id] = title;
+    if (id == s_current) {
+        w_status_set_title(title != NULL ? title : "");
+    }
+}
+
+bool ui_demo_active(void)
+{
+    return s_demo;
+}
+
 esp_err_t ui_init(void)
 {
     lv_tick_set_cb(tick_ms);
 
     ESP_RETURN_ON_FALSE(ui_lock(), ESP_ERR_TIMEOUT, TAG, "lock");
+    ui_theme_init(lv_display_get_default());
     s_screens[UI_SCREEN_SPLASH] = screen_splash_create();
     s_screens[UI_SCREEN_PROVISIONING] = screen_provisioning_create();
     s_screens[UI_SCREEN_WIFI] = screen_wifi_create();
@@ -149,11 +281,12 @@ esp_err_t ui_init(void)
     s_screens[UI_SCREEN_IDENTIFY] = screen_identify_create();
     s_screens[UI_SCREEN_SETTINGS] = screen_settings_create();
     s_screens[UI_SCREEN_LOWBATT] = screen_lowbatt_create();
-    ui_status_bar_create();
-    ui_overlay_create();
-    ui_status_bar_set_visible(false);
-    s_current = UI_SCREEN_SPLASH;
-    lv_screen_load(s_screens[UI_SCREEN_SPLASH]);
+    /* Creation order is the stacking order on the top layer: tabs above toasts, both above the bar. */
+    w_status_create();
+    w_toast_create();
+    w_tabs_create();
+    s_app_screen = UI_SCREEN_SPLASH;
+    load(UI_SCREEN_SPLASH);
     display_unlock();
     return ESP_OK;
 }
@@ -191,11 +324,9 @@ esp_err_t ui_show_screen(ui_screen_id_t id)
     if (!ui_lock()) {
         return ESP_ERR_TIMEOUT;
     }
-    if (id != s_current) {
-        s_current = id;
-        lv_screen_load(s_screens[id]);
-        screen_pet_set_shown(id == UI_SCREEN_PET);
-        ui_status_bar_set_visible(id != UI_SCREEN_SPLASH && id != UI_SCREEN_LOWBATT && id != UI_SCREEN_IDENTIFY);
+    s_app_screen = id;
+    if (!s_demo && id != s_current) {
+        load(id);
     }
     ui_unlock();
     return ESP_OK;
@@ -216,11 +347,203 @@ const char *ui_current_screen_name(void)
     return ui_screen_name(ui_current_screen());
 }
 
+/* ---- ui demo ---- */
+
+typedef struct {
+    const char *name;
+    /** "|"-separated variants, the first is the default; NULL for none. */
+    const char *variants;
+    ui_screen_id_t screen;
+} demo_entry_t;
+
+static const demo_entry_t DEMOS[] = {
+    {"splash", NULL, UI_SCREEN_SPLASH},
+    {"provisioning", "qr|code", UI_SCREEN_PROVISIONING},
+    {"wifi", NULL, UI_SCREEN_WIFI},
+    {"connecting", NULL, UI_SCREEN_CONNECTING},
+    {"offline", NULL, UI_SCREEN_CONNECTING},
+    {"pairing", NULL, UI_SCREEN_PAIRING},
+    {"home", "idle|working|angry|tabs", UI_SCREEN_PET},
+    {"toast", "positive|sticky|desk|battery|strip", UI_SCREEN_PET},
+    {"about", "1|2", UI_SCREEN_PET},
+    {"approval", "low|med|details|high|sent", UI_SCREEN_APPROVAL},
+    {"tabs", "hold|nudge|any|inactive", UI_SCREEN_APPROVAL},
+    {"settings", NULL, UI_SCREEN_SETTINGS},
+    {"identify", NULL, UI_SCREEN_IDENTIFY},
+    {"lowbatt", NULL, UI_SCREEN_LOWBATT},
+};
+
+const char *ui_demo_usage(void)
+{
+    return "splash provisioning[qr|code] wifi connecting offline pairing home[idle|working|angry|tabs] "
+           "toast[positive|sticky|desk|battery|strip] about[1|2] approval[low|med|details|high|sent] "
+           "tabs[hold|nudge|any|inactive] settings identify lowbatt | off";
+}
+
+/* Index of variant in the "|"-separated list, or -1. NULL or "" picks the first. */
+static int variant_index(const char *list, const char *variant)
+{
+    if (variant == NULL || variant[0] == '\0') {
+        return 0;
+    }
+    if (list == NULL) {
+        return -1;
+    }
+    const size_t len = strlen(variant);
+    int index = 0;
+    for (const char *p = list; *p != '\0'; index++) {
+        const char *end = strchr(p, '|');
+        const size_t n = end != NULL ? (size_t)(end - p) : strlen(p);
+        if (n == len && strncmp(p, variant, n) == 0) {
+            return index;
+        }
+        if (end == NULL) {
+            break;
+        }
+        p = end + 1;
+    }
+    return -1;
+}
+
+static void demo_status(bool desk, uint8_t pct, ui_link_t link, uint8_t bars)
+{
+    const ui_status_t st = {
+        .battery = UI_BATT_DISCHARGING,
+        .pct = pct,
+        .low = pct <= 15,
+        .desk = desk,
+        .rssi_bars = bars,
+        .link = link,
+    };
+    w_status_demo(&st);
+}
+
+static void demo_load(const demo_entry_t *d, int v)
+{
+    static const ui_pet_demo_t HOME[] = {PET_DEMO_IDLE, PET_DEMO_WORKING, PET_DEMO_ANGRY, PET_DEMO_TABS};
+    static const ui_pet_demo_t TOAST[] = {PET_DEMO_HAPPY_BARE, PET_DEMO_SAD_BARE, PET_DEMO_IDLE_BARE,
+                                          PET_DEMO_IDLE_BARE, PET_DEMO_IDLE_BARE};
+    w_toast_demo(W_TOAST_DEMO_NONE);
+    demo_status(false, 72, UI_LINK_REGISTERED, 3);
+    switch (d->screen) {
+    case UI_SCREEN_PROVISIONING:
+        demo_status(false, 72, UI_LINK_OFFLINE, 0);
+        screen_provisioning_demo(v);
+        break;
+    case UI_SCREEN_WIFI:
+        demo_status(false, 72, UI_LINK_OFFLINE, 1);
+        screen_wifi_demo();
+        break;
+    case UI_SCREEN_CONNECTING: {
+        const bool offline = strcmp(d->name, "offline") == 0;
+        demo_status(false, 72, offline ? UI_LINK_OFFLINE : UI_LINK_CONNECTING, 3);
+        screen_connecting_demo(offline);
+        break;
+    }
+    case UI_SCREEN_PAIRING:
+        demo_status(false, 72, UI_LINK_CONNECTING, 3);
+        screen_pairing_demo();
+        break;
+    case UI_SCREEN_PET:
+        if (strcmp(d->name, "toast") == 0) {
+            demo_status(v == 2, v == 3 ? 12 : 72, UI_LINK_REGISTERED, 3);
+            screen_pet_demo(TOAST[v]);
+            w_toast_demo((w_toast_demo_t)v);
+        } else if (strcmp(d->name, "about") == 0) {
+            screen_pet_demo(v == 0 ? PET_DEMO_ABOUT1 : PET_DEMO_ABOUT2);
+        } else {
+            screen_pet_demo(HOME[v]);
+        }
+        break;
+    case UI_SCREEN_APPROVAL:
+        screen_approval_demo(strcmp(d->name, "tabs") == 0 ? APPROVAL_DEMO_HOLD + v : APPROVAL_DEMO_LOW + v);
+        break;
+    case UI_SCREEN_SETTINGS:
+        screen_settings_demo();
+        break;
+    case UI_SCREEN_IDENTIFY:
+        screen_identify_demo();
+        break;
+    case UI_SCREEN_SPLASH:
+    case UI_SCREEN_LOWBATT:
+    case UI_SCREEN_COUNT:
+        break;
+    }
+}
+
+esp_err_t ui_demo(const char *name, const char *variant)
+{
+    const demo_entry_t *d = NULL;
+    for (size_t i = 0; i < sizeof(DEMOS) / sizeof(DEMOS[0]); i++) {
+        if (strcmp(DEMOS[i].name, name) == 0) {
+            d = &DEMOS[i];
+        }
+    }
+    const int v = d != NULL ? variant_index(d->variants, variant) : -1;
+    if (v < 0) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    if (!ui_lock()) {
+        return ESP_ERR_TIMEOUT;
+    }
+    s_demo = true;
+    load(d->screen);
+    demo_load(d, v);
+    ui_unlock();
+    return ESP_OK;
+}
+
+void ui_demo_off(void)
+{
+    if (!ui_lock()) {
+        return;
+    }
+    if (s_demo) {
+        s_demo = false;
+        screen_pet_demo(PET_DEMO_OFF);
+        screen_approval_demo(APPROVAL_DEMO_OFF);
+        screen_provisioning_demo(-1);
+        w_toast_demo(W_TOAST_DEMO_NONE);
+        w_status_demo(NULL);
+        load(s_app_screen);
+    }
+    ui_unlock();
+}
+
+bool ui_demo_is_active(void)
+{
+    bool active = false;
+    if (ui_lock()) {
+        active = s_demo;
+        ui_unlock();
+    }
+    return active;
+}
+
+/* ---- texts ---- */
+
 typedef struct {
     char (*texts)[UI_TEXT_SIZE];
     size_t max;
     size_t count;
 } text_walk_t;
+
+/* Removes LVGL recolour commands ("#RRGGBB text#", "##" for '#') in place, leaving the text a person reads. */
+static void strip_recolor(char *text)
+{
+    char *dst = text;
+    for (const char *p = text; *p != '\0'; p++) {
+        if (*p != '#') {
+            *dst++ = *p;
+        } else if (p[1] == '#') {
+            *dst++ = '#';
+            p++;
+        } else if (strspn(p + 1, "0123456789abcdefABCDEF") >= 6 && p[7] == ' ') {
+            p += 7;
+        }
+    }
+    *dst = '\0';
+}
 
 static lv_obj_tree_walk_res_t collect_text(lv_obj_t *obj, void *user_data)
 {
@@ -234,8 +557,12 @@ static lv_obj_tree_walk_res_t collect_text(lv_obj_t *obj, void *user_data)
             if (walk->count >= walk->max) {
                 return LV_OBJ_TREE_WALK_END;
             }
-            strlcpy(walk->texts[walk->count++], lv_obj_has_flag(obj, UI_FLAG_SECRET) ? UI_TEXT_HIDDEN : text,
-                    UI_TEXT_SIZE);
+            const char *shown = lv_obj_has_flag(obj, UI_FLAG_SECRET) ? UI_TEXT_HIDDEN : text;
+            char *out = walk->texts[walk->count++];
+            text_utf8_truncate(out, UI_TEXT_SIZE, shown);
+            if (lv_label_get_recolor(obj)) {
+                strip_recolor(out);
+            }
         }
     }
     return LV_OBJ_TREE_WALK_NEXT;

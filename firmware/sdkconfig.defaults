@@ -33,13 +33,19 @@ CONFIG_GPIO_CTRL_FUNC_IN_IRAM=y
 
 # LVGL: RGB565 in native byte order (the panel is set to little-endian data).
 CONFIG_LV_COLOR_DEPTH_16=y
-CONFIG_LV_MEM_SIZE_KILOBYTES=64
+# The pool is allocated in PSRAM (CMakeLists.txt).
+CONFIG_LV_MEM_SIZE_KILOBYTES=128
 CONFIG_LV_USE_LOG=n
 CONFIG_LV_THEME_DEFAULT_DARK=y
-CONFIG_LV_FONT_MONTSERRAT_14=y
-CONFIG_LV_FONT_MONTSERRAT_18=y
-CONFIG_LV_FONT_MONTSERRAT_28=y
-CONFIG_LV_FONT_UNSCII_16=y
+# Every font is the project's own (ui/fonts). The Kconfig default font has to
+# name a built-in one: the smallest, which nothing references because
+# CMakeLists.txt sets LV_FONT_DEFAULT to ui_font_small14 (the linker drops it).
+CONFIG_LV_FONT_MONTSERRAT_14=n
+CONFIG_LV_FONT_DEFAULT_UNSCII_8=y
+CONFIG_LV_USE_QRCODE=y
+# LVGL's examples and demos use its built-in fonts and are not part of the firmware.
+CONFIG_LV_BUILD_EXAMPLES=n
+CONFIG_LV_BUILD_DEMOS=n
 
 # Library allocations go to PSRAM; internal RAM is kept for WiFi, stacks and DMA.
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y

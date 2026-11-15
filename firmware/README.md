@@ -40,7 +40,39 @@ python "$IDF_PATH/tools/idf.py" -B /tmp/x/build -D SDKCONFIG=/tmp/x/sdkconfig \
   -D "SDKCONFIG_DEFAULTS=$PWD/sdkconfig.defaults;/tmp/x/extra.defaults" build
 ```
 
-The app image is about 1.6 MB of the 3 MB partition.
+The app image is 1 613 904 bytes. Every build checks it against
+`DEVOTCHI_APP_MAX_BYTES` = 1 966 080 bytes (0x1E0000, `CMakeLists.txt`):
+`tools/check_app_size.cmake` runs after the binary is generated, prints
+`devotchi.bin: N bytes of 1966080` and fails the build above the limit, so a
+later OTA layout with 0x1F0000 slots stays possible (architecture 7.3).
+
+## Fonts and UI assets
+
+The UI follows `docs/design/design-system.md`. Fonts are generated from the
+TTFs in `docs/design/fonts` and committed under `src/components/ui/fonts`;
+the build never runs the generator:
+
+```bash
+PYTHON=~/.espressif/tools/python/v6.0/venv/bin/python tools/gen_fonts.sh   # needs Node (npx) and ImageMagick
+```
+
+| Font | Source | Size / line | bpp | Glyphs | Flash |
+|---|---|---|---|---|---|
+| `ui_font_display64` | Figtree Bold | 64 / 64 | 2 | `0-9 : -` space, 23 pairing letters | 15 085 B |
+| `ui_font_title24` | Figtree Bold | 24 / 28 | 4 | ASCII | 10 130 B |
+| `ui_font_body18` | Figtree Medium (+ JetBrains Mono for ✓) | 18 / 22 | 4 | device charset | 13 751 B |
+| `ui_font_small14` | Figtree Medium (+ JetBrains Mono for ✓) | 14 / 18 | 4 | device charset | 9 724 B |
+| `ui_font_mono14` | JetBrains Mono Medium | 14 / 18 | 4 | device charset | 8 924 B |
+| `ui_font_icons` | `ICON` paths of `docs/design/tools/build.py` | 14 (hold glyphs 16) | 4 | 34 | 2 763 B |
+
+Text fonts total 57 614 bytes of the 100 kB budget (60 377 with the icons).
+The device charset is ASCII, U+00A0-U+00FF and `– — ‘ ’ “ ” • … ← ↑ → ↓ ✓ × −`;
+Figtree has no check mark, so body and small take U+2713 from JetBrains Mono.
+Digits are tabular in every Figtree font (`tools/patch_font.cjs` gives 0-9 one
+advance and takes them out of kerning). The lock-up of the splash screen is
+two A8 masks (`ui_img_lockup.c`, 5 842 B, `tools/gen_lockup.py`). The OFL
+licence texts sit next to the generated files. `display` and `title` are for
+firmware-owned strings only; dynamic text uses `body`, `small` or `mono`.
 
 ## Debug console
 
@@ -73,7 +105,12 @@ when a reset is wanted.
 Secrets (token, WiFi passphrase, proof of possession) never appear in the log,
 in a console reply or in the `screen` texts.
 
-Useful commands: `state`, `screen`, `screenshot`, `tasks` (stack high-water
+`ui demo <name> [variant]` shows any screen or widget state with constant
+sample data without touching the app's state (`ui demo off` hands the screen
+back and redraws it); `ui demo help` lists the names. `ui tabs` prints the
+button tabs, which `screen` also reports (`tabs`).
+
+Useful commands: `state`, `screen`, `ui ...`, `screenshot`, `tasks` (stack high-water
 marks), `version`, `log <level> [tag]`, `server [<url>]`, `pair <CODE>`,
 `wifi [<ssid> <pass>]`, `wifi-setup`, `set [<key> <value>]`, `power ...`,
 `batt ...`, `fb ...`, `pet ...`, `preview <screen>`, `msg <json>` (handle a

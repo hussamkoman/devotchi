@@ -153,11 +153,16 @@ bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now);
 /** App task: switches the pet screen to its About page. */
 void app_flow_show_about(uint32_t now);
 
+/** Console name of a pet-screen page ("pet", "about", "about2"). */
+const char *app_flow_page_name(ui_pet_page_t page);
+
 /** App task: an identify or a request owns the screen, so Settings must give way. */
 bool app_flow_takes_over(uint32_t now);
 
 /** App task: a toast, also reported as `@@EVT {"evt":"toast",...}`. */
 void app_toast(const char *text);
+/** app_toast() with the icon and colour of kind. */
+void app_toast_kind(ui_toast_kind_t kind, const char *text);
 
 /** App task: a pattern ended; resumes the pending-request or attention loop. */
 void app_flow_on_feedback_end(void);
@@ -241,6 +246,8 @@ typedef enum {
     APP_REQUEST_PAIR_RESTORE,
     /** text: `pairing`, `provisioning`, `approval-low`, `approval-high`, `identify`, `settings` or `off`. */
     APP_REQUEST_PREVIEW,
+    /** Renders the screen again from the app's state (after `ui demo off`). */
+    APP_REQUEST_RENDER,
     /** Erases the devotchi namespace and the WiFi configuration, then restarts. */
     APP_REQUEST_FACTORY_RESET,
     /** text: `stage`, `dry-run` or `sleep`; arg: the stage, on|off, or the timer wake in seconds. */
