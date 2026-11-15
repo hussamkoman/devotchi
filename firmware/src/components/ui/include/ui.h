@@ -251,10 +251,14 @@ typedef enum {
     UI_PET_PAGE_PET,
     /** Home page 2: recent activity. */
     UI_PET_PAGE_RECENT,
-    /** About 1/2: identity and network. */
+    /** About 1/2: the PCB ghost logo, the lock-up, what the device is, the version and the source link. */
     UI_PET_PAGE_ABOUT,
-    /** About 2/2: diagnostics. */
-    UI_PET_PAGE_ABOUT2,
+    /** About 2/2: credits. */
+    UI_PET_PAGE_CREDITS,
+    /** System info 1/2: identity and network. */
+    UI_PET_PAGE_SYSTEM,
+    /** System info 2/2: diagnostics. */
+    UI_PET_PAGE_SYSTEM2,
     UI_PET_PAGE_COUNT,
 } ui_pet_page_t;
 
@@ -369,7 +373,7 @@ typedef struct {
 /** def is copied into the picker's view. */
 void ui_picker_set(const ui_picker_t *p);
 
-#define UI_SETTINGS_ROWS        8
+#define UI_SETTINGS_ROWS        9
 #define UI_SETTINGS_VALUE_SIZE  16
 
 typedef enum {

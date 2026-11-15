@@ -1,7 +1,11 @@
 #include "ui_priv.h"
 
 #include "ui.h"
+#include "ui_lockup.h"
+#include "ui_logo.h"
 #include "ui_theme.h"
+
+#include "esp_app_desc.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -17,6 +21,17 @@
 #define ABOUT_ROW_H      21
 #define ABOUT_LABEL_W    86
 #define ABOUT_VALUE_W    210
+/* About 1/3: the logo on the left, the lock-up and its lines in a column beside it, the source link across the bottom. */
+#define CREDITS_LOGO_X   18
+#define CREDITS_LOGO_Y   34
+#define CREDITS_COL_X    (CREDITS_LOGO_X + UI_LOGO_W + 18)
+#define CREDITS_COL_W    (LV_HOR_RES - CREDITS_COL_X - 12)
+#define CREDITS_LOCKUP_Y 32
+#define CREDITS_TAG_Y    (CREDITS_LOCKUP_Y + UI_LOCKUP_H + 4)
+#define CREDITS_TEXT_Y   (CREDITS_TAG_Y + 22)
+#define CREDITS_VER_Y    158
+#define CREDITS_LINK_Y   184
+#define CREDITS_LINK     "github.com/hussamkoman/devotchi"
 
 static const char *const ABOUT_LABELS[UI_ABOUT_COUNT] = {
     [UI_ABOUT_FW] = "Firmware",    [UI_ABOUT_DEVICE] = "Device",     [UI_ABOUT_PET] = "Pet",
@@ -41,6 +56,8 @@ static pet_view_t *s_view;
 static lv_obj_t *s_project;
 static lv_obj_t *s_status;
 static lv_obj_t *s_about[2];
+static lv_obj_t *s_about_main;
+static lv_obj_t *s_credits;
 static lv_obj_t *s_about_values[UI_ABOUT_COUNT];
 static lv_obj_t *s_recent;
 static lv_obj_t *s_recent_times[UI_RECENT_ROWS];
@@ -86,7 +103,7 @@ static void apply_tabs(void)
         tabs = &caption;
     } else if (s_page == UI_PET_PAGE_RECENT) {
         tabs = &RECENT;
-    } else if (s_page == UI_PET_PAGE_ABOUT || s_page == UI_PET_PAGE_ABOUT2) {
+    } else if (s_page != UI_PET_PAGE_PET) {
         tabs = &ABOUT;
     } else if (s_tabs_on) {
         tabs = &HOME;
@@ -97,11 +114,14 @@ static void apply_tabs(void)
 static void apply_page(void)
 {
     static const char *const TITLES[UI_PET_PAGE_COUNT] = {
-        [UI_PET_PAGE_PET] = "", [UI_PET_PAGE_RECENT] = "Recent", [UI_PET_PAGE_ABOUT] = "About 1/2",
-        [UI_PET_PAGE_ABOUT2] = "About 2/2"};
+        [UI_PET_PAGE_PET] = "",          [UI_PET_PAGE_RECENT] = "Recent",
+        [UI_PET_PAGE_ABOUT] = "About 1/2", [UI_PET_PAGE_CREDITS] = "About 2/2",
+        [UI_PET_PAGE_SYSTEM] = "System info 1/2", [UI_PET_PAGE_SYSTEM2] = "System info 2/2"};
     const bool pet = s_page == UI_PET_PAGE_PET;
-    ui_set_hidden(s_about[0], s_page != UI_PET_PAGE_ABOUT);
-    ui_set_hidden(s_about[1], s_page != UI_PET_PAGE_ABOUT2);
+    ui_set_hidden(s_about_main, s_page != UI_PET_PAGE_ABOUT);
+    ui_set_hidden(s_credits, s_page != UI_PET_PAGE_CREDITS);
+    ui_set_hidden(s_about[0], s_page != UI_PET_PAGE_SYSTEM);
+    ui_set_hidden(s_about[1], s_page != UI_PET_PAGE_SYSTEM2);
     ui_set_hidden(s_recent, s_page != UI_PET_PAGE_RECENT);
     ui_set_hidden(s_project, !pet || !s_has_project || s_caption);
     ui_set_hidden(s_status, !pet || s_caption);
@@ -141,6 +161,58 @@ static lv_obj_t *about_page(lv_obj_t *scr, int first, int last)
     return page;
 }
 
+static lv_obj_t *mask_image(lv_obj_t *parent, const lv_image_dsc_t *src, lv_color_t color, int32_t x, int32_t y)
+{
+    lv_obj_t *img = lv_image_create(parent);
+    lv_image_set_src(img, src);
+    lv_obj_set_style_image_recolor(img, color, 0);
+    lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
+    lv_obj_set_pos(img, x, y);
+    return img;
+}
+
+static lv_obj_t *about_main_page(lv_obj_t *scr)
+{
+    lv_obj_t *page = ui_box(scr, 0, 0, LV_HOR_RES, LV_VER_RES);
+    mask_image(page, &ui_img_logo, UI_C_CREAM, CREDITS_LOGO_X, CREDITS_LOGO_Y);
+    mask_image(page, &ui_img_lockup, UI_C_CREAM, CREDITS_COL_X, CREDITS_LOCKUP_Y);
+    mask_image(page, &ui_img_lockup_tip, UI_C_MANGO, CREDITS_COL_X + UI_LOCKUP_TIP_X, CREDITS_LOCKUP_Y + UI_LOCKUP_TIP_Y);
+    lv_obj_t *tag = ui_text(page, UI_FONT_SMALL, UI_C_MANGO, CREDITS_COL_X, CREDITS_TAG_Y, CREDITS_COL_W, true);
+    lv_label_set_text_static(tag, "your agent's desk pet");
+    lv_obj_t *what = ui_text(page, UI_FONT_SMALL, UI_C_FOG, CREDITS_COL_X, CREDITS_TEXT_Y, CREDITS_COL_W, false);
+    lv_label_set_text_static(what, "Shows what your coding agent is doing. Answer it with three buttons.");
+    char version[48];
+    snprintf(version, sizeof(version), "Firmware v%s", esp_app_get_description()->version);
+    lv_obj_t *ver = ui_text(page, UI_FONT_MONO, UI_C_SLATE, CREDITS_COL_X, CREDITS_VER_Y, CREDITS_COL_W, true);
+    ui_label_set(ver, version);
+    lv_obj_t *link = ui_text_line(page, UI_FONT_MONO, UI_C_CREAM, CREDITS_LINK_Y, LV_TEXT_ALIGN_CENTER);
+    lv_label_set_text_static(link, CREDITS_LINK);
+    lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
+    return page;
+}
+
+static lv_obj_t *credits_page(lv_obj_t *scr)
+{
+    static const char *const ROWS[][2] = {
+        {"License", "MIT \xC2\xB7 2026 Hussam Koman"},
+        {"Firmware", "ESP-IDF 6, LVGL 9, cJSON"},
+        {"Server", "Node.js, Koa, SQLite"},
+        {"Type", "Figtree, JetBrains Mono"},
+        {"Logo", "The ghost on the PCB"},
+    };
+    const int rows = (int)(sizeof(ROWS) / sizeof(ROWS[0]));
+    lv_obj_t *page = ui_box(scr, UI_TEXT_X, ABOUT_Y, UI_WIDTH_TEXT, rows * ABOUT_ROW_H);
+    for (int i = 0; i < rows; i++) {
+        const int32_t y = i * ABOUT_ROW_H;
+        lv_obj_t *label = ui_text(page, UI_FONT_SMALL, UI_C_FOG, 0, y + 1, ABOUT_LABEL_W, true);
+        lv_label_set_text_static(label, ROWS[i][0]);
+        lv_obj_t *value = ui_text(page, UI_FONT_SMALL, UI_C_CREAM, ABOUT_LABEL_W, y + 1, ABOUT_VALUE_W, true);
+        lv_label_set_text_static(value, ROWS[i][1]);
+    }
+    lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
+    return page;
+}
+
 lv_obj_t *screen_pet_create(void)
 {
     lv_obj_t *scr = ui_screen_base_create();
@@ -152,6 +224,8 @@ lv_obj_t *screen_pet_create(void)
     lv_obj_set_style_text_color(s_project, UI_C_SLATE, 0);
     s_status = ui_text(scr, UI_FONT_BODY, UI_C_CREAM, STATUS_X, STATUS_ALONE_Y, LV_HOR_RES - 2 * STATUS_X, true);
     lv_obj_set_style_text_align(s_status, LV_TEXT_ALIGN_CENTER, 0);
+    s_about_main = about_main_page(scr);
+    s_credits = credits_page(scr);
     s_about[0] = about_page(scr, 0, UI_ABOUT_PAGE1_ROWS);
     s_about[1] = about_page(scr, UI_ABOUT_PAGE1_ROWS, UI_ABOUT_COUNT);
     s_recent = ui_box(scr, UI_TEXT_X, ABOUT_Y, UI_WIDTH_TEXT, UI_RECENT_ROWS * ABOUT_ROW_H * 3 / 2);
@@ -380,7 +454,7 @@ void screen_pet_demo(ui_pet_demo_t demo)
     case PET_DEMO_ABOUT1:
     case PET_DEMO_ABOUT2:
         apply_about(ABOUT);
-        page = demo == PET_DEMO_ABOUT1 ? UI_PET_PAGE_ABOUT : UI_PET_PAGE_ABOUT2;
+        page = demo == PET_DEMO_ABOUT1 ? UI_PET_PAGE_SYSTEM : UI_PET_PAGE_SYSTEM2;
         break;
     }
     if (page != s_page) {

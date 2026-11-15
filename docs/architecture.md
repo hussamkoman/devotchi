@@ -521,7 +521,7 @@ layer.
 | `wifi` | "Joining Wi-Fi", SSID, failure reason and retry countdown (03); APPROVE "Set up" after repeated failures |
 | `connecting` | "Finding your server" or "Server unreachable", host, last error and retry countdown (04, 05). There is no retry action, so the offline screen has no Retry tab |
 | `pairing` | Pairing code in two groups, `devotchi pair <CODE>` hint, expiry bar, server host, error line (06) |
-| `pet` | Page `pet`: home (10-16), project header, animated pet, status line. Page `recent`: the last five status and notify lines with their time. Pages `about` and `about2` (70, 71, opened from Settings): firmware, device id, IP, RSSI, server, link state, last error, uptime, reset reason, frame times |
+| `pet` | Page `pet`: home (10-16), project header, animated pet, status line. Page `recent`: the last five status and notify lines with their time. Pages `about` and `credits` (Settings > About): the PCB ghost logo (`tools/gen_logo.py` from `hardware/libs/ghost_logo.kicad_mod`), the lock-up, what the device is, the firmware version, the source link and the credits. Pages `system` and `system2` (70, 71, Settings > System info): firmware, device id, IP, RSSI, server, link state, last error, uptime, reset reason, frame times |
 | `approval` | Permission card (20-24) and its decision menu (25-27) |
 | `question` | Question read page, card, question menu and review (30-37) |
 | `plan` | Plan card and plan menu (29, 29b) |
@@ -557,7 +557,7 @@ come from one table. In short:
 Settings is a tree (`core/settings_menu`, host-tested). Top list: Pet,
 Display (Brightness, Screen timeout, Deep sleep), Clock (Show clock, Clock
 brightness, 12/24 h, Night dimming), Haptics and LED (Haptics, Button clicks, LED), Desk mode (toggles in
-place), Network (Wi-Fi setup, Unpair, Factory reset), Showcase, About. Unpair
+place), Network (Wi-Fi setup, Unpair, Factory reset), Showcase, System info, About. Unpair
 and Factory reset go through the destructive confirm (APPROVE hold, coral).
 Lists close after 60 s without a press, the editor cancels after 30 s, the
 confirm after 10 s. Unpair erases token and room id only; Factory reset

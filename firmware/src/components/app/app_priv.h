@@ -210,7 +210,7 @@ bool app_flow_mood_idle(void);
 
 /* Showcase (protocol 14.7, ux-flows 8). */
 bool app_flow_showcase_active(void);
-/** True while About 1/2 or 2/2 is open. */
+/** True while an About or System info page is open. */
 bool app_flow_about_open(void);
 /** Drops the offline banner (an attention banner stays): used by the showcase menu. */
 void app_flow_drop_offline_banner(void);
@@ -220,8 +220,9 @@ void app_flow_showcase_on_request(app_request_t *req, uint32_t now);
 
 /** App task: switches the pet screen to its About page. */
 void app_flow_show_about(uint32_t now);
+void app_flow_show_system(uint32_t now);
 
-/** Console name of a pet-screen page ("pet", "about", "about2"). */
+/** Console name of a pet-screen page ("pet", "recent", "about", "credits", "system", "system2"). */
 const char *app_flow_page_name(ui_pet_page_t page);
 
 /** App task: an identify or a request owns the screen, so Settings must give way. */

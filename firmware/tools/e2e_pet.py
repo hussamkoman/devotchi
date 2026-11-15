@@ -228,21 +228,33 @@ class PetRun(FlowRun):
         self.go_to_row("about")
         self.press("approve")
         screen = self.wait_screen(lambda s: s["page"] == "about", 3, "about page")
+        check("github.com/hussamkoman/devotchi" in screen["texts"], f"About 1/2 lacks the source link: {screen['texts']}")
+        self.screenshot("about")
+        self.press("action")
+        screen = self.wait_screen(lambda s: s["page"] == "credits", 3, "credits page")
+        check("License" in screen["texts"], f"About 2/2 lacks the license row: {screen['texts']}")
+        self.press("reject")
+        self.wait_screen(lambda s: s["page"] == "pet", 3, "REJECT back from About")
+        self.open_list("top")
+        self.go_to_row("system")
+        self.press("approve")
+        screen = self.wait_screen(lambda s: s["page"] == "system", 3, "system info page")
         texts = screen["texts"]
         # Each row is a label and its value; the value follows its label in the texts.
         for label, prefix in (("Firmware", ""), ("Device", ""), ("Pet", ""), ("Wi-Fi", ""), ("IP", ""),
                               ("Server", ""), ("Link", "online"), ("Room", "")):
             check(label in texts and texts.index(label) + 1 < len(texts)
-                  and texts[texts.index(label) + 1].startswith(prefix), f"About 1/2 lacks '{label}' {prefix}: {texts}")
-        check(not self.pose()["animating"], "the face animates behind the About page")
-        self.screenshot("about")
+                  and texts[texts.index(label) + 1].startswith(prefix),
+                  f"System info 1/2 lacks '{label}' {prefix}: {texts}")
+        check(not self.pose()["animating"], "the face animates behind System info")
+        self.screenshot("system")
         self.press("action")
-        screen = self.wait_screen(lambda s: s["page"] == "about2", 3, "about page 2")
+        screen = self.wait_screen(lambda s: s["page"] == "system2", 3, "system info page 2")
         texts = screen["texts"]
         for label in ("Battery", "Uptime", "Reset", "Heap", "Frames", "Requests", "Pets", "Last err", "Fonts"):
-            check(label in texts, f"About 2/2 lacks '{label}': {texts}")
+            check(label in texts, f"System info 2/2 lacks '{label}': {texts}")
         self.press("action")
-        self.wait_screen(lambda s: s["page"] == "about", 3, "Page wraps to About 1/2")
+        self.wait_screen(lambda s: s["page"] == "system", 3, "Page wraps to System info 1/2")
         self.press("reject")
         self.wait_screen(lambda s: s["page"] == "pet", 3, "REJECT back to the pet page")
         check(self.pose()["animating"] or self.pose()["frozen"], "face not running again")
@@ -254,7 +266,7 @@ class PetRun(FlowRun):
                         "return to the pet page")
         idle = time.monotonic() - t0
         check(PAGE_IDLE_S - 1 <= idle <= PAGE_IDLE_S + 2, f"Recent returned after {idle:.1f} s")
-        return f"ACTION toggles recent activity; About 1/2 and 2/2 from Settings; idle return after {idle:.1f} s"
+        return f"ACTION toggles recent activity; About and System info from Settings; idle return after {idle:.1f} s"
 
     def step_settings(self):
         self.cmd("pet freeze on")
