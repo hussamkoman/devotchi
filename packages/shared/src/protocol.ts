@@ -68,6 +68,18 @@ export type DecideChoice = (typeof DECIDE_CHOICES)[number];
 /** `dismiss.choice`: the decide choice, or `answered` for a question_response. */
 export type DismissChoice = DecideChoice | "answered";
 
+/** `dismiss.choice` / `lastRequest.choice` in words, for receipts and the CLI (ux-flows 3.2). */
+export const CHOICE_WORDS: Record<DismissChoice, string> = {
+  allow_session: "allowed for this session",
+  deny_ask_why: "denied, Claude was asked why",
+  deny_stop: "denied, Claude stopped",
+  approve: "plan approved, each edit still asks",
+  approve_accept_edits: "plan approved, edits accepted",
+  revise: "sent back, Claude keeps planning",
+  decline: "declined to answer",
+  answered: "answers sent",
+};
+
 export const GRANT_MATCHES = ["exact", "prefix"] as const;
 export type GrantMatch = (typeof GRANT_MATCHES)[number];
 
@@ -492,6 +504,27 @@ export interface PetsResult {
   pet: string;
   ok: boolean;
   error?: PetResultError;
+}
+
+/** `pets.result.error` in words, for the dashboard and the CLI. */
+export const PET_ERROR_TEXT: Record<PetResultError, string> = {
+  http: "the download from the server failed",
+  size: "the pack size did not match",
+  crc: "the pack was damaged on the way (CRC)",
+  format: "the device cannot read this pack",
+  mismatch: "the pack changed on the server; send it again",
+  full: "all slots are full; remove a pet on the device first",
+  unknown: "the device does not have that pet",
+  builtin: "built-in pets cannot be replaced or removed",
+  busy: "the device is busy with another download",
+  storage: "the device could not store it",
+};
+
+export function petResultText(result: PetsResult): string {
+  const verb = result.op === "install" ? "install" : result.op === "select" ? "switch to" : result.op === "remove" ? "remove" : result.op;
+  const pet = result.pet === "" ? "the pet" : result.pet;
+  if (result.ok) return result.op === "install" ? `${pet} installed` : result.op === "select" ? `now shows ${pet}` : `${pet} removed`;
+  return `could not ${verb} ${pet}: ${result.error !== undefined ? PET_ERROR_TEXT[result.error] : "unknown error"}`;
 }
 
 /** Section 14.8: device -> server, and server -> dashboards with `device` added. */

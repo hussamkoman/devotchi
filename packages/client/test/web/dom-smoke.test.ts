@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Browser, type BrowserPage } from "happy-dom";
+import { canonicalTimeZone, type Room } from "@devotchi/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ALLOW, hookInput } from "../../../server/test/hook-helpers.js";
 import { makeWorld, type World } from "../e2e/helpers.js";
@@ -22,7 +23,19 @@ beforeAll(async () => {
   world = await makeWorld();
   dash = await startWebServer({ serverUrl: world.t.url, token: world.token, port: 0, local: false, webDir: WEB_DIR });
   browser = new Browser({
-    settings: { enableJavaScriptEvaluation: true, suppressInsecureJavaScriptEnvironmentWarning: true, disableCSSFileLoading: true },
+    settings: {
+      enableJavaScriptEvaluation: true,
+      suppressInsecureJavaScriptEnvironmentWarning: true,
+      disableCSSFileLoading: true,
+      // A browser sends Origin on a same-origin PUT/POST/DELETE; happy-dom does not, and the dashboard requires it.
+      fetch: {
+        interceptor: {
+          beforeAsyncRequest: async ({ request, window }) => {
+            if (request.method !== "GET" && request.method !== "HEAD") request.headers.set("Origin", window.location.origin);
+          },
+        },
+      },
+    },
   });
   page = browser.newPage();
   await page.goto(`http://127.0.0.1:${dash.port}/`);
@@ -96,5 +109,13 @@ describe("web UI in a DOM", () => {
     });
     await until(() => doc().querySelector(".card") === null, 3000, "card removed");
     expect(text("toasts")).toContain("Question: answers sent: Vue; Router, Tests; no preference, answered on the dashboard");
+  });
+
+  it("gives a room without a time zone the browser's zone (protocol 14.9)", async () => {
+    // The world's room starts with timeZone ""; the page adopts its zone once loaded.
+    const zone = canonicalTimeZone(new Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(zone).not.toBeNull();
+    const room = async () => (await world.t.fetch("/api/room", { token: world.token }).then((r) => r.json())) as Room;
+    await until(async () => (await room()).settings.timeZone === zone, 5000, "room took the browser's time zone");
   });
 });

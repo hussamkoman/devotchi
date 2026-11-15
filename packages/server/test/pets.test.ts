@@ -204,11 +204,28 @@ describe("pets message", () => {
     const { devices } = (await (await t.fetch("/api/devices", { token })).json()) as { devices: Json[] };
     const { type: _type, ...state } = PETS_STATE;
     expect(devices[0].pets).toEqual(state);
+    // The result is kept apart, with the server time it arrived.
+    const kept = devices[0].petsResult as Json;
+    expect(kept).toEqual({ op: "select", pet: "ember", ok: false, error: "unknown", at: expect.any(String) });
+    // A later state without result keeps the last result.
+    d.send(PETS_STATE);
+    await dash.awaitMessage("pets");
+    const after = (await (await t.fetch("/api/devices", { token })).json()) as { devices: Json[] };
+    expect(after.devices[0].petsResult).toEqual(kept);
     // A dashboard cannot send pets, and the cap is not granted to it.
     dash.send(PETS_STATE);
     expect(await dash.awaitMessage("error")).toMatchObject({ code: "NOT_ALLOWED" });
     expect(await (await t.fetch(`/api/devices/${device.deviceId}/pet`, { method: "POST", token, json: { op: "select", pet: "ember" } })).status).toBe(202);
     expect(await d.awaitMessage("pet_cmd")).toEqual({ type: "pet_cmd", op: "select", pet: "ember" });
+    // The answer to that command is a petsResult at or after the POST's `at`.
+    const sent = (await (await t.fetch(`/api/devices/${device.deviceId}/pet`, { method: "POST", token, json: { op: "select", pet: "mochi" } })).json()) as { at: string };
+    await d.awaitMessage("pet_cmd");
+    d.send({ ...PETS_STATE, selected: "mochi", result: { op: "select", pet: "mochi", ok: true } });
+    await until(async () => {
+      const { devices: now } = (await (await t.fetch("/api/devices", { token })).json()) as { devices: { petsResult?: { pet: string; at: string } }[] };
+      const result = now[0].petsResult;
+      return result?.pet === "mochi" && Date.parse(result.at) >= Date.parse(sent.at);
+    });
   });
 
   it("is refused when malformed or over 700 bytes", async () => {
@@ -234,7 +251,7 @@ describe("POST /api/devices/:id/pet", () => {
     d.send(PETS_STATE);
     const res = await command(device.deviceId, { op: "install", pet: "mine", select: true });
     expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({ sent: true });
+    expect(await res.json()).toEqual({ sent: true, at: expect.any(String) });
     expect(await d.awaitMessage("pet_cmd")).toEqual({
       type: "pet_cmd",
       op: "install",

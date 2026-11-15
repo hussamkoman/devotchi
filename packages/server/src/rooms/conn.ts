@@ -9,6 +9,7 @@ import {
   type Cap,
   type ClientKind,
   type DevicePets,
+  type PetsResult,
   type DeviceTelemetry,
   type Role,
   type ServerTiming,
@@ -45,6 +46,8 @@ export class Conn {
   telemetryWrittenAt: number | null = null;
   /** Protocol 14.8: the last `pets` message without `result`; memory only. */
   lastPets: DevicePets | null = null;
+  /** Protocol 14.8: the last `result` of a `pets` message and when it arrived (ms); memory only. */
+  lastPetsResult: { result: PetsResult; at: number } | null = null;
   registration: Registration | null = null;
   /** Protocol 14.1: what the consumer declared and the server offers; empty for phase-1 consumers and producers. */
   caps: ReadonlySet<Cap> = new Set();

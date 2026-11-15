@@ -14,6 +14,7 @@ import {
   encodePet,
   validatePet,
   type DevicePets,
+  type DevicePetsResult,
   type PetCmdMessage,
   type PetInfo,
   type PetListEntry,
@@ -146,14 +147,15 @@ export class PetService {
     }
     const { type: _type, device: _device, result, ...state } = msg;
     conn.lastPets = state;
+    if (result) conn.lastPetsResult = { result, at: Date.now() };
     const forward = buildPets({ device: registration.identity, ...state, ...(result ? { result } : {}) });
     for (const consumer of room.consumers) {
       if (consumer.registration?.kind === "dashboard") consumer.send(forward);
     }
   }
 
-  /** POST /api/devices/:id/pet. */
-  command(roomId: string, deviceId: string, cmd: PetCommand): void {
+  /** POST /api/devices/:id/pet; returns the time (ms) the command was sent. */
+  command(roomId: string, deviceId: string, cmd: PetCommand): number {
     const row = findDevice(this.deps.db, roomId, deviceId);
     if (!row) throw notFound("No such device");
     const room = this.deps.rooms.get(roomId);
@@ -173,9 +175,11 @@ export class PetService {
     } else {
       msg = buildPetCmd({ op: cmd.op, pet: cmd.pet });
     }
+    const at = Date.now();
     let sent = 0;
     for (const conn of capable) if (conn.send(msg)) sent++;
     if (sent === 0) throw conflict("device offline");
+    return at;
   }
 
   /** The newest `pets` state of a device's sockets, for GET /api/devices. */
@@ -183,6 +187,13 @@ export class PetService {
     let out: DevicePets | undefined;
     for (const conn of conns) if (conn.lastPets) out = conn.lastPets;
     return out;
+  }
+
+  /** The newest `pets` result of a device's sockets, for GET /api/devices. */
+  static resultOf(conns: readonly Conn[]): DevicePetsResult | undefined {
+    let latest: NonNullable<Conn["lastPetsResult"]> | null = null;
+    for (const conn of conns) if (conn.lastPetsResult && (latest === null || conn.lastPetsResult.at >= latest.at)) latest = conn.lastPetsResult;
+    return latest === null ? undefined : { ...latest.result, at: new Date(latest.at).toISOString() };
   }
 
   private roomPets(roomId: string): StoredPet[] {

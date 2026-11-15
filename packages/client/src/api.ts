@@ -79,12 +79,12 @@ export class ApiClient {
 
   /** A Uint8Array body is sent as application/octet-stream, anything else as JSON. */
   async request<T>(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
-    return (await this.exchange<T>(method, path, body, extraHeaders, false)) as T;
+    return (await this.exchange<T>(method, path, body, extraHeaders, false)).data as T;
   }
 
   /** GET of a binary body (a pet pack); errors as in request(). */
   async requestBytes(path: string): Promise<Uint8Array> {
-    return (await this.exchange("GET", path, undefined, { Accept: "application/octet-stream" }, true)) as Uint8Array;
+    return (await this.exchange("GET", path, undefined, { Accept: "application/octet-stream" }, true)).data as Uint8Array;
   }
 
   private async exchange<T>(
@@ -93,7 +93,7 @@ export class ApiClient {
     body: unknown,
     extraHeaders: Record<string, string>,
     binary: boolean,
-  ): Promise<T | Uint8Array> {
+  ): Promise<{ status: number; data: T | Uint8Array }> {
     const headers: Record<string, string> = { Accept: "application/json", ...extraHeaders };
     if (this.options.token !== undefined) headers.Authorization = `Bearer ${this.options.token}`;
     const raw = body instanceof Uint8Array;
@@ -109,7 +109,7 @@ export class ApiClient {
     } catch (err) {
       throw new UnreachableError(`cannot reach ${this.baseUrl} (${networkReason(err)})`);
     }
-    if (binary && res.ok) return new Uint8Array(await res.arrayBuffer());
+    if (binary && res.ok) return { status: res.status, data: new Uint8Array(await res.arrayBuffer()) };
     const text = await res.text().catch(() => "");
     let data: unknown = undefined;
     if (text !== "") {
@@ -139,7 +139,7 @@ export class ApiClient {
         true,
       );
     }
-    return data as T;
+    return { status: res.status, data: data as T };
   }
 
   /** GET /health, refusing a server that does not speak protocol 2. */
@@ -207,8 +207,10 @@ export class ApiClient {
   }
 
   /** A pack (bytes) or its JSON source. */
-  uploadPet(body: Uint8Array | object): Promise<PetListEntry> {
-    return this.request("POST", "/api/pets", body);
+  /** POST /api/pets; `created` is false when the room already had this exact pack (HTTP 200, not 201). */
+  async uploadPet(body: Uint8Array | object): Promise<{ pet: PetListEntry; created: boolean }> {
+    const { status, data } = await this.exchange<PetListEntry>("POST", "/api/pets", body, {}, false);
+    return { pet: data as PetListEntry, created: status === 201 };
   }
 
   async deletePet(id: string): Promise<void> {

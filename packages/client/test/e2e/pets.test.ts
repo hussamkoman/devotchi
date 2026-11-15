@@ -5,8 +5,8 @@
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { crc32, crc32Hex, encodePet, type PetSource, type PetsMessage } from "@devotchi/shared";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { crc32, crc32Hex, encodePet, type Device, type PetSource, type PetsMessage } from "@devotchi/shared";
 import { SimPets } from "../../src/sim-pets.js";
 import { requireBuiltCli } from "../helpers.js";
 import { makeWorld, startSim, type World } from "./helpers.js";
@@ -37,6 +37,9 @@ describe("pets with a sim", () => {
     expect(added.stderr).toBe("");
     expect(added.code).toBe(0);
     expect(added.stdout).toContain('Added copy "Copy" rev 2');
+    const readded = await world.cli(["pets", "add", file]);
+    expect(readded.code).toBe(0);
+    expect(readded.stdout).toMatch(/^copy "Copy" rev 2 \(\d+ bytes\) is already in this room, unchanged\./m);
 
     const listed = await world.cli(["pets"]);
     expect(listed.code).toBe(0);
@@ -52,6 +55,29 @@ describe("pets with a sim", () => {
 
     const used = await world.cli(["pets", "use", "ember", "--device", "sim-pet"]);
     expect(used.stdout).toContain("sim-pet shows ember.");
+
+    // The device's own answer decides (protocol 14.8 `petsResult`): a failed re-install of the
+    // rev it already has is a failure, and an error comes back at once, not after --wait.
+    const realFetch = globalThis.fetch;
+    const failPack = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      String(input instanceof Request ? input.url : input).endsWith("/api/pets/copy/pack")
+        ? Promise.resolve(new Response("", { status: 503 }))
+        : realFetch(input, init),
+    );
+    try {
+      const started = Date.now();
+      const resent = await world.cli(["pets", "send", "copy", "--wait", "20"]);
+      expect(resent.code).toBe(1);
+      expect(resent.stderr).toContain("sim-pet: could not install copy: the download from the server failed");
+      expect(Date.now() - started).toBeLessThan(10_000);
+    } finally {
+      failPack.mockRestore();
+    }
+    const missing = await world.cli(["pets", "use", "nothere", "--device", "sim-pet", "--wait", "20"]);
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain("sim-pet: could not switch to nothere: the device does not have that pet");
+    const devices = (await world.t.fetch("/api/devices", { token: world.token }).then((r) => r.json())) as { devices: Device[] };
+    expect(devices.devices.find((d) => d.id === "sim-pet")?.petsResult).toMatchObject({ op: "select", pet: "nothere", ok: false, error: "unknown" });
 
     // Devo is built in: the server refuses before the device is asked.
     const devo = await world.cli(["pets", "send", "devo"]);

@@ -52,11 +52,6 @@
 - [ ] Firmware: `ui_demo_active()` (lock held) and `ui_demo_is_active()` (takes the lock) are easy to confuse
 - [ ] Firmware: the caps helper upper-cases Latin-1 letters (é becomes É); the design brief asked to leave non-ASCII letters as they are; owner to decide
 - [ ] Pets: `petpack.py check` warns that Ember's spade reaches outside the 220x190 mockup box
-- [ ] Shared: a command containing a tab or any non-ASCII character is always `cut`, so a device cannot allow it and it gets no session grant (safe, but stricter than "shortened to fit")
-- [ ] Client: `CHOICE_WORDS` (src/format.ts) and the dashboard's `CHOICE_TEXT` (web/src/store.ts) word `dismiss.choice` differently; move one table to `@devotchi/shared`
-- [ ] Client: no automated test for the dashboard adopting the browser's time zone (`adoptBrowserTimeZone`)
-- [ ] Client: re-uploading an unchanged pack (server 200) still prints "Added" in `devotchi pets add`, and the dashboard proxy always answers 201
-- [ ] Client: `devotchi pets send` returns at once when the same rev is already on the device even if the re-install fails, and waits the whole `--wait` on a device error, because REST does not carry `pets.result`
 
 ## Backlog (not approved or deferred)
 

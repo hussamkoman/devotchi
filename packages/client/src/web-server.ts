@@ -298,8 +298,8 @@ export async function startWebServer(options: DashboardOptions): Promise<Dashboa
       }
       case "POST /api/pets": {
         const binary = /^application\/octet-stream\b/i.test(req.headers["content-type"] ?? "");
-        const pet = await api.uploadPet(binary ? await readPackBody(req) : await readJsonBody(req));
-        return sendJson(res, 201, pet, headers);
+        const { pet, created } = await api.uploadPet(binary ? await readPackBody(req) : await readJsonBody(req));
+        return sendJson(res, created ? 201 : 200, pet, headers);
       }
       case "DELETE /api/pets/:id":
         await api.deletePet(petId);

@@ -54,8 +54,8 @@ export function petRoutes(deps: PetRouteDeps): Router {
 
   router.post("/api/devices/:id/pet", ...write, (ctx) => {
     const cmd = parsePetCommand(ctx.request.body);
-    pets.command(authOf(ctx).roomId, ctx.params.id, cmd);
-    const body: DevicePetCommandResponse = { sent: true };
+    const at = pets.command(authOf(ctx).roomId, ctx.params.id, cmd);
+    const body: DevicePetCommandResponse = { sent: true, at: new Date(at).toISOString() };
     ctx.status = 202;
     ctx.body = body;
   });

@@ -164,6 +164,7 @@ export class DeviceService {
       if (room) holding += this.deps.permissions.holdingCount(conn, room);
     }
     const pets = PetService.stateOf(conns);
+    const petsResult = PetService.resultOf(conns);
     return {
       id: row.id,
       name: row.name,
@@ -177,6 +178,7 @@ export class DeviceService {
       telemetry,
       telemetryAt,
       ...(pets ? { pets } : {}),
+      ...(petsResult ? { petsResult } : {}),
     };
   }
 }

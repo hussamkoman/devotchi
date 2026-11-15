@@ -1131,11 +1131,13 @@ section and sections 1..13 disagree about a phase-2 feature, this section wins.
 - **Text for devices in phase-2 messages.** `question` and `plan` text uses
   the *device charset*: printable ASCII, U+00A0..U+00FF and
   `– — ‘ ’ “ ” • … ← ↑ → ↓ ✓ × −`. The server maps anything else: line
-  feed, carriage return and tab become one space each (only `permission.cmd`
-  keeps `\n` as its line separator); then NFKD and strip combining marks;
-  whatever is still outside the charset becomes `?`. Spaces written for line
-  breaks do not count as replaced characters in 14.4. `permission` fields
-  stay ASCII as in section 2.
+  feed, carriage return and tab become one space each; then NFKD and strip
+  combining marks; whatever is still outside the charset becomes `?`. Spaces
+  written for line breaks do not count as replaced characters in 14.4.
+  `permission` fields stay ASCII as in section 2 and are not mapped this way:
+  `permission.cmd` keeps `\n` as its line separator and shows every other
+  character outside printable ASCII (tab and carriage return included) as `?`,
+  with `cut` set (14.2).
 - The rule of 8.3 is unchanged and now covers every new outcome: **only an
   explicit human choice on a consumer produces allow or deny.** Timeouts, lost
   holders, errors, invalid choices, the device's showcase and everything else
@@ -1150,7 +1152,7 @@ Additions to the table of 3.7: consumer -> server `decide`,
 | Field | Type | Limit | Notes |
 |---|---|---|---|
 | `cmd` | string | 600 bytes | The exact command, path or arguments, lines separated by `\n`. Bash: the command verbatim. Edit/Write: first line the path, second `+A -B lines`, then the change. Other tools: compact JSON of the input |
-| `cut` | boolean | | Present and `true` when `cmd` is not the complete command (it was shortened to fit). **A device offers no allow for a cut request** (deny, the deny rows and "Send to terminal" remain) and the server answers `permission_response granted:true` or `decide allow_session` for such a request with `error NOT_ALLOWED` (with `id`) when it comes from a `device` or `sim` connection **that declared `decide`**; the request stays pending. A phase-1 device or sim (no `decide` cap) never receives `cut` and keeps its phase-1 behaviour: its allow is accepted, as today. Dashboards are not restricted (they can show the full text, 14.6a) |
+| `cut` | boolean | | Present and `true` when `cmd` is not exactly the complete command: it was shortened to fit, or the command contains a character outside printable ASCII and `\n` (a tab, a carriage return, any non-ASCII character), shown as `?`. A tab is not shown as a space, because inside quotes or in a `<<-` here-document it means something else than a space, so the device would show a different command than the one that runs. **A device offers no allow for a cut request** (deny, the deny rows and "Send to terminal" remain) and the server answers `permission_response granted:true` or `decide allow_session` for such a request with `error NOT_ALLOWED` (with `id`) when it comes from a `device` or `sim` connection **that declared `decide`**; the request stays pending. A phase-1 device or sim (no `decide` cap) never receives `cut` and keeps its phase-1 behaviour: its allow is accepted, as today. Dashboards are not restricted (they can show the full text, 14.6a) |
 | `desc` | string | 200 bytes | Claude's own description of the call (Bash `description`), when it gave one. Consumers label it as Claude's words |
 | `reason` | string | 40 bytes | Why the risk is `med` or `high`: the description of the risk rule that matched. Computed by the server from the command only |
 | `grant` | object | | Never together with `cut`. Present only when "Allow for this session" may be offered: `{"rule":"pnpm test","match":"prefix"}`. `rule` (at most 120 bytes) is the text the consumer must show word for word; `match` is `exact` or `prefix` (the consumer renders a prefix as `pnpm test …`) |
@@ -1453,10 +1455,17 @@ use the REST format and the lowercase codes of `API_ERROR_CODES`
 | `GET /api/pets/:id/pack` | The pack, `application/octet-stream`, `Content-Length` = `size`, `ETag: "<crc32>"`. 404 `not_found` (also for a pack of another room) |
 | `POST /api/pets` (`cli`) | Body: a pack (`application/octet-stream`, at most 2048 bytes) or its JSON source (`application/json`, at most 16 kB). Validated with the shared codec; stored for the room (at most 16). 201 with the list entry; 200 when the room already has the same id with identical bytes (nothing changes); a changed pack under a stored id needs a higher `rev` (else 409 `conflict`) and replaces it without counting against the 16; 400 `invalid_request` (the `error` text carries the codec's message); 413 `payload_too_large`; 409 `conflict` when the id is a catalog id or the room already has 16 |
 | `DELETE /api/pets/:id` (`cli`) | Room packs only. 204; 404 `not_found`; 409 `conflict` for a catalog id |
-| `POST /api/devices/:id/pet` (`cli`) | Body `{"op":"install","pet":"sprout","select":true}`, `{"op":"select","pet":"devo"}` or `{"op":"remove","pet":"sprout"}`. Sends `pet_cmd` to the device. 202; 400 `invalid_request` (bad body, `pet` not `[a-z0-9]{1,8}`); 404 `not_found` (device, or pack for `install`); 409 `conflict` when the device is offline ("device offline"), has no `pets` cap ("device does not support pets") or reports the id as built-in for `install`/`remove` ("built-in pet") |
+| `POST /api/devices/:id/pet` (`cli`) | Body `{"op":"install","pet":"sprout","select":true}`, `{"op":"select","pet":"devo"}` or `{"op":"remove","pet":"sprout"}`. Sends `pet_cmd` to the device. 202 with `{"sent":true,"at":"<ISO 8601 server time the command was sent>"}`; 400 `invalid_request` (bad body, `pet` not `[a-z0-9]{1,8}`); 404 `not_found` (device, or pack for `install`); 409 `conflict` when the device is offline ("device offline"), has no `pets` cap ("device does not support pets") or reports the id as built-in for `install`/`remove` ("built-in pet") |
 
 `GET /api/devices` entries gain `pets` (the device's last `pets` message
-without `result`).
+without `result`) and `petsResult` (the last `result` it sent, with `at`, the
+ISO 8601 server time it arrived, e.g.
+`{"op":"install","pet":"twin","ok":false,"error":"crc","at":"2026-11-15T10:00:01.234Z"}`);
+both only while the device is online, memory only. The device's answer to a
+command is the first `petsResult` with the same `op` and `pet` and an `at` at
+or after the POST's `at`; `devotchi pets send` and `pets use` wait for it, so a
+failure is reported at once and a re-install of the rev already on the device
+counts only when the device says `ok`.
 
 ```json
 {"type":"pet_cmd","op":"install","pet":"sprout","rev":1,"size":612,
