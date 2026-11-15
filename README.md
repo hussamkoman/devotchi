@@ -55,10 +55,10 @@ Each pet is one JSON file in [`pets/`](pets/README.md). Adding a pet needs no co
 
 | | |
 |---|---|
-| <img src="docs/images/pets/devo.png" width="380"> | **Devo** (default)<br>The ghost from the PCB silkscreen. Its antenna and chip light show the mood. |
-| <img src="docs/images/pets/mochi.png" width="380"> | **Mochi**<br>A soft square with an antenna. |
-| <img src="docs/images/pets/ember.png" width="380"> | **Ember**<br>A small jade dragon. Wings, tail, smoke and fire show the mood. |
-| <img src="docs/images/pets/sprout.png" width="380"> | **Sprout**<br>An egg with a leaf. Install it from the dashboard. |
+| <img src="docs/images/pets/devo.png" width="380"> | **Devo** (default)<br>The Devotchi ghost. Its circuits light up while it works, and it dozes off when you're away. |
+| <img src="docs/images/pets/mochi.png" width="380"> | **Mochi**<br>A squishy little block that wears its mood in its colour. |
+| <img src="docs/images/pets/ember.png" width="380"> | **Ember**<br>A tiny dragon. Fumes smoke when it's angry and breathes fire when it's excited. |
+| <img src="docs/images/pets/sprout.png" width="380"> | **Sprout**<br>An egg with a leaf that droops on bad days. Add it from the dashboard. |
 
 Shown in the happy, focused and sleeping moods.
 
