@@ -55,7 +55,13 @@ static void test_top_list_order_and_wrap(void)
         TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, click(&m, BTN_ACTION, 0).kind);
     }
     TEST_ASSERT_EQUAL(SETTINGS_ITEM_PET, settings_menu_item(&m));
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, click(&m, BTN_REJECT, 0).kind);
+    /* REJECT's click moves up and wraps; only its hold leaves the top list. */
+    TEST_ASSERT_EQUAL(BTN_MODE_NAV_HOLD, settings_menu_btn_mode(&m, BTN_REJECT));
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, click(&m, BTN_REJECT, 0).kind);
+    TEST_ASSERT_EQUAL(EXPECTED[n - 1], settings_menu_item(&m));
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, click(&m, BTN_REJECT, 0).kind);
+    TEST_ASSERT_EQUAL(EXPECTED[n - 2], settings_menu_item(&m));
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, press(&m, BTN_REJECT, BTN_HOLD, 0).kind);
 }
 
 static void test_clock_sub_list(void)
@@ -76,7 +82,8 @@ static void test_sub_list_back_lands_on_its_row(void)
     TEST_ASSERT_EQUAL(SETTINGS_ACT_MOVED, click(&m, BTN_APPROVE, 0).kind);
     TEST_ASSERT_EQUAL(SETTINGS_LIST_NETWORK, m.list);
     TEST_ASSERT_EQUAL(SETTINGS_ITEM_WIFI_SETUP, settings_menu_item(&m));
-    click(&m, BTN_REJECT, 0);
+    TEST_ASSERT_FALSE(settings_list_is_root(m.list));
+    press(&m, BTN_REJECT, BTN_HOLD, 0);
     TEST_ASSERT_EQUAL(SETTINGS_LIST_TOP, m.list);
     TEST_ASSERT_EQUAL(SETTINGS_ITEM_NETWORK, settings_menu_item(&m));
 }
@@ -197,8 +204,9 @@ static void test_quick_menu(void)
     click(&m, BTN_APPROVE, 0);
     TEST_ASSERT_EQUAL(SETTINGS_LIST_TOP, m.list);
     TEST_ASSERT_EQUAL(SETTINGS_ITEM_PET, settings_menu_item(&m));
-    /* Back from the top list leaves the menu, not to the quick menu. */
-    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, click(&m, BTN_REJECT, 0).kind);
+    /* Holding Back on the top list leaves the menu, not to the quick menu. */
+    TEST_ASSERT_TRUE(settings_list_is_root(m.list));
+    TEST_ASSERT_EQUAL(SETTINGS_ACT_EXIT, press(&m, BTN_REJECT, BTN_HOLD, 0).kind);
 }
 
 static void test_showcase_refused_while_blocked(void)

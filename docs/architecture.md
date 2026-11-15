@@ -549,7 +549,7 @@ come from one table. In short:
 | Permission card | Deny | Next page | Allow once (inactive until every page was shown; a nudge "Hold to allow" for `high`, which needs the APPROVE hold) | Decision menu: Send to terminal, Allow for this session (APPROVE hold), Deny, ask why, Deny and stop |
 | Question | First question: to terminal; later: back | Next option or page | Choose / tick | Question menu |
 | Plan card | Revise | Next page | Approve, manual edit approval | Plan menu (Approve, accept all edits by APPROVE hold) |
-| Settings lists | Back (top list: home) | Next row | Open / change | |
+| Settings lists | Up a row (wraps); hold: Back to the parent list, Exit from the top list | Next row | Open / change | |
 | Value editor | Cancel and restore | Next value, previewed live | Save | |
 | `wifi`, `connecting`, `pairing`, `provisioning` | | (`pairing`: new code; `provisioning`: other step) | (`wifi` after failures: set up) | Settings |
 | `clock`, `sleep`, `identify` | Any button: wake to home / stay awake / dismiss; the press does nothing else | | | |

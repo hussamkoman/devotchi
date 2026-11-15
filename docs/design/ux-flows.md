@@ -70,7 +70,7 @@ were (settings returns to its top list; the showcase is left, see 8).
 | Question menu (36) | Back to the question | Next row | Choose | - | |
 | Question review (37) | Back to the last question | - | Send all answers | Question menu | |
 | Clock (40-42) | any: wake to home (no tab drawn; the press is a wake press) | | | | |
-| Settings lists (50, 51) | Back (top list: exit to home) | Next row (wraps) | Open / change | - | |
+| Settings lists (50, 51) | Up a row (wraps) | Next row (wraps) | Open / change | - | REJECT hold: back to the parent list; on the top or quick list, exit to home |
 | Value editor (52) | Cancel (restore the old value) | Next value (wraps, previewed live) | Save | - | |
 | Destructive confirm (53) | Cancel | - | Nudge: shake + "Hold to erase" | - | **APPROVE hold 1.2 s: do it** (coral) |
 | Pet picker (60-62) | Back | Next pet | Use this pet (not on the pet in use or "More pets") | - | |

@@ -306,7 +306,7 @@ class PetRun(FlowRun):
         mmark = self.mock.mark()
         self.press("approve")
         self.wait_mock_frame("set_mode", lambda f: f.get("mode") == "ask", 3, mmark, "set_mode ask")
-        self.press("reject")
+        self.press("reject", "long")
         self.wait_pet()
 
         self.cmd("reboot")
@@ -347,8 +347,8 @@ class PetRun(FlowRun):
         check(self.settings_screen()["settings"]["view"] == "confirm", "unpair confirm missing")
         self.press("reject")
         check(self.settings_screen()["settings"]["view"] == "list", "REJECT did not cancel")
-        self.press("reject")
-        self.press("reject")
+        self.press("reject", "long")
+        self.press("reject", "long")
         self.wait_pet()
         return "; ".join(results) + "; REJECT cancels"
 
@@ -443,7 +443,7 @@ class PetRun(FlowRun):
         # Settings opens from the pairing screen as well.
         self.press("action", "long")
         self.wait_screen(lambda s: s["id"] == "settings", 3, "settings from pairing")
-        self.press("reject")
+        self.press("reject", "long")
         self.wait_screen(lambda s: s["id"] == "pairing", 3, "back to pairing")
         self.cmd(f"pair {CLAIM_CODE}", timeout=30)
         self.board.wait_state(is_registered, 20, "registration after re-pairing")
@@ -475,7 +475,7 @@ class PetRun(FlowRun):
         if screen["id"] in ("connecting", "wifi"):
             self.press("action", "long")
             self.wait_screen(lambda s: s["id"] == "settings", 3, "settings from " + screen["id"])
-            self.press("reject")
+            self.press("reject", "long")
             self.wait_screen(lambda s: s["id"] == screen["id"], 3, "back to " + screen["id"])
         return f"{detail}; settings {current}"
 

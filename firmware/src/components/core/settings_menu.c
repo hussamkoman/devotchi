@@ -107,6 +107,11 @@ const char *settings_list_title(settings_list_t list)
     return list < SETTINGS_LIST_COUNT ? LISTS[list].title : "";
 }
 
+bool settings_list_is_root(settings_list_t list)
+{
+    return list >= SETTINGS_LIST_COUNT || LISTS[list].parent == SETTINGS_LIST_COUNT;
+}
+
 const char *settings_list_key(settings_list_t list)
 {
     return list < SETTINGS_LIST_COUNT ? LISTS[list].key : "";
@@ -358,13 +363,19 @@ static settings_act_t open_row(settings_menu_t *m)
 
 static settings_act_t list_button(settings_menu_t *m, const btn_fsm_out_t *out)
 {
-    if (out->kind != BTN_CLICK) {
+    /* REJECT is the only nav-hold button on a list: its hold goes up a level, or leaves Settings from the top. */
+    const bool up = out->id == BTN_REJECT && out->kind == BTN_HOLD;
+    if (out->kind != BTN_CLICK && !up) {
         return NONE;
     }
     size_t count;
     settings_list_items(m->list, &count);
     switch (out->id) {
     case BTN_REJECT: {
+        if (!up) {
+            m->cursor = (uint8_t)((m->cursor + count - 1u) % count);
+            return act(SETTINGS_ACT_MOVED, settings_menu_item(m), 0);
+        }
         const settings_list_t parent = LISTS[m->list].parent;
         if (parent == SETTINGS_LIST_COUNT) {
             return act(SETTINGS_ACT_EXIT, settings_menu_item(m), 0);
@@ -504,5 +515,5 @@ btn_mode_t settings_menu_btn_mode(const settings_menu_t *m, btn_id_t id)
     if (m->view == SETTINGS_VIEW_CONFIRM) {
         return id == BTN_APPROVE ? BTN_MODE_COMMIT_HOLD : id == BTN_REJECT ? BTN_MODE_CLICK : BTN_MODE_NONE;
     }
-    return BTN_MODE_CLICK;
+    return m->view == SETTINGS_VIEW_LIST && id == BTN_REJECT ? BTN_MODE_NAV_HOLD : BTN_MODE_CLICK;
 }
