@@ -75,11 +75,12 @@ with the warning triangle, and turns the right tab into a hold.
 
 Pet colour belongs to the pet, not to the UI (see `pet-animations.md` 2):
 
-- **Devo** (the ghost) has eleven mood colours. None sits on a semantic hue:
-  working is lime `#B4D455` (not mint), angry crimson `#D4366B` (not coral),
-  focused cobalt `#5B82F0` (not sky), excited pink `#FF8DB4` (not amber),
-  happy a pale gold `#FFD98C` (not amber), idle a ghost lilac `#D9D3F5`
-  (grey is not a mood). Full table in `pet-moods.html`.
+- **Devo** (the ghost) is ghost white `#F4F1EA` in every mood; its circuit
+  traces, vias, chips and antenna ball take one of eleven mood colours. None
+  sits on a semantic hue: working is green `#7DB928` (not mint), angry
+  crimson `#D4366B` (not coral), focused cobalt `#3D6BF0` (not sky), excited
+  pink `#FF5C9A`, happy orange `#F59A1B` (not amber), idle a ghost lilac
+  `#9D8DF1`; asleep the traces go dim grey. Full table in `pet-moods.html`.
 - **Mochi** has one hue, apricot `#F0C594`, that a mood only shifts.
 - **Ember** has one hue, jade `#2FAE9C`, an ember-orange accent `#FF8A3D` and
   cream `#F6E7C1`; a mood only shifts the jade lighter, darker or paler.

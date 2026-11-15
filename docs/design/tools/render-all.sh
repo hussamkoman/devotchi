@@ -16,6 +16,6 @@ for f in mockups/*.html; do
   [ $((i % 6)) -eq 0 ] && wait
 done
 wait
-shot /tmp/devotchi-design-ff-0 1200 4600 renders/pet-moods.png "file://$PWD/pet-moods.html"
+shot /tmp/devotchi-design-ff-0 1200 5800 renders/pet-moods.png "file://$PWD/pet-moods.html"
 magick renders/pet-moods.png -trim +repage -bordercolor "#0C0E14" -border 24 renders/pet-moods.png
 shot /tmp/devotchi-design-ff-0 551 551 renders/device-context.png "file://$PWD/device-context.html"

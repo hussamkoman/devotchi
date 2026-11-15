@@ -1054,13 +1054,13 @@ rig scale 16/16 with the body centre at 0,0; at most 2048 bytes):
 
 | Part | Bytes | Content |
 |---|---|---|
-| Header | 32 | `"DPET"`, `fmt` u8 = 1, `rev` u8 (1..255), `size` u16 (whole pack with CRC), `id` char[8] (`[a-z0-9]{1,8}`, NUL padded), `name` char[12] (printable ASCII, NUL padded), `flags` u8 (bit 0: palette is base + shifts; other bits 0), `n_parts` u8 (1..28), `n_over` u8, `n_osc` u8 |
-| Palette | 56 | `base`, `accent`, `cream`, `sclera` (RGB each), then 11 mood entries of 4 bytes in `proto_mood_t` order: table mode `R,G,B,0`; shift mode `R,G,B,t` = mix the base towards RGB by t/255 |
-| Face | 12 | `eye_style` (0 round, 1 slit, 2 dot), `mouth_set` (0 plain, 1 snout), `brows` (0/1), `eye_dx` (half the eye spacing), `eye_y`, `mouth_y`, `mouth_hw`, `sleep_drop` (px the head sinks asleep), `acc_mask` (bit per `pet_accessory_t` the pet replaces with its own parts), 3 reserved (0) |
+| Header | 32 | `"DPET"`, `fmt` u8 = 1, `rev` u8 (1..255), `size` u16 (whole pack with CRC), `id` char[8] (`[a-z0-9]{1,8}`, NUL padded), `name` char[12] (printable ASCII, NUL padded), `flags` u8 (bit 0: palette is base + shifts; bit 1: glow palette, the body keeps `base` and the mood colours go to the `mood` role; never both; other bits 0), `n_parts` u8 (1..28), `n_over` u8, `n_osc` u8 |
+| Palette | 56 | `base`, `accent`, `cream`, `sclera` (RGB each), then 11 mood entries of 4 bytes in `proto_mood_t` order: table and glow mode `R,G,B,0`; shift mode `R,G,B,t` = mix the base towards RGB by t/255 |
+| Face | 12 | `eye_style` (0 round, 1 slit, 2 dot, 3 ring), `mouth_set` (0 plain, 1 snout), `brows` (0/1), `eye_dx` (half the eye spacing), `eye_y`, `mouth_y`, `mouth_hw`, `sleep_drop` (px the head sinks asleep), `acc_mask` (bit per `pet_accessory_t` the pet replaces with its own parts), 3 reserved (0) |
 | Aux poses | 44 + 20 | `int8 aux[4]` for each of the 11 moods, then for pat, poke, dizzy, wake, attention |
 | Face overrides | 4 x `n_over` | `mood` u8, `channel` u8 (format-1 channel number, table below), `value` i16: replaces one channel of the shared pose table for this pet |
 | Oscillators | 4 x `n_osc` | `mood` u8 (0..10; 16..20 = reactions), `aux_wave` u8 (bits 0-1 aux channel, bits 2-3 wave: 0 sine, 1 follows the bob, 2 follows the scan leg, 3 jitter), `amp` i8, `period` u8 (x 50 ms): motion added to an aux channel while that mood shows |
-| Parts | variable | Back to front. `kind` u8 (bits 0-1 shape: 0 rrect, 1 line, 2 tri; bits 2-3 layer: behind, body, head, front; bits 4-6 number of drivers 0..4; bit 7 mirrored: drawn again at -x with x-moves negated), `role` u8 (bits 0-3 colour role: body, dark, light, cheek, accent, accent-dark, cream, ink, white, flame, surface, fog, yellow; bit 4 hidden in outline mode; bit 5 has an anchor), `anchor` u8 only when bit 5 is set (index of an earlier line part; this part is translated by that part's last point), geometry (rrect: `cx, cy` i8, `w, h, r` u8; line: u8 with bits 0-2 point count 2..4 and bits 3-7 width, then the points; tri: 3 points), then 2 bytes per driver: `op` u8 (bits 0-1 aux channel; bits 2-3 op: 0 move x, 1 move y, 2 show when aux != 0, 3 show when aux == k; bits 4-6 point index, 7 = the whole part, or k) and `scale` i8 (sixteenths of a pixel per aux unit; move only) |
+| Parts | variable | Back to front. `kind` u8 (bits 0-1 shape: 0 rrect, 1 line, 2 tri; bits 2-3 layer: behind, body, head, front; bits 4-6 number of drivers 0..4; bit 7 mirrored: drawn again at -x with x-moves negated), `role` u8 (bits 0-3 colour role: body, dark, light, cheek, accent, accent-dark, cream, ink, white, flame, surface, fog, yellow, mood, night; bit 4 hidden in outline mode; bit 5 has an anchor), `anchor` u8 only when bit 5 is set (index of an earlier line part; this part is translated by that part's last point), geometry (rrect: `cx, cy` i8, `w, h, r` u8; line: u8 with bits 0-2 point count 2..4 and bits 3-7 width, then the points; tri: 3 points), then 2 bytes per driver: `op` u8 (bits 0-1 aux channel; bits 2-3 op: 0 move x, 1 move y, 2 show when aux != 0, 3 show when aux == k; bits 4-6 point index, 7 = the whole part, or k) and `scale` i8 (sixteenths of a pixel per aux unit; move only) |
 | Trailer | 4 | CRC-32 (IEEE, as zlib) of everything before it |
 
 **Numbers fixed by format 1.** These are part of the wire format, not of any
@@ -1076,7 +1076,24 @@ table agree (a firmware that reorders an enum must map, not renumber).
 | Reaction (oscillator `mood`; order of the aux poses) | 16 pat, 17 poke, 18 dizzy, 19 wake, 20 attention |
 | Pose channel | 0 `eye_open`, 1 `eye_size`, 2 `pupil_size`, 3 `pupil_dx`, 4 `pupil_dy`, 5 `brow_angle`, 6 `mouth_curve`, 7 `mouth_open`, 8 `bob_amp_px`, 9 `bob_period_ms`, 10 `blink_min_ms`, 11 `blink_max_ms`, 12 `jitter_px`, 13 `accessory`, 14 `glance`, 15 `lid`, 16 `brow_l`, 17 `brow_r`, 18 `brow_lift`, 19 `mouth_dx`, 20 `mouth_w` |
 | Accessory (value of channel 13, bit number in `acc_mask`) | 0 none, 1 zzz, 2 sweat, 3 tear, 4 sparkles, 5 dots, 6 tongue |
-| Colour role | 0 body, 1 dark, 2 light, 3 cheek, 4 accent, 5 accent-dark, 6 cream, 7 ink, 8 white, 9 flame, 10 surface, 11 fog, 12 yellow |
+| Colour role | 0 body, 1 dark, 2 light, 3 cheek, 4 accent, 5 accent-dark, 6 cream, 7 ink, 8 white, 9 flame, 10 surface, 11 fog, 12 yellow, 13 mood, 14 night |
+| Eye style | 0 round, 1 slit, 2 dot, 3 ring |
+| Palette mode (`flags` bits 0-1) | 0 table, 1 shift, 2 glow |
+
+**Glow palette, `mood` and `night` roles, ring eyes** (appended to format 1 with Devo
+rev 3; `fmt` stays 1 because no existing number changed its meaning). In a
+table or shift palette the body takes the mood colour and `mood` is the same
+colour as `body`. In a glow palette the body, and with it `dark`, `light`,
+`cheek` and the lids, keeps `base` in every mood, and only `mood` parts take
+the mood's table colour (Devo's traces, vias, chips and antenna ball). A ring
+eye is a round eye with an ink ring 1/7 of the eye size wide inside the
+sclera, a pupil of 60 % of a round eye's radius and no glint. A `night`
+part has no fill colour: it is left out of the filled pet and drawn only in
+outline mode (the night clock), so a pet whose overlapping shapes would
+show inner lines there marks them `outline: false` and traces its silhouette
+with `night` lines, at no cost to a normal frame. A device whose
+firmware predates these numbers refuses such a pack with `format`, as it
+does for any number outside its tables.
 
 `pet_pack_validate()` (`core`, host-tested with truncated, oversized and
 random input) checks magic, `fmt`, `size`, CRC, every count and every offset
@@ -1095,7 +1112,7 @@ HTTP, may be 2048 bytes, and live in their own partition.
 
 **Which pets a device has.** Devo (the ghost, signature pet and default),
 Mochi (the square pet with an antenna) and Ember (a small dragon) are
-compiled in (410, 344 and 546 bytes); Sprout is a catalog pet a dashboard
+compiled in (530, 344 and 546 bytes); Sprout is a catalog pet a dashboard
 can send. Up to **8 more** live in the `pets`
 partition; the server offers its catalog plus up to 16 uploads per room, and
 the dashboard sends one with "Send to device" (protocol 14.8). Settings > Pet lists built-ins, stored pets and a "More

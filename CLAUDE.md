@@ -77,7 +77,7 @@ Every command that talks to a server takes `--server <url>`. Tests set
 - Token-first auth — anonymous tokens by default, accounts optional for multi-user hosted mode
 - Firmware is plain C on ESP-IDF v6.0: ST7789 TFT LCD (2.0", 320x240) via `esp_lcd`, UI with LVGL 9, JSON with cJSON
 - Single PCB design — power and logic on one board
-- Pets are data: one `pets/<id>.pet.json` per pet feeds the firmware (the ids in `pets/builtin.txt`, compiled in) and the server catalog. Built in: Devo (the ghost from the silkscreen, default), Mochi (square pet with an antenna), Ember (small dragon); Sprout is catalog-only. Adding a pet needs no code: see `pets/README.md` (JSON source, `petpack.py golden` and `check`, `pnpm run pet-sheet`)
+- Pets are data: one `pets/<id>.pet.json` per pet feeds the firmware (the ids in `pets/builtin.txt`, compiled in) and the server catalog. Built in: Devo (the white ghost from the PCB silkscreen whose circuit traces glow in the mood colour, default), Mochi (square pet with an antenna), Ember (small dragon); Sprout is catalog-only. Adding a pet needs no code: see `pets/README.md` (JSON source, `petpack.py golden` and `check`, `pnpm run pet-sheet`)
 
 ## Directory structure
 

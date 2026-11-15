@@ -53,8 +53,8 @@ warnings only print.
 
 | Rule (pet-animations 5) | Error | Warning |
 |---|---|---|
-| 5: silhouette differs from every other pet here: the night outline (parts not marked `outline: false`, idle) at clock scale 9/16, compared pixel by pixel | 90 % or more the same | 80 % or more |
-| 7: moods distinguishable without colour: per pair of moods, the face pose (shared table + overrides), the accessory, the parts aux shows, hides or moves, and the body's grey level | difference under 0.3 | under 0.5 (the shared table alone never goes below 0.56) |
+| 5: silhouette differs from every other pet here: the night outline (parts not marked `outline: false`, with the `night` parts, idle) at clock scale 9/16, compared pixel by pixel | 90 % or more the same | 80 % or more |
+| 7: moods distinguishable without colour: per pair of moods, the face pose (shared table + overrides), the accessory, the parts aux shows, hides or moves, and the body's grey level (the same in every mood for a glow palette) | difference under 0.3 | under 0.5 (the shared table alone never goes below 0.56) |
 | 4: no semantic UI hue (mint, amber, coral, sky) for anything shown often: every colour covering 15 % or more of the pet at idle, in every mood, against the UI hues (CIE76 distance) | closer than 10 | closer than 20 |
 | 1, 2: the 220x190 mockup box, pack size | | a part outside the box at idle; a pack over 1400 bytes |
 
@@ -86,18 +86,21 @@ working thinking`. Reaction names (rows of `aux`, keys of `overrides`,
 
 | Field | Meaning |
 |---|---|
-| `mode` | `table` (eleven mood colours) or `shift` (the base mixed towards a colour per mood) |
+| `mode` | `table` (eleven mood colours for the body), `shift` (the base mixed towards a colour per mood) or `glow` (the body keeps `base`; the eleven mood colours go to the parts with the `mood` role) |
 | `base`, `accent`, `cream`, `sclera` | `#RRGGBB` |
-| `moods` | mood name -> `#RRGGBB` (table) or `["#RRGGBB", t]` with t 0..1 (shift; stored as round(t * 255)) |
+| `moods` | mood name -> `#RRGGBB` (table, glow) or `["#RRGGBB", t]` with t 0..1 (shift; stored as round(t * 255)) |
 
 `dark`, `light` and `cheek` are derived from the body colour of the moment
-(design-system 2.3); `accent-dark` is the accent 25 % towards pet ink.
+(design-system 2.3); `accent-dark` is the accent 25 % towards pet ink. In a
+glow palette the body colour of the moment is always `base`, so these three
+and the eyelids stay put and only `mood` parts change colour (Devo: a white
+ghost whose circuit traces glow).
 
 ### face
 
 | Field | Meaning |
 |---|---|
-| `eyes` | `round`, `slit` or `dot` |
+| `eyes` | `round`, `slit`, `dot` or `ring` (a round eye inside an ink ring, with a smaller pupil and no glint: for a pet whose body is as light as its sclera) |
 | `mouth` | `plain` or `snout` (fangs under the mouth line) |
 | `brows` | true or false; without brows a half-open eye gets a lid at the brow angle |
 | `eye_dx`, `eye_y` | half the eye spacing (4..60) and the eyes' y |
@@ -131,9 +134,9 @@ ignore it.
 | `name` | for `anchor` references (not encoded) |
 | `shape` | `rrect` (`x`, `y` centre, `w`, `h`, `r` with r <= half the short side), `line` (`points` 2..4, `width` 1..31), `tri` (`points` 3) |
 | `layer` | `behind` (does not bob), `body`, `head`, `front` (head and front follow the sink) |
-| `role` | colour: `body dark light cheek accent accent-dark cream ink white flame surface fog yellow` |
+| `role` | colour: `body dark light cheek accent accent-dark cream ink white flame surface fog yellow mood night` (`mood` is the mood colour: the same as `body`, except in a glow palette; a `night` part has no fill and is drawn only in outline mode) |
 | `mirror` | also drawn at -x with x-moves negated |
-| `outline` | false hides the part in outline mode (the night clock) |
+| `outline` | false hides the part in outline mode (the night clock). Outline mode strokes every shape, so shapes that overlap show their inner edges: hide those and trace the silhouette with lines of the `night` role instead (Devo) |
 | `ring` | rrect drawn as a ring instead of filled |
 | `squash` | rrect whose top edge follows the sink and squash while its bottom stays put |
 | `anchor` | name of an earlier line part; this part's coordinates are relative to that line's last point |
@@ -162,14 +165,16 @@ codec must produce and accept exactly this.
   jitter_px 0..6, accessory 0..6, glance 0..2, lid -60..60 or 1000, brow_l/r
   -60..60, brow_lift -20..20, mouth_dx -30..30, mouth_w 0..60. Override and
   oscillator `mood` is 0..10 or 16..20.
-- **Face ranges**: eye_style 0..2, mouth_set 0..1, brows 0..1, eye_dx 4..60,
+- **Face ranges**: eye_style 0..3, mouth_set 0..1, brows 0..1, eye_dx 4..60,
   mouth_hw 4..60, sleep_drop 0..30; `acc_mask` bits 0 and 7 are reserved.
 - **Oscillators**: bits 4-7 of `aux_wave` are reserved; `period` must be
   non-zero for sine (wave 0) and jitter (wave 3).
 - **Drivers**: a move on a rrect must use point index 7 (the whole part); a
   move on a line or tri uses a point index below the point count or 7. A
   show driver has `scale` 0; show-when-nonzero has index bits 0.
-- **Table palette**: the fourth byte of each mood entry is 0.
+- **Table and glow palette**: the fourth byte of each mood entry is 0.
+- **Header flags**: bit 0 shift, bit 1 glow, never both; bits 2-7 are
+  reserved.
 - **Counts**: n_parts 1..28, n_over 0..48, n_osc 0..32; `size` equals the
   length; nothing may follow the last part. Name and id: the text, then only
   NUL bytes; at least one character.

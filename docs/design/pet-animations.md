@@ -40,7 +40,7 @@ New pose channels (all optional, default 0):
 
 | Channel | Meaning | Used by |
 |---|---|---|
-| `lid` | Upper lid drawn over the eye in the body colour with a dark edge; the value is its slant in degrees. The eye keeps its full size and `eye_open` says how much shows | Devo focused (flat lid); every Ember mood with half-open eyes |
+| `lid` | Upper lid drawn over the eye in the body colour (the base in a glow palette) with a dark edge; the value is its slant in degrees. The eye keeps its full size and `eye_open` says how much shows | Devo focused (flat lid); every Ember mood with half-open eyes |
 | `brow_l`, `brow_r`, `brow_lift` | Brows per eye instead of one mirrored angle | Devo thinking (one brow up) |
 | `mouth_dx`, `mouth_w` | Mouth offset and half-width | Devo thinking (small, off-centre), focused, working |
 | accessory `tongue` | Tongue tip at the right mouth corner | Devo working |
@@ -50,9 +50,10 @@ New pose channels (all optional, default 0):
 ```
 pet
   id, name                         "devo", "Devo"
-  palette                          11 mood colours, or 1 base colour + 11 shifts;
+  palette                          11 mood colours, 1 base colour + 11 shifts, or a
+                                   fixed body with 11 glow colours;
                                    accent, cream; derived dark / light / cheek
-  face                             eye style (round | slit | dot), sclera colour, brows on/off,
+  face                             eye style (round | slit | dot | ring), sclera colour, brows on/off,
                                    mouth set (plain | snout with fangs), anchors and sizes
   parts[]   (drawn back to front)  shape, geometry, colour role, layer, driver
   aux[4]    names                  what the four auxiliary channels mean
@@ -61,27 +62,32 @@ pet
   accessories                      which sprite set to use for zzz/sweat/tear/sparkles/dots
 ```
 
-- **Palette.** A pet owns its colour. Either eleven mood colours (Devo) or one
-  base colour with a shift per mood (Ember: `mix(base, target, t)`), plus an
-  `accent` and a `cream`. `dark`, `light` and `cheek` are derived (design
+- **Palette.** A pet owns its colour. Eleven mood colours for the body
+  (`table`), one base colour with a shift per mood (`shift`, Ember:
+  `mix(base, target, t)`), or a body that keeps the base colour while eleven
+  mood colours go to its `mood` parts (`glow`, Devo: white with glowing
+  traces), plus an `accent` and a `cream`. `dark`, `light` and `cheek` are derived (design
   system 2.3). There is no global mood colour table any more: mood is carried
   by face, pose and aux first, colour second.
 - **Face.** The shared rig still draws and animates eyes, pupils, glints,
   lids, brows, mouth and the closed / `^` / spiral eye variants, so blink,
   glance and scan work for every pet. A pet picks from a small built-in set:
   eye style `round` (white, round pupil), `slit` (vertical pupil whose width
-  follows `pupil_size`) or `dot` (no sclera); sclera colour; brows on or off
+  follows `pupil_size`), `dot` (no sclera) or `ring` (round inside an ink
+  ring, small pupil, no glint: for a body as light as the sclera); sclera colour; brows on or off
   (off = the lid slant carries the brow angle); mouth set `plain` or `snout`
   (a lighter muzzle with nostrils, a wide mouth and two fangs).
 - **Body.** Any number of body parts; there is no single "body shape". Devo
-  is a pill, a skirt and three hem circles; Mochi is one rounded rect; Ember
+  is a dome, a skirt and three hem circles; Mochi is one rounded rect; Ember
   is a head on a smaller belly. An egg is two overlapping rounded rects.
 - **Shapes:** `rrect` (x, y, w, h, radius; also used for circles and for
   pills in place of ellipses, which LVGL does not have), `line` (2-4 points,
   width, round caps), `tri` (3 points). Coordinates are int8/int16 in body
   units; the body centre is (0, 0).
 - **Colour roles:** `body`, `dark`, `light`, `cheek`, `accent`,
-  `accent-dark`, `cream`, `ink`, `white`, `flame`.
+  `accent-dark`, `cream`, `ink`, `white`, `flame`, `surface`, `fog`,
+  `yellow`, `mood` (the mood colour; differs from `body` only in a glow
+  palette) and `night` (no fill: drawn only in outline mode).
 - **Layers:** `behind` (does not bob: feet, shadow, tail), `body`, `head`
   (bobs; for a two-part pet the head takes squish and hop), `front`.
 - **Drivers:** a part can be bound to one aux channel with a simple rule:
@@ -96,8 +102,10 @@ pet
   (2 px `ember` border, black fill), lines keep their path at 2 px, triangles
   are stroked as closed 3-point polylines (`lv_draw_triangle` cannot
   stroke). Parts are still drawn back to front so nearer parts cover farther
-  outlines. No accessories except Zzz.
-- **Size:** Sprout is 8 parts, Mochi 12, Devo 16, Ember 27. With palette,
+  outlines. Where overlapping shapes would leave inner lines (Devo's dome,
+  skirt and bumps), the pet marks them `outline: false` and traces its
+  silhouette with `night` lines instead. No accessories except Zzz.
+- **Size:** Sprout is 8 parts, Mochi 12, Ember 27, Devo 28. With palette,
   poses and reaction overrides a pack is 298 B (Sprout) to 546 B (Ember).
   **Limit: 2048 bytes** per pack (format 1, `docs/architecture.md` 7.2).
 
@@ -112,66 +120,80 @@ to device" makes the device fetch the pack over HTTP and store it
 
 ## 3. Devo, the signature pet
 
-The ghost printed on the PCB silkscreen (`hardware/libs/ghost_logo.kicad_mod`):
-a dome head, straight sides and a three-bump hem, with the antenna and ball
-of the small logo (`ghost_logo2`). Devo is the pet that **changes colour with
-its mood**, and it floats: it hovers over a soft shadow while its hem ripples.
-Two more channels carry the mood from across the room: the antenna, whose ball
-is the on-screen twin of the device's LED, and the **circuit traces** on its
-body (a chip with traces and vias, as on the silkscreen), which glow, pulse,
-flicker when anxious and go dark when sad or asleep.
+The ghost printed on the PCB silkscreen (`hardware/libs/ghost_logo.kicad_mod`),
+drawn as on the board: a tall dome, straight sides and a wavy hem of three
+bumps with notches between them, ring eyes, a small smile, and circuit traces
+with via dots and two chips across its body. The antenna and ball come from
+the small logo (`ghost_logo2`). Devo is **ghost white in every mood**
+(`#F4F1EA`); its mood is the colour its **traces, vias, chips and antenna
+ball glow in**, together with the face, the antenna and the motion. It
+floats: it hovers over a soft shadow while its hem ripples. The light in the
+big chip is steady when all is well, pulses while it thinks, flickers when it
+is anxious and is off when it is sad, asleep or poked.
+
+This needs three things the format gained with Devo rev 3 (all appended, see
+`docs/architecture.md` 7.2): the `glow` palette (the body keeps the base
+colour and the eleven mood colours go to parts with the `mood` role), `ring`
+eyes, and the `night` role for parts only the night outline draws.
 
 | Part | Shape | Colour | Layer | Notes |
 |---|---|---|---|---|
-| Ground shadow | pill 92x10 | `surface` | behind | Narrows by 4 px per px of hop; 10 px below the hem, so Devo floats |
-| Antenna stem | line, 3 points, 4 px | `dark` | body | Root on top of the dome; tip at (aux0, -88 + aux1), the middle point follows 6/16 of aux0 so it bends |
-| Antenna ball | circle r7 | `light` (`yellow` when aux3 = 7) | body | Follows the stem end |
-| Hem bumps (3) | circles d38 | `body` | body | Sides move by -aux2, the middle by +aux2: the ripple |
-| Skirt | rrect 108x50 r10 | `body` | body | Straight sides down to the hem; hidden in the night outline |
-| Body | pill 108x128 r54 | `body` | body | The dome; height -8 asleep (squash) |
-| Chip | rrect 18x12 r2 | `dark` | body | Lower body, centred |
-| Traces (2 x 2) | lines, 3 px | `dark` | body | From the chip to a via at each side, and down each side |
-| Vias (2 x 2) | circles d7 | `dark` | body | Trace ends |
-| Trace glow (2 x 2) | lines, 2 px | `light` | body | Over the traces while aux3 is not 0 |
-| Sheen | rrect 22x7 r3 | `light` | front | Top left of the dome |
-| Face | shared rig, `round` eyes, brows, `plain` mouth | `white`, `ink` | front | Eyes at (±22, -14), mouth at (0, 14), half-width 13 |
+| Ground shadow | pill 84x10 | `surface` | behind | Narrows by 4 px per px of hop; 8 px below the hem, so Devo floats |
+| Antenna stem | line, 3 points, 4 px | `body` | head | Root on top of the dome; tip at (aux0, -88 + aux1), the middle point follows 6/16 of aux0 so it bends |
+| Antenna ball | circle r7 | `mood` (`yellow` when aux3 = 7) | head | Follows the stem end |
+| Hem bumps (3) | circles d32 at x -38, 0, 38 | `body` | body | Sides move by -aux2, the middle by +aux2: the ripple. 6 px apart, so the notches stay open |
+| Skirt | rrect 108x58 r6 | `body` | body | Straight sides down to 5 px below the bumps' centres: shallow, wavy notches as on the silkscreen |
+| Dome | pill 108x122 r54 | `body` | body | Height -8 asleep, -12 poked (squash) |
+| Silhouette (4 x 2) | lines, 2-4 points | `night` | head (dome), body | Dome, side and hem as one path, 2 px inside the edge; only the night outline draws them, where the filled shapes are left out |
+| Big chip | rrect 16x18 r2, ring | `mood` | body | Lower right, as on the silkscreen |
+| Chip light | rrect 6x8 | `mood` | body | Shown while aux3 is not 0 |
+| Small chip | rrect 10x14 r2, ring | `mood` | body | Lower left |
+| Traces (8) | lines, 3 px | `mood` | body | Two from the big chip into the middle bump, one up the right side, one into the right bump; one down the left side into the small chip and on into the left bump; one in the middle left; two pins on the forehead (head layer) |
+| Vias (9) | circles d6-7 | `mood` | body | Trace ends: in each bump, at each side, on the forehead |
+| Face | shared rig, `ring` eyes, brows, `plain` mouth | `white`, `ink` | front | Eyes at (±21, -22), mouth at (0, 5), half-width 11: high on the dome, as on the silkscreen |
+
+Ring eyes are the silkscreen's: an ink ring around a white centre, with a
+small pupil so glances, scans and the pin pupils of anxious still read; no
+glint. Lids (focused, blinks) are ghost white with a grey edge.
 
 Aux channels: `aux0` antenna tip x, `aux1` tip y, `aux2` hem ripple (moved
-by oscillators only), `aux3` traces (0 dark, any other value lit, 7 also turns
-the ball amber). The pack is 16 parts, 410 bytes (`pets/devo.pet.json`).
+by oscillators only), `aux3` chip light (0 off, any other value on, 7 also
+turns the ball amber). The pack is 28 parts, 530 bytes (`pets/devo.pet.json`).
 
-Colours: focused `#5B82F0`, working `#B4D455`, thinking `#9A8AE0`, idle
-`#D9D3F5` (ghost lilac), happy `#FFD98C`, sad `#8A9AB8`, anxious `#C4A0D8`,
-excited `#FF8DB4`, proud `#3CBFB4`, angry `#D4366B`, sleeping `#7377CF`.
-Happy and sad keep 20 or more (CIE76) from amber and sky.
+Trace colours (on white they are deeper than a body colour would be):
+focused `#3D6BF0`, working `#7DB928`, thinking `#5B4BD6`, idle `#9D8DF1`
+(ghost lilac), happy `#F59A1B`, sad `#8A9AB8`, anxious `#B07CD8`, excited
+`#FF5C9A`, proud `#1FB5A8`, angry `#D4366B`, sleeping `#B9BCC8` (dim grey:
+the board is powered down). The traces are thin, so rule 5.4 (no semantic UI
+hue over 15 % of the pet) only looks at the white body.
 
 ### Moods
 
 The "cue" column is what tells the mood apart in greyscale. Faces are the
 shared pose table (section 1, unchanged for every pet).
 
-| Mood | Face | Antenna (aux0, aux1) | Traces (aux3) and hem | Cue without colour |
+| Mood | Face | Antenna (aux0, aux1) | Chip light (aux3) and hem | Cue without colour |
 |---|---|---|---|---|
-| focused | flat upper lids at 62 %, pupils slightly down, small smile | (0, -3), still | lit; slow ripple | level half lids + upright antenna |
-| working | eyes 88 %, pupils down, scan; tongue tip out | (-8, 1), swings ±8 with each scan leg | lit; ripple 1.0 s | tongue + leaning antenna |
+| focused | flat upper lids at 62 %, pupils slightly down, small smile | (0, -3), still | on; slow ripple | level half lids + upright antenna |
+| working | eyes 88 %, pupils down, scan; tongue tip out | (-8, 1), swings ±8 with each scan leg | on; ripple 1.0 s | tongue + leaning antenna |
 | thinking | pupils up-right, right brow raised, small flat mouth off-centre | (9, 0) | pulse (1.5 s) | one brow + three rising dots |
-| idle | fully open, soft smile, slow blinks, glances | (5, 2), sways ±2 / 3.5 s | lit; ripple 1.75 s | open face, nothing else |
-| happy | smile 80, brows -5° | (6, 0), bounces with the bob | lit; ripple 1.2 s | wide smile |
-| sad | eyes 65 %, pupils down, frown | (16, 12), droops to the side | dark; slow ripple | tear, drooped antenna, dark traces |
+| idle | fully open, soft smile, slow blinks, glances | (5, 2), sways ±2 / 3.5 s | on; ripple 1.75 s | open face, nothing else |
+| happy | smile 80, brows -5° | (6, 0), bounces with the bob | on; ripple 1.2 s | wide smile |
+| sad | eyes 65 %, pupils down, frown | (16, 12), droops to the side | off; slow ripple | tear, drooped antenna, chip light off |
 | anxious | pin pupils, brows -18°, small "o" | (4, 3), trembles | flicker (150 ms); jittering hem | sweat drop, pin pupils |
 | excited | big eyes, open smile | (0, -4), whips ±5 at 0.4 s | pulse (0.6 s); fast ripple | open mouth, sparkles |
-| proud | eyes 65 %, pupils up, smile 65 | (3, -4), tall | lit | sparkles, lifted gaze |
-| angry | eyes 60 %, brows +28°, frown | (-8, 2), bent back | lit; ripple 0.6 s | slanted brows, frown |
-| sleeping | lids closed, small smile, no blink | (14, 10), droops | dark; slow ripple; body 8 px lower | closed eyes, Zzz |
+| proud | eyes 65 %, pupils up, smile 65 | (3, -4), tall | on | sparkles, lifted gaze |
+| angry | eyes 60 %, brows +28°, frown | (-8, 2), bent back | on; ripple 0.6 s | slanted brows, frown |
+| sleeping | lids closed, small smile, no blink | (14, 10), droops | off, traces dim grey; slow ripple; body 8 px lower | closed eyes, Zzz |
 
-Reactions: pat (antenna wags ±6, traces lit), poke (antenna bent back, traces
-dark), dizzy (antenna tip circles, traces flicker), wake (antenna rises),
-attention (antenna upright, ball amber).
+Reactions: pat (antenna wags ±6, chip light on), poke (antenna bent back,
+light off), dizzy (antenna tip circles, light flickers), wake (antenna
+rises), attention (antenna upright, ball amber).
 
 ### Key animations
 
 Times in ms from the start; every step eases out. Devo and Mochi share
-them; Devo has no tip ring (its ball turns amber) and its traces are lit
+them; Devo has no tip ring (its ball turns amber) and its chip light is on
 whenever the antenna rises.
 
 **Mood change (300):** all channels tween as today; the antenna tip moves on
@@ -212,8 +234,8 @@ sides for 200 ms.
 polyline with a phase, 8 steps per turn), mouth small "o", antenna tip circles
 a 6 px radius, body sways ±2 px.
 
-Reactions keep the colour of the current mood (on home at rest that is the
-lilac of idle).
+Reactions keep the colour of the current mood (on home at rest Devo's traces
+are the lilac of idle).
 
 **Positive / negative / complete reactions (existing classes).** Positive: one
 5 px hop, sparkles for 1.2 s, then the target mood. Negative: 3 px sink for
@@ -238,7 +260,7 @@ apricot hue** (`#F0C594`) that a mood only shifts (happy 14 % and proud 8 %
 towards white, excited 22 % towards pink `#FF8DB4`, focused 10 % towards ink,
 thinking 18 % towards indigo, angry 30 % towards crimson `#B8325E`, sad 45 %
 towards grey-green, anxious 40 % towards pale `#C9D6D2`, sleeping 38 % towards
-night blue), so it never reads as Devo; its cheeks and the antenna's four
+night blue), so it never reads as the white Devo; its cheeks and the antenna's four
 stem shapes carry the feeling.
 
 | Part | Shape | Colour | Layer | Notes |
@@ -351,7 +373,8 @@ pet that a dashboard sends to a device, and the result of the recipe in
    sclera, brows or lids, mouth set, anchors and sizes.
 4. A pet owns its palette. Keep clear of the semantic UI hues (mint, amber,
    coral, sky) for anything the pet shows often; give it one colour or one
-   behaviour that is its own (Devo: changes colour, glowing traces; Mochi:
+   behaviour that is its own (Devo: ghost white, traces that glow in the mood
+   colour; Mochi:
    one apricot hue, cheeks and antenna shapes; Ember: stays
    jade, wings and fire).
 5. Its silhouette must differ from every other pet's: check the night
