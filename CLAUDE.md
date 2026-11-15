@@ -26,7 +26,7 @@ pnpm run lint             # ESLint (typescript-eslint)
 pnpm run server           # Start the server (default port 8080)
 pnpm run client           # Run the CLI from source (e.g. pnpm run client -- start --local)
 pnpm run dev              # Web UI with Vite HMR against `devotchi start --dev` (DEVOTCHI_DEV_DASHBOARD=<port>)
-pnpm run pet-sheet [id]   # Pet preview sheet (moods, reactions, night outline, greyscale); pets/README.md
+pnpm run pet-sheet [ids|files] [--out D] [--png]  # Pet preview sheets (moods, reactions, night outline, greyscale)
 ```
 
 Firmware host tests (no ESP-IDF needed):
@@ -77,6 +77,7 @@ Every command that talks to a server takes `--server <url>`. Tests set
 - Token-first auth — anonymous tokens by default, accounts optional for multi-user hosted mode
 - Firmware is plain C on ESP-IDF v6.0: ST7789 TFT LCD (2.0", 320x240) via `esp_lcd`, UI with LVGL 9, JSON with cJSON
 - Single PCB design — power and logic on one board
+- Pets are data: one `pets/<id>.pet.json` per pet feeds the firmware (the ids in `pets/builtin.txt`, compiled in) and the server catalog. Built in: Devo (the ghost from the silkscreen, default), Mochi (square pet with an antenna), Ember (small dragon); Sprout is catalog-only. Adding a pet needs no code: see `pets/README.md` (JSON source, `petpack.py golden` and `check`, `pnpm run pet-sheet`)
 
 ## Directory structure
 
@@ -88,6 +89,7 @@ packages/client/web/           — Dashboard web UI (Vite, framework-free TypeSc
 pets/                          — Every pet: JSON sources, golden packs, builtin.txt (compiled into the firmware), _template.pet.json; also the server catalog
 firmware/                      — ESP32-S3 firmware (C, ESP-IDF v6.0, LVGL 9); host tests in firmware/host_test
 docs/                          — Architecture, protocol, deployment, phase-2 manual tests, hardware docs + datasheets
+docs/design/                   — Approved device UI: design system, UX flows, pet animations, mockups and renders (index.html)
 ```
 
 ## Commit message rules

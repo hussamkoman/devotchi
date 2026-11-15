@@ -87,7 +87,7 @@ Tools: `show_status`, `notify`, `set_mood`, `get_device_state`.
 
 | Command | What it does |
 |---|---|
-| `devotchi start [--local [--lan]] [--server <url>]` | Dashboard on 127.0.0.1 (permission, question and plan cards, Pets page); `--local` runs the server in the same process |
+| `devotchi start [--local [--lan]] [--server <url>]` | Dashboard on 127.0.0.1 (permission, question and plan cards, Pets panel); `--local` runs the server in the same process |
 | `devotchi setup [--dir D] [--check \| --remove]` | Install, check or remove the nine Claude Code hooks |
 | `devotchi pair <CODE>` / `pair --new` | Confirm a device's code / create a code for the device console |
 | `devotchi devices [list \| rename \| identify \| rm]` | Paired devices with online state, last seen, last ack, battery, pet on screen |
@@ -111,10 +111,12 @@ time; the dashboard settings change it.
 
 Pets are data ([pets/README.md](pets/README.md)): every `pets/*.pet.json` is
 in the server's catalog, and the ones listed in `pets/builtin.txt` (Devo, the
-ghost from the PCB silkscreen and the default; Mochi; Ember) are also built
-into the firmware; adding a pet is a JSON file, its
-preview sheet (`pnpm run pet-sheet <id>`) and `petpack.py check`, no code. A room can upload up to 16 more; `devotchi pets send <id>` or "Send
-to device" on the dashboard's Pets page installs one in one of the device's 8
+ghost from the PCB silkscreen and the default; Mochi, the square pet with an
+antenna; Ember, a small dragon) are also built into the firmware. Sprout, an
+egg with a sprouting leaf, is in the catalog only. Adding a pet is a JSON
+file, its preview sheet (`pnpm run pet-sheet <id>`) and `petpack.py check`, no
+code. A room can upload up to 16 more; `devotchi pets send <id>` or "Send to
+device" on the dashboard's Pets panel installs one in one of the device's 8
 slots. Every pack is checked with the same rules as the firmware before the
 server stores or serves it.
 
@@ -166,6 +168,7 @@ pnpm run lint
 pnpm run server    # Start the server on :8080
 pnpm run client    # Run the CLI from source, e.g. pnpm run client start --local
 pnpm run dev       # Web UI with HMR against `devotchi start --dev` (DEVOTCHI_DEV_DASHBOARD=<port>)
+pnpm run pet-sheet [ids|files] [--out D] [--png]   # SVG preview sheets of pets (--png needs ImageMagick)
 ```
 
 ## Documentation
@@ -175,7 +178,10 @@ pnpm run dev       # Web UI with HMR against `devotchi start --dev` (DEVOTCHI_DE
 - [Deployment](docs/deploy.md) — LAN self-hosting, Docker Compose with Caddy, multi-user mode, backups
 - [Phase 2 manual tests](docs/phase2-manual-tests.md) — checks on a real Claude Code session for questions, plans and session grants
 - [Hardware](hardware/README.md) — components, pin assignments, PCB design
+- [Firmware](firmware/README.md) — build, flash, console, pet packs, mock server and board tests
 - [Firmware conventions](firmware/CONVENTIONS.md) — plain-C rules, building, flashing and host tests
+- [Pets](pets/README.md) — how to add a pet
+- [Device design](docs/design/index.html) — design system, UX flows, pet animations and renders
 
 ## License
 

@@ -842,13 +842,17 @@ def pet_sheet():
     mreact = "".join(tile(pet_svg("mochi", "sleeping" if r == "wake" else "idle", react=r, scale=.8), r, rn[r]) for r in REACT)
     ember = "".join(tile(pet_svg("ember", m, scale=.8), m, en[m]) for m in MOODS)
     ereact = "".join(tile(pet_svg("ember", "sleeping" if r == "wake" else "idle", react=r, scale=.8), r, er[r]) for r in REACT)
+    sprout = "".join(tile(pet_svg("sprout", m, scale=.8), m, "") for m in MOODS)
+    sreact = "".join(tile(pet_svg("sprout", "idle", react=r, scale=.8), r, "") for r in REACT)
     night = (tile(pet_svg("devo", "sleeping", night=NIGHT, scale=.8), "Devo", "black fill, ember outline", "#000")
-             + tile(pet_svg("mochi", "sleeping", night=NIGHT, scale=.8), "Mochi", "", "#000") + tile(pet_svg("ember", "sleeping", night=NIGHT, scale=.8), "Ember", "", "#000"))
-    gray = "".join(tile(pet_svg(k, m, scale=.45, gray=True), m, "", SURF, 100) for k in ("devo", "mochi", "ember") for m in MOODS)
-    onex = "".join(tile(pet_svg(k, m, scale=.46), m, "", BG, 100) for k in ("devo", "mochi", "ember") for m in ("focused", "working", "thinking", "idle"))
+             + tile(pet_svg("mochi", "sleeping", night=NIGHT, scale=.8), "Mochi", "", "#000") + tile(pet_svg("ember", "sleeping", night=NIGHT, scale=.8), "Ember", "", "#000")
+             + tile(pet_svg("sprout", "sleeping", night=NIGHT, scale=.8), "Sprout", "", "#000"))
+    gray = "".join(tile(pet_svg(k, m, scale=.45, gray=True), m, "", SURF, 100) for k in ("devo", "mochi", "ember", "sprout") for m in MOODS)
+    onex = "".join(tile(pet_svg(k, m, scale=.46), m, "", BG, 100) for k in ("devo", "mochi", "ember", "sprout") for m in ("focused", "working", "thinking", "idle"))
     sw = "".join(f'<span class="sw" style="background:{DEVO_COLOR[m]}">{m}<br>{DEVO_COLOR[m]}</span>' for m in MOODS)
     sw1 = "".join(f'<span class="sw" style="background:{pet_color("mochi", m)}">{m}<br>{pet_color("mochi", m)}</span>' for m in MOODS)
     sw2 = "".join(f'<span class="sw" style="background:{pet_color("ember", m)}">{m}<br>{pet_color("ember", m)}</span>' for m in MOODS)
+    sw3 = "".join(f'<span class="sw" style="background:{pet_color("sprout", m)}">{m}<br>{pet_color("sprout", m)}</span>' for m in MOODS)
     sw2 += f'<span class="sw" style="background:{EMBER_ACCENT}">accent<br>{EMBER_ACCENT}</span><span class="sw" style="background:{EMBER_CREAM}">cream<br>{EMBER_CREAM}</span>'
     sem = "".join(f'<span class="sw" style="background:{c}">{n}<br>{c}</span>' for n, c in (("mint", MINT), ("amber", AMBER), ("coral", CORAL), ("sky", SKY), ("violet", VIOLET)))
     doc = f"""<!doctype html><html><head><meta charset="utf-8"><title>Devotchi pets</title><style>
@@ -871,12 +875,16 @@ figure svg{{margin:0 auto}} figcaption b{{display:block;font:700 16px/20px Figtr
 <h2>Ember, the alternative pet: 11 moods</h2><p>A small jade dragon: big head on a small body, snout with nostrils and fangs, slit pupils, lids instead of brows, orange wings, ear fins and tail spade. Ember keeps its jade in every mood (a mood only shifts it lighter, darker or paler); wings, tail, smoke and fire carry the feeling.</p>
 <div class="grid">{ember}</div>
 <h2>Ember: reactions</h2><div class="grid">{ereact}</div>
+<h2>Sprout, a catalog pet: 11 moods</h2><p>An egg with a sprouting leaf, sent to a device from the dashboard rather than compiled in. One pink hue shifted by mood; the leaf tilts and droops with the feeling. Drawn from its pack by the dashboard's renderer.</p>
+<div class="grid">{sprout}</div>
+<h2>Sprout: reactions</h2><div class="grid">{sreact}</div>
 <h2>Night outline (clock face at night)</h2><div class="grid">{night}</div>
 <h2>Check 1: greyscale (every mood must be told apart without colour)</h2><div class="grid">{gray}</div>
-<h2>Check 2: the everyday moods at the size they have on the clock and connecting screens (about half scale)</h2><div class="grid">{onex}</div>
+<h2>Check 2: the everyday moods at the size they have on the clock and going-to-sleep screens (about half scale)</h2><div class="grid">{onex}</div>
 <h2>Devo palette (eleven mood colours)</h2><div>{sw}</div>
 <h2>Mochi palette (one hue {MOCHI_BASE}, shifted by mood)</h2><div>{sw1}</div>
 <h2>Ember palette (one hue, shifted by mood, plus accent and cream)</h2><div>{sw2}</div>
+<h2>Sprout palette (one hue, shifted by mood)</h2><div>{sw3}</div>
 <h2>Semantic UI colours, for comparison (no pet colour sits on these)</h2><div>{sem}</div>
 </body></html>"""
     with open(os.path.join(ROOT, "pet-moods.html"), "w") as f:
@@ -945,7 +953,7 @@ Mockups define look, type, pages and button behaviour; they are not pixel-exact.
 <p>The full list, with the points where the design disagrees with a reviewer, is in design-system.md under "Review decisions".</p>
 <h2>The device</h2><p>The three buttons sit in a row under the screen: REJECT left, ACTION middle, APPROVE right, 14 mm apart. The on-screen tabs sit straight above them (x = 50, 160 and 270 px).</p>
 <div class="wide"><img src="renders/device-context.png" width="550" alt="device"></div>
-<h2>Pets</h2><p>The signature pet Devo (the ghost from the PCB silkscreen), Mochi and Ember, in all moods and reactions, with the greyscale and small-size checks (<a href="pet-moods.html">pet-moods.html</a>).</p>
+<h2>Pets</h2><p>The signature pet Devo (the ghost from the PCB silkscreen), Mochi and Ember (built in) and Sprout (from the catalog), in all moods and reactions, with the greyscale and small-size checks (<a href="pet-moods.html">pet-moods.html</a>).</p>
 <div class="wide"><img src="renders/pet-moods.png" alt="pets"></div>
 {sec}
 </body></html>"""
