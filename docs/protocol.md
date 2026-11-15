@@ -890,12 +890,12 @@ counter is evidence, not proof: a sandbox network prompt (which runs no
 | `Notification`, `notification_type` `idle_prompt` or `agent_needs_input` | `notify {event:"needs_input", mood:"anxious", detail:"Claude is waiting", urgency:3}`, except while the session rests on the usage limit (the last event was a `StopFailure` with `rate_limit` or a `quota_auto_resume_disabled`): then nothing |
 | `Notification`, `notification_type` `quota_auto_resume_fired` | Claude Code continued the task after the usage limit reset: `notify {event:"usage_resumed", mood:"working", detail:"Back to work", urgency:2}` |
 | `Notification`, `notification_type` `quota_auto_resume_stale` | The limit reset while the computer slept and Claude Code waits for Enter: `notify {event:"needs_input", mood:"anxious", detail:"Usage is back: press Enter in the terminal", urgency:3}` |
-| `Notification`, `notification_type` `quota_auto_resume_disabled` | Claude Code stopped waiting for the reset: `notify {event:"usage_limit", mood:"sleeping", detail:"Continue in the terminal after the reset", urgency:2}` |
+| `Notification`, `notification_type` `quota_auto_resume_disabled` | Claude Code stopped waiting for the reset: `notify {event:"usage_limit", mood:"sleeping", detail:"Continue in terminal", urgency:2}` |
 | `Notification`, `notification_type` `permission_prompt` | If the session has a pending request in the room: no message; counts for the diagnosis in 8.4. Otherwise `notify {event:"needs_input", mood:"anxious", detail:"Permission needed in terminal", urgency:2}` |
 | `Notification`, other types | Nothing |
 | `Stop` with empty or absent `background_tasks` | `notify {event:"task_complete", mood:"sleeping", detail:<D>, urgency:2}`. Cancels requests (8.3) |
 | `Stop` with non-empty `background_tasks` | `notify {event:"task_paused", mood:"idle", detail:"<N> background tasks", urgency:1}`. Cancels requests (8.3) |
-| `StopFailure` with `error` `rate_limit` (the claude.ai usage limit) | `notify {event:"usage_limit", mood:"sleeping", detail:"Usage limit reached", urgency:2}`. Cancels requests (8.3) |
+| `StopFailure` with `error` `rate_limit` (the claude.ai usage limit) | `notify {event:"usage_limit", mood:"sleeping", detail:"Resting until reset", urgency:2}`. Cancels requests (8.3) |
 | `StopFailure`, other errors | `notify {event:"error", mood:"sad", detail:<error, 120 bytes>, urgency:2}`. Cancels requests (8.3) |
 | `SessionEnd` | Forget the session; cancel its pending requests |
 

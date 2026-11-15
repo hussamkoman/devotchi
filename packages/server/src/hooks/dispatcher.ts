@@ -49,7 +49,7 @@ interface StatusThrottle {
 const MOODS_REPLACED_BY_WORKING: ReadonlySet<Mood> = new Set(["thinking", "idle", "sleeping"]);
 const FAILURES_BEFORE_NOTIFY = 3;
 const STOP_TEXT_BYTES = 120;
-const USAGE_LIMIT_NOTIFY = { event: "usage_limit", mood: "sleeping", detail: "Usage limit reached", urgency: 2 } as const;
+const USAGE_LIMIT_NOTIFY = { event: "usage_limit", mood: "sleeping", detail: "Resting until reset", urgency: 2 } as const;
 
 function str(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
@@ -244,7 +244,7 @@ export class HookDispatcher {
     }
     if (type === "quota_auto_resume_disabled") {
       session.usageLimited = true;
-      this.emitNotify(room, hook, { ...USAGE_LIMIT_NOTIFY, detail: "Continue in the terminal after the reset" });
+      this.emitNotify(room, hook, { ...USAGE_LIMIT_NOTIFY, detail: "Continue in terminal" });
       return;
     }
     if (type === "idle_prompt" || type === "agent_needs_input") {
