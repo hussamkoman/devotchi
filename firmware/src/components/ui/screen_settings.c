@@ -193,7 +193,7 @@ void ui_settings_set(const ui_settings_t *s)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(s);
     }
     ui_unlock();

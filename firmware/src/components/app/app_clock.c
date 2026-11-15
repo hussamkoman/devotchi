@@ -7,6 +7,7 @@
 
 #include "esp_attr.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,13 +127,30 @@ app_clock_show_t app_clock_show(void)
     return s_show;
 }
 
+/* "<epoch_s> <offset_min>": both numbers whole, nothing missing and nothing after them. */
+static bool parse_set(const char *arg, long long *epoch_s, long *offset)
+{
+    char *end = NULL;
+    errno = 0;
+    *epoch_s = strtoll(arg, &end, 10);
+    if (end == arg || *end != ' ' || errno != 0) {
+        return false;
+    }
+    const char *off = end + 1;
+    *offset = strtol(off, &end, 10);
+    return end != off && *end == '\0' && errno == 0;
+}
+
 /* `clock set <epoch_s> <offset_min>` and `clock show day|night|off` (app task). */
 void app_clock_on_request(app_request_t *req)
 {
     if (strncmp(req->text, "set", 3) == 0) {
-        char *end = NULL;
-        const long long epoch_s = strtoll(req->arg, &end, 10);
-        const long offset = end != NULL ? strtol(end, NULL, 10) : 0;
+        long long epoch_s = 0;
+        long offset = 0;
+        if (!parse_set(req->arg, &epoch_s, &offset)) {
+            app_request_complete(false, "clock set <epoch_s> <offset_min>");
+            return;
+        }
         if (!clock_valid(epoch_s * 1000) || !clock_offset_ok((int32_t)offset)) {
             app_request_complete(false, "epoch after 2026-01-01 and offset -720..840");
             return;

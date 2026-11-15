@@ -89,12 +89,14 @@ typedef struct {
 /**
  * Install order of architecture 7.2: (the pack already passed
  * pet_download_check) put -> read back into scratch and validate -> select
- * when asked. A failed read-back removes a key that did not exist before;
- * a pack of the same id that existed is never removed. *selected tells
- * whether s_pet was written.
+ * when asked. A failure leaves the store as it was (protocol 14.8): a key
+ * that did not exist is removed again, a pack of the same id that existed
+ * is saved in backup first and written back. *selected tells whether s_pet
+ * was written.
  */
 pet_result_t pet_install_commit(const pet_store_ops_t *ops, const pet_cmd_t *cmd, const uint8_t *pack, size_t len,
-                                uint8_t *scratch, size_t scratch_cap, bool *selected);
+                                uint8_t *scratch, size_t scratch_cap, uint8_t *backup, size_t backup_cap,
+                                bool *selected);
 
 /** `select`: a built-in, or a stored pack that validates (`unknown` otherwise). */
 pet_result_t pet_install_select(const pet_store_ops_t *ops, const char *id, uint8_t *scratch, size_t scratch_cap);

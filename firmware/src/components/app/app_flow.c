@@ -1358,6 +1358,11 @@ bool app_flow_card_visible(void)
     return s_card_visible && app_link_flow_shown();
 }
 
+bool app_flow_home_visible(void)
+{
+    return app_link_flow_shown() && !s_sc.active && (s_screen == UI_SCREEN_PET || s_screen == UI_SCREEN_CLOCK);
+}
+
 bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
 {
     if (out->kind == BTN_PROGRESS) {

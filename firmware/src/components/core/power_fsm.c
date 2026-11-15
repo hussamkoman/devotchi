@@ -115,13 +115,6 @@ static bool battery_sleep(power_fsm_t *f, const power_fsm_input_t *in, power_fsm
 {
     const bool on_battery = in->batt_present && !in->ext_power;
 
-    if (on_battery && in->batt_low) {
-        out->low_toast = !f->low_warned;
-        f->low_warned = true;
-    } else {
-        f->low_warned = false;
-    }
-
     bool due = false;
     if (in->wake_reason_battery && !f->wake_done) {
         if (on_battery && in->batt_critical && !usb_blocks) {
@@ -173,12 +166,13 @@ static uint8_t low_pct_toast(power_fsm_t *f, const power_fsm_input_t *in)
 
 /*
  * The resting face (ux-flows 5): the clock replaces home in dim when nothing
- * waits for the user; Always on USB power keeps it lit instead of off.
+ * waits for the user; Always on USB power keeps it lit instead of off. Any
+ * other screen keeps its own backlight and the CPU lock.
  */
 static power_stage_t resting_face(const power_fsm_input_t *in, power_fsm_output_t *out, power_stage_t stage)
 {
     const bool eligible = in->clock_mode != POWER_CLOCK_NEVER && in->agent_idle && in->pending_count == 0 &&
-                          !in->card_visible;
+                          !in->card_visible && in->home_visible;
     if (!eligible) {
         return stage;
     }

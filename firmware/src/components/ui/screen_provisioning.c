@@ -155,7 +155,7 @@ void ui_provisioning_set(const char *service_name, const char *pop, const char *
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(service_name, pop, status);
     }
     ui_unlock();

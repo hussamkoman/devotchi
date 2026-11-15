@@ -96,11 +96,11 @@ static void build_input(uint32_t now, power_fsm_input_t *in)
         .last_agent_ms = act.last_agent_ms,
         .pending_count = app_flow_pending_count(),
         .card_visible = app_flow_card_visible(),
+        .home_visible = app_flow_home_visible(),
         .ext_power = b.ext_power,
         .usb_host = usb_host,
         .provisioning = act.state == APP_STATE_PROVISIONING,
         .batt_present = b.valid && b.state != BATTERY_STATE_ABSENT,
-        .batt_low = b.low,
         .batt_critical = b.critical,
         .screen_timeout_s = s_dim_s,
         .deep_timeout_ms = (uint32_t)s_deep_min * DEEP_UNIT_MS,
@@ -309,7 +309,6 @@ static void wake_input(const wake_sample_t *s, uint32_t now, bool dry, power_fsm
     in->ext_power = s->ext_power;
     in->usb_host = s->usb_host;
     in->batt_present = s->batt_present;
-    in->batt_low = s->mv < CONFIG_DEVOTCHI_BATT_LOW_MV;
     in->batt_critical = s->mv < CONFIG_DEVOTCHI_BATT_CRIT_MV;
     in->wake_reason_battery = true;
     in->dry_run = dry;
@@ -474,6 +473,7 @@ static console_rc_t show(void)
     cJSON_AddNumberToObject(root, "agentIdleS", out.agent_idle_ms / 1000);
     cJSON_AddNumberToObject(root, "pending", in.pending_count);
     cJSON_AddBoolToObject(root, "cardVisible", in.card_visible);
+    cJSON_AddBoolToObject(root, "homeVisible", in.home_visible);
     cJSON *t = cJSON_AddObjectToObject(root, "timeouts");
     cJSON_AddNumberToObject(t, "dimS", out.dim_ms / 1000);
     cJSON_AddNumberToObject(t, "offS", out.off_ms / 1000);

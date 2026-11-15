@@ -191,7 +191,7 @@ void ui_toast_show(ui_toast_kind_t kind, const char *title, const char *detail, 
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         show_toast(kind, title, detail, ms != 0 ? ms : UI_TOAST_DEFAULT_MS);
     }
     ui_unlock();
@@ -202,7 +202,7 @@ void ui_receipt_strip(ui_toast_kind_t kind, const char *text, uint32_t ms)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         const char *icon;
         lv_color_t color;
         kind_style(kind, &icon, &color);
@@ -253,7 +253,7 @@ void ui_banner_show(const char *text, bool attention)
     strlcpy(s_app_banner, text != NULL ? text : "", sizeof(s_app_banner));
     s_app_banner_attention = attention;
     s_app_banner_shown = true;
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         draw_banner();
     }
     ui_unlock();
@@ -265,7 +265,7 @@ void ui_banner_hide(void)
         return;
     }
     s_app_banner_shown = false;
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         draw_banner();
     }
     ui_unlock();
@@ -298,7 +298,7 @@ void w_toast_demo(w_toast_demo_t demo)
     switch (demo) {
     case W_TOAST_DEMO_NONE:
         /* A demo screen starts without the app's banner; ui demo off brings it back. */
-        if (ui_demo_active()) {
+        if (ui_demo_active_locked()) {
             screen_pet_set_attention(false);
             screen_pet_set_banner(false);
         } else {

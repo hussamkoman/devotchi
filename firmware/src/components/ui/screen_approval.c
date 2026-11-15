@@ -347,7 +347,7 @@ void ui_approval_set(const ui_approval_t *a)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(a);
     }
     ui_unlock();

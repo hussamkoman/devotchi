@@ -66,7 +66,7 @@ void ui_clock_set(const ui_clock_t *c)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(c);
     }
     ui_unlock();

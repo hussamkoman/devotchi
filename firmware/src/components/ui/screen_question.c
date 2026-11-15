@@ -344,7 +344,7 @@ void ui_question_set(const ui_question_t *q)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(q);
     }
     ui_unlock();

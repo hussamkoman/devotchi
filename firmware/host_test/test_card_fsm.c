@@ -51,14 +51,22 @@ static void lines(proto_risk_t risk, int n)
     entry(risk, cmd);
 }
 
+/* A click is a whole press: the app asks the mode at press-down. */
 static card_out_t press(btn_id_t id, btn_kind_t kind)
 {
+    if (kind == BTN_CLICK) {
+        card_fsm_mode(&s_c, id, NOW);
+    }
     const btn_fsm_out_t out = {.id = id, .kind = kind};
     return card_fsm_button(&s_c, &out, NOW);
 }
 
+/* Progress 0 comes with the press-down of a commit hold. */
 static card_out_t progress(uint16_t permille)
 {
+    if (permille == 0) {
+        card_fsm_mode(&s_c, BTN_APPROVE, NOW);
+    }
     const btn_fsm_out_t out = {.id = BTN_APPROVE, .kind = BTN_PROGRESS, .permille = permille};
     return card_fsm_button(&s_c, &out, NOW);
 }
@@ -509,6 +517,25 @@ static void test_cursor_move_cancels_a_session_hold(void)
     TEST_ASSERT_EQUAL(CARD_OUT_NONE, press(BTN_APPROVE, BTN_COMMIT).kind);
 }
 
+/* APPROVE down on one row, ACTION moves the cursor, APPROVE up: no row is decided. */
+static void test_cursor_move_cancels_an_approve_click(void)
+{
+    entry(PROTO_RISK_MED, "pnpm test");
+    grant();
+    open_card(true);
+    open_menu();
+    cursor_to(CARD_ROW_TERMINAL);
+    TEST_ASSERT_EQUAL(BTN_MODE_CLICK, card_fsm_mode(&s_c, BTN_APPROVE, NOW));
+    TEST_ASSERT_EQUAL(CARD_OUT_CURSOR, press(BTN_ACTION, BTN_CLICK).kind);
+    TEST_ASSERT_NOT_EQUAL(CARD_ROW_TERMINAL, card_fsm_focused_row(&s_c));
+    const btn_fsm_out_t up = {.id = BTN_APPROVE, .kind = BTN_CLICK};
+    TEST_ASSERT_EQUAL(CARD_OUT_NONE, card_fsm_button(&s_c, &up, NOW).kind);
+    TEST_ASSERT_FALSE(s_c.sent);
+    /* The next press decides the row it went down on. */
+    cursor_to(CARD_ROW_DENY_STOP);
+    expect_decision(press(BTN_APPROVE, BTN_CLICK), CARD_DECISION_DENY_STOP);
+}
+
 static void test_phase1_server_menu_has_only_terminal(void)
 {
     entry(PROTO_RISK_LOW, "pnpm test");
@@ -601,6 +628,7 @@ int main(void)
     RUN_TEST(test_session_locked_over_four_pages);
     RUN_TEST(test_session_absent);
     RUN_TEST(test_cursor_move_cancels_a_session_hold);
+    RUN_TEST(test_cursor_move_cancels_an_approve_click);
     RUN_TEST(test_phase1_server_menu_has_only_terminal);
     RUN_TEST(test_receipts);
     RUN_TEST(test_names);

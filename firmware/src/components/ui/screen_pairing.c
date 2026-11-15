@@ -106,7 +106,7 @@ void ui_pairing_set(const char *code, const char *host, const char *error, uint3
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(code, host, error, remaining_s, total_s);
     }
     ui_unlock();

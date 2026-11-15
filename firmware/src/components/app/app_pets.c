@@ -18,16 +18,20 @@
 static const char *TAG = "pets";
 
 #define TX_SIZE  (PROTO_PETS_MAX_BYTES + 1)
+/* A download waits for Wi-Fi, the token and a free HTTP slot; past this it fails so later installs are not `busy`. */
+#define APP_PETS_FETCH_START_MS  30000
 
 /* App task only, except s_view (guarded by s_view_mux). */
 static char s_selected[STORAGE_PET_ID_SIZE];
 static pet_source_t s_source;
 static pet_cmd_t s_pending;
 static bool s_fetch_wanted;
+static uint32_t s_fetch_wanted_ms;
 static bool s_fetching;
 /* The pack being installed, its read-back, and the shown pet's decoded copy. */
 static uint8_t s_pack[PET_PACK_MAX_SIZE];
 static uint8_t s_scratch[PET_PACK_MAX_SIZE];
+static uint8_t s_backup[PET_PACK_MAX_SIZE];
 static pet_def_t s_def;
 static pet_def_t s_page_def;
 static char s_tx[TX_SIZE];
@@ -152,6 +156,7 @@ void app_pets_on_cmd(const proto_pet_cmd_t *raw, uint32_t now)
         }
         s_pending = cmd;
         s_fetch_wanted = true;
+        s_fetch_wanted_ms = now;
         publish_view();
         return;
     case PROTO_PET_OP_SELECT:
@@ -204,7 +209,7 @@ void app_pets_on_fetch(const net_job_result_t *r, uint32_t now)
     if (res == PET_RESULT_OK) {
         memcpy(s_pack, net_pet_body(), dl.received);
         res = pet_install_commit(storage_pets_ops(), &s_pending, s_pack, dl.received, s_scratch, sizeof(s_scratch),
-                                 &selected);
+                                 s_backup, sizeof(s_backup), &selected);
     }
     ESP_LOGI(TAG, "install %s rev %u: %s", s_pending.id, s_pending.rev, pet_result_name(res));
     if (selected) {
@@ -221,6 +226,15 @@ void app_pets_fetch_failed(uint32_t now)
     if (s_fetch_wanted || s_fetching) {
         s_fetch_wanted = false;
         s_fetching = false;
+        send_pets(now, "install", s_pending.id, PET_RESULT_HTTP);
+    }
+}
+
+void app_pets_tick(uint32_t now)
+{
+    if (s_fetch_wanted && now - s_fetch_wanted_ms >= APP_PETS_FETCH_START_MS) {
+        s_fetch_wanted = false;
+        ESP_LOGW(TAG, "install %s rev %u: download did not start", s_pending.id, s_pending.rev);
         send_pets(now, "install", s_pending.id, PET_RESULT_HTTP);
     }
 }

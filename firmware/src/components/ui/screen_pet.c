@@ -281,7 +281,7 @@ void ui_pet_set(const char *project, proto_mood_t mood, const char *status)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply(project, mood, status);
     }
     ui_unlock();
@@ -292,7 +292,7 @@ void ui_pet_show_tabs(uint32_t ms)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         show_tabs(ms);
     }
     ui_unlock();
@@ -311,7 +311,7 @@ void ui_pet_page_set(ui_pet_page_t page)
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         set_page(page);
     }
     ui_unlock();
@@ -347,7 +347,7 @@ void ui_recent_set(const char *const times[UI_RECENT_ROWS], const char *const te
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply_recent(times, texts, n);
     }
     ui_unlock();
@@ -368,7 +368,7 @@ void ui_pet_set_caption(const char *bar, const char *title, const char *line, co
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply_caption(bar, title, line, approve);
     }
     ui_unlock();
@@ -379,7 +379,7 @@ void ui_about_set(const char *const values[UI_ABOUT_COUNT])
     if (!ui_lock()) {
         return;
     }
-    if (!ui_demo_active()) {
+    if (!ui_demo_active_locked()) {
         apply_about(values);
     }
     ui_unlock();

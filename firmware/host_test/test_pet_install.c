@@ -31,6 +31,8 @@ typedef struct {
     bool fail_put;
     bool fail_select;
     bool corrupt_reads;
+    /* corrupt_reads turns on with the next put: the old value still reads well. */
+    bool corrupt_after_put;
 } fake_t;
 
 static fake_t s_fake;
@@ -65,6 +67,7 @@ static bool f_put(void *ctx, const char *id, const uint8_t *bytes, size_t len)
     if (f->fail_put || !step(f)) {
         return false;
     }
+    f->corrupt_reads |= f->corrupt_after_put;
     fake_key_t *k = find(f, id);
     for (int i = 0; k == NULL && i < FAKE_KEYS; i++) {
         if (f->keys[i].len == 0) {
@@ -145,7 +148,7 @@ static void fake_reboot(void)
 {
     s_fake.dead = false;
     s_fake.crash_at = 0;
-    s_fake.fail_put = s_fake.fail_select = s_fake.corrupt_reads = false;
+    s_fake.fail_put = s_fake.fail_select = s_fake.corrupt_reads = s_fake.corrupt_after_put = false;
 }
 
 /* ---- packs ---- */
@@ -153,6 +156,7 @@ static void fake_reboot(void)
 static uint8_t s_pack[PET_PACK_MAX_SIZE];
 static size_t s_pack_len;
 static uint8_t s_scratch[PET_PACK_MAX_SIZE];
+static uint8_t s_backup[PET_PACK_MAX_SIZE];
 
 static void reseal(uint8_t *p, size_t len)
 {
@@ -356,7 +360,7 @@ static void test_install_and_select(void)
     s_pack_len = make_pack(s_pack, "pixie", 1);
     pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
     bool sel;
-    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
     TEST_ASSERT_TRUE(sel);
     TEST_ASSERT_EQUAL_STRING("pixie", s_fake.selected);
     const uint8_t *bytes;
@@ -392,57 +396,78 @@ static void test_full_and_failures(void)
         snprintf(id, sizeof(id), "p%d", i);
         s_pack_len = make_pack(s_pack, id, 1);
         pet_cmd_t c = install_cmd(id, 1, s_pack, s_pack_len, false);
-        TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+        TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
         TEST_ASSERT_FALSE(sel);
     }
     s_pack_len = make_pack(s_pack, "pixie", 1);
     pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
-    TEST_ASSERT_EQUAL(PET_RESULT_FULL, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+    TEST_ASSERT_EQUAL(PET_RESULT_FULL, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
     TEST_ASSERT_EQUAL_STRING("devo", s_fake.selected);
     /* Replacing a stored id needs no free slot. */
     s_pack_len = make_pack(s_pack, "p3", 2);
     c = install_cmd("p3", 2, s_pack, s_pack_len, false);
-    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
 
     /* A fresh install whose read-back fails is removed again. */
     fake_reset();
     s_fake.corrupt_reads = true;
     s_pack_len = make_pack(s_pack, "pixie", 1);
     c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
-    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
     TEST_ASSERT_FALSE(f_has(&s_fake, "pixie"));
     TEST_ASSERT_EQUAL_STRING("devo", s_fake.selected);
 
-    /* A replace whose read-back fails reports storage and is not removed. */
+    /* A replace whose read-back fails reports storage and writes the old pack back. */
     fake_reset();
     s_pack_len = make_pack(s_pack, "pixie", 1);
     c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
-    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
-    s_fake.corrupt_reads = true;
+    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
     s_pack_len = make_pack(s_pack, "pixie", 2);
     c = install_cmd("pixie", 2, s_pack, s_pack_len, false);
-    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
-    TEST_ASSERT_TRUE(f_has(&s_fake, "pixie"));
+    s_fake.corrupt_after_put = true;
+    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
+    const fake_key_t *old = find(&s_fake, "pixie");
+    TEST_ASSERT_NOT_NULL(old);
+    TEST_ASSERT_EQUAL(1, old->bytes[5]);
+    TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_validate(old->bytes, old->len));
 
     /* A failing put keeps the old value (NVS replaces atomically). */
     fake_reset();
     s_fake.fail_put = true;
-    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
     TEST_ASSERT_EQUAL(0, f_count(&s_fake));
 
-    /* A failing select leaves the pack installed and the selection as it was. */
+    /* A failing select changes nothing (protocol 14.8): a fresh pack is removed again... */
     fake_reset();
     s_fake.fail_select = true;
     c.select = true;
-    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
     TEST_ASSERT_FALSE(sel);
     TEST_ASSERT_EQUAL_STRING("devo", s_fake.selected);
+    TEST_ASSERT_EQUAL(0, f_count(&s_fake));
+
+    /* ...and a replaced one gets its old revision back. */
+    fake_reset();
+    s_pack_len = make_pack(s_pack, "pixie", 1);
+    c = install_cmd("pixie", 1, s_pack, s_pack_len, false);
+    TEST_ASSERT_EQUAL(PET_RESULT_OK, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
+    s_pack_len = make_pack(s_pack, "pixie", 2);
+    c = install_cmd("pixie", 2, s_pack, s_pack_len, true);
+    s_fake.fail_select = true;
+    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
+    TEST_ASSERT_FALSE(sel);
+    TEST_ASSERT_EQUAL_STRING("devo", s_fake.selected);
+    TEST_ASSERT_EQUAL(1, f_count(&s_fake));
+    const fake_key_t *k = find(&s_fake, "pixie");
+    TEST_ASSERT_NOT_NULL(k);
+    TEST_ASSERT_EQUAL(1, k->bytes[5]);
+    TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_validate(k->bytes, k->len));
 
     /* No `pets` partition: nothing can be stored. */
     fake_reset();
     pet_store_ops_t none = OPS;
     none.slots = 0;
-    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&none, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+    TEST_ASSERT_EQUAL(PET_RESULT_STORAGE, pet_install_commit(&none, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
 }
 
 /* After any reboot: s_pet names a pet that loads, and the stored pixie is rev 1 or rev 2, never broken. */
@@ -476,20 +501,20 @@ static void test_power_loss_at_every_step(void)
             s_pack_len = make_pack(s_pack, "pixie", 1);
             pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
             bool sel;
-            pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel);
+            pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel);
             fake_reboot();
             check_after_reboot(1, 1, "devo");
 
             /* Replace rev 1 (selected) by rev 2. */
             fake_reset();
             c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
-            pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel);
+            pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel);
             s_fake.steps = 0;
             s_fake.crash_at = at;
             s_fake.crash_lands = lands;
             s_pack_len = make_pack(s_pack, "pixie", 2);
             c = install_cmd("pixie", 2, s_pack, s_pack_len, true);
-            pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel);
+            pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel);
             fake_reboot();
             TEST_ASSERT_EQUAL_STRING("pixie", s_fake.selected);
             const fake_key_t *k = find(&s_fake, "pixie");
@@ -501,7 +526,7 @@ static void test_power_loss_at_every_step(void)
             fake_reset();
             s_pack_len = make_pack(s_pack, "pixie", 1);
             c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
-            pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel);
+            pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel);
             s_fake.steps = 0;
             s_fake.crash_at = at;
             s_fake.crash_lands = lands;
@@ -524,7 +549,7 @@ static void test_power_loss_between_blob_and_selection(void)
     pet_cmd_t c = install_cmd("pixie", 1, s_pack, s_pack_len, true);
     bool sel;
     TEST_ASSERT_EQUAL(PET_RESULT_STORAGE,
-                      pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), &sel));
+                      pet_install_commit(&OPS, &c, s_pack, s_pack_len, s_scratch, sizeof(s_scratch), s_backup, sizeof(s_backup), &sel));
     fake_reboot();
     TEST_ASSERT_TRUE(f_has(&s_fake, "pixie"));
     TEST_ASSERT_EQUAL_STRING("ember", s_fake.selected);

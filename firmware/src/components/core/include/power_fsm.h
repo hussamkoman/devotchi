@@ -70,12 +70,13 @@ typedef struct {
      * active (ux-flows 7); when it closes the idle timers start again.
      */
     bool card_visible;
+    /** Home (the pet or the clock that replaces it) is on screen: no settings, showcase or card. */
+    bool home_visible;
     /** The debounced value from battery_update. */
     bool ext_power;
     bool usb_host;
     bool provisioning;
     bool batt_present;
-    bool batt_low;
     bool batt_critical;
     /** This boot is a wake from a battery-protection sleep. */
     bool wake_reason_battery;
@@ -116,8 +117,6 @@ typedef struct {
     bool enter_deep_sleep;
     power_deep_reason_t deep_reason;
     bool show_lowbatt;
-    /** True on the one update that starts a low-battery episode. */
-    bool low_toast;
     /** POWER_FSM_LOW_PCT_1 or _2 on the update that crosses it, else 0. */
     uint8_t low_toast_pct;
     /** The resting face (clock, 40-42) replaces home. */
@@ -144,7 +143,6 @@ typedef struct {
     uint32_t seen_user_ms;
     bool forced;
     power_stage_t forced_stage;
-    bool low_warned;
     bool crit_timing;
     uint32_t crit_since_ms;
     bool wake_done;
