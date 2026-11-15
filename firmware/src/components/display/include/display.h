@@ -22,8 +22,14 @@ void display_unlock(void);
 /** Sets the backlight level used whenever the panel is awake. */
 void display_set_brightness(uint8_t percent);
 
-/** Puts the panel into or out of sleep (SLPIN/SLPOUT) and switches the backlight with it. */
+/**
+ * Puts the panel into or out of sleep (SLPIN/SLPOUT) and switches the
+ * backlight with it. Waking redraws the whole screen before the backlight
+ * comes on.
+ */
 esp_err_t display_sleep(bool sleep);
+
+bool display_is_asleep(void);
 
 /**
  * Renders pending changes and copies the panel content (RGB565 little-endian,

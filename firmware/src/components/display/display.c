@@ -246,10 +246,25 @@ esp_err_t display_sleep(bool sleep)
         } else {
             ESP_LOGE(TAG, "panel sleep(%d) failed: %s", sleep, esp_err_to_name(err));
         }
+        if (!sleep) {
+            /* One full frame reaches the panel before the backlight shows it. */
+            lv_obj_invalidate(lv_display_get_screen_active(s_disp));
+            lv_refr_now(s_disp);
+        }
         apply_backlight();
     }
     display_unlock();
     return err;
+}
+
+bool display_is_asleep(void)
+{
+    bool asleep = false;
+    if (display_lock(PANEL_LOCK_TIMEOUT_MS)) {
+        asleep = s_asleep;
+        display_unlock();
+    }
+    return asleep;
 }
 
 esp_err_t display_snapshot(const uint8_t **buf, size_t *len, uint32_t *crc32)

@@ -29,5 +29,11 @@ esp_err_t wifi_connect(const char *ssid, const char *psk);
 /** Safe from any task. */
 void wifi_get_status(wifi_status_t *out);
 
+/** MAX_MODEM (true) or MIN_MODEM; ESP_ERR_INVALID_STATE before the first wifi_connect(). */
+esp_err_t wifi_set_power_save(bool max);
+
+/** Before deep sleep: stops the driver. */
+void wifi_stop(void);
+
 /** Factory reset: clears the WiFi driver's own stored configuration (esp_wifi_restore). */
 esp_err_t wifi_restore(void);

@@ -5,7 +5,6 @@
 #include "battery.h"
 #include "buttons.h"
 #include "console.h"
-#include "display.h"
 #include "fb_seq.h"
 #include "feedback.h"
 #include "power.h"
@@ -326,6 +325,19 @@ void app_request_complete(bool ok, const char *message)
     xSemaphoreGive(s_snapshot_lock);
 }
 
+void app_get_activity(app_activity_t *out)
+{
+    *out = (app_activity_t){0};
+    if (snapshot_lock()) {
+        *out = (app_activity_t){
+            .state = s_snapshot.state,
+            .last_user_ms = s_snapshot.last_user_ms,
+            .last_agent_ms = s_snapshot.last_agent_ms,
+        };
+        xSemaphoreGive(s_snapshot_lock);
+    }
+}
+
 void app_user_activity(uint32_t now)
 {
     if (snapshot_lock()) {
@@ -361,12 +373,21 @@ static void on_button(const btn_fsm_out_t *out, uint32_t now_ms)
     }
 }
 
+/* A press while the screen is dim or off only wakes it (architecture 4.8). */
+static void wake_press(uint32_t now)
+{
+    if (app_power_stage() != POWER_STAGE_ACTIVE) {
+        btn_fsm_arm_swallow(&s_btn, now);
+    }
+    app_user_activity(now);
+}
+
 static void handle_btn_raw(const app_event_t *ev)
 {
     const btn_id_t id = (btn_id_t)ev->arg.u8[0];
     const btn_raw_t raw = (btn_raw_t)ev->arg.u8[1];
     if (raw == BTN_RAW_DOWN) {
-        app_user_activity(ev->t_ms);
+        wake_press(ev->t_ms);
     }
     ESP_LOGD(TAG, "raw %s %d", btn_id_name(id), raw);
     btn_fsm_out_t out;
@@ -381,7 +402,7 @@ static void handle_btn_inject(const app_event_t *ev)
     if (id >= BTN_COUNT) {
         return;
     }
-    app_user_activity(ev->t_ms);
+    wake_press(ev->t_ms);
     btn_fsm_out_t out;
     btn_fsm_inject(&s_btn, id, (btn_kind_t)ev->arg.u8[1], ev->t_ms, &out);
     on_button(&out, ev->t_ms);
@@ -439,7 +460,9 @@ void app_apply_setting(storage_setting_t id)
 {
     switch (id) {
     case STORAGE_SETTING_BRIGHTNESS:
-        display_set_brightness((uint8_t)storage_get_setting(STORAGE_SETTING_BRIGHTNESS));
+    case STORAGE_SETTING_DIM_S:
+    case STORAGE_SETTING_DEEP_MIN:
+        app_power_on_setting(id);
         break;
     case STORAGE_SETTING_HAPTIC:
     case STORAGE_SETTING_LED:
@@ -448,8 +471,6 @@ void app_apply_setting(storage_setting_t id)
     case STORAGE_SETTING_BATT:
         power_reload_settings();
         break;
-    case STORAGE_SETTING_DIM_S:
-    case STORAGE_SETTING_DEEP_MIN:
     case STORAGE_SETTING_COUNT:
         break;
     }
@@ -494,14 +515,34 @@ static void handle_event(const app_event_t *ev)
     }
 }
 
+bool app_wait_link_idle(uint32_t timeout_ms)
+{
+    const uint32_t start = app_now_ms();
+    while (!app_link_ws_idle()) {
+        const uint32_t waited = app_now_ms() - start;
+        if (waited >= timeout_ms) {
+            return false;
+        }
+        app_event_t ev;
+        if (xQueueReceive(s_queue, &ev, pdMS_TO_TICKS(timeout_ms - waited)) == pdTRUE) {
+            /* Anything that is not a link event no longer matters to a device about to sleep. */
+            app_link_handle_event(&ev);
+        }
+    }
+    return true;
+}
+
 static void app_task(void *arg)
 {
     (void)arg;
+    app_power_boot_check();
     app_link_start();
+    app_power_update(app_now_ms());
     for (;;) {
         app_event_t ev;
         if (xQueueReceive(s_queue, &ev, portMAX_DELAY) == pdTRUE) {
             handle_event(&ev);
+            app_power_update(app_now_ms());
         }
     }
 }
@@ -565,6 +606,7 @@ esp_err_t app_init(void)
     ESP_RETURN_ON_ERROR(power_init(on_power), TAG, "power");
     ESP_RETURN_ON_ERROR(app_flow_init(), TAG, "flow");
     ESP_RETURN_ON_ERROR(app_link_init(), TAG, "link");
+    ESP_RETURN_ON_ERROR(app_power_init(), TAG, "power stages");
     /* Host tools poll `version` to detect readiness, so it is registered after every other command. */
     ESP_RETURN_ON_ERROR(app_cmds_io_register(), TAG, "io commands");
     ESP_RETURN_ON_ERROR(app_cmds_net_register(), TAG, "net commands");

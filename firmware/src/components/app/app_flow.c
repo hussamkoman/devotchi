@@ -401,6 +401,11 @@ static void on_identify(uint32_t ms, uint32_t now)
     play(FB_SEQ_IDENTIFY, ms);
 }
 
+uint8_t app_flow_pending_count(void)
+{
+    return (uint8_t)reqq_count(&s_q);
+}
+
 void app_flow_on_message(const proto_msg_t *msg, uint32_t now)
 {
     switch (msg->type) {
@@ -719,6 +724,11 @@ static void set_banner(const char *text)
         strlcpy(s_banner_shown, text, sizeof(s_banner_shown));
         ui_banner_show(text);
     }
+}
+
+void app_flow_hide_banner(void)
+{
+    set_banner(NULL);
 }
 
 static void render_approval(const reqq_entry_t *e, uint8_t position, uint8_t count, uint32_t now,

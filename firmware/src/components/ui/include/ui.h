@@ -42,6 +42,13 @@ esp_err_t ui_init(void);
 esp_err_t ui_start(const char *task_name, uint32_t stack_size, uint32_t priority);
 
 /**
+ * False parks the ui task: it stops calling lv_timer_handler() and waits for
+ * true. ui_* setters still work; their changes are drawn after the restart.
+ */
+void ui_set_running(bool running);
+bool ui_is_running(void);
+
+/**
  * Takes the recursive lock that guards every lv_* and esp_lcd panel call;
  * returns false if it stayed busy for a second. Needed only by code that
  * calls LVGL itself: the ui_* functions lock on their own.

@@ -147,6 +147,15 @@ static console_rc_t cmd_state(int argc, char **argv, const char *raw_args)
     cJSON_AddBoolToObject(battery, "injected", batt.injected);
     cJSON_AddStringToObject(battery, "presence", battery_presence_name(batt.presence));
 
+    power_pm_state_t pm;
+    power_pm_get(&pm);
+    cJSON *pw = cJSON_AddObjectToObject(root, "power");
+    cJSON_AddStringToObject(pw, "stage", power_stage_name(app_power_stage()));
+    cJSON_AddBoolToObject(pw, "panelAsleep", display_is_asleep());
+    cJSON_AddBoolToObject(pw, "uiParked", !ui_is_running());
+    cJSON_AddBoolToObject(pw, "cpuLock", pm.cpu_lock);
+    cJSON_AddNumberToObject(pw, "cpuMhz", pm.cpu_mhz);
+
     if (snap.has_last_btn) {
         cJSON *btn = cJSON_AddObjectToObject(root, "lastButton");
         cJSON_AddStringToObject(btn, "id", btn_id_name(snap.last_btn.id));

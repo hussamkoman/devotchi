@@ -1,9 +1,11 @@
 #include "wifi.h"
 
+#include "esp_attr.h"
 #include "esp_check.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_system.h"
 #include "esp_wifi.h"
 
 #include <stdatomic.h>
@@ -17,6 +19,24 @@ static esp_netif_t *s_netif;
 static atomic_bool s_ready;
 static atomic_bool s_started;
 static atomic_bool s_connected;
+
+#define FAST_MAGIC 0x57494649u
+
+/*
+ * The access point of the last connection, kept in RTC memory so a wake from
+ * deep sleep can skip the scan. The SSID guards against credentials that
+ * changed in between.
+ */
+typedef struct {
+    uint32_t magic;
+    uint8_t bssid[6];
+    uint8_t channel;
+    char ssid[WIFI_SSID_SIZE];
+} fast_hint_t;
+
+static RTC_DATA_ATTR fast_hint_t s_hint;
+/* The hint is tried once per boot, on the first attempt after a deep-sleep wake. */
+static bool s_hint_unused;
 
 static net_wifi_fail_t classify(uint8_t reason)
 {
@@ -52,6 +72,15 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         const ip_event_got_ip_t *got = data;
         atomic_store(&s_connected, true);
+        wifi_ap_record_t ap;
+        wifi_config_t cfg;
+        if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK && esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK) {
+            memcpy(s_hint.bssid, ap.bssid, sizeof(s_hint.bssid));
+            s_hint.channel = ap.primary;
+            memset(s_hint.ssid, 0, sizeof(s_hint.ssid));
+            memcpy(s_hint.ssid, cfg.sta.ssid, sizeof(s_hint.ssid) - 1);
+            s_hint.magic = FAST_MAGIC;
+        }
         ESP_LOGI(TAG, "got ip " IPSTR, IP2STR(&got->ip_info.ip));
         const net_event_t ev = {.id = NET_EV_WIFI_GOT_IP};
         s_cb(&ev);
@@ -76,6 +105,7 @@ esp_err_t wifi_init(net_event_cb_t cb, bool use_nvs)
                         TAG, "wifi handler");
     ESP_RETURN_ON_ERROR(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_event, NULL, NULL), TAG,
                         "ip handler");
+    s_hint_unused = esp_reset_reason() == ESP_RST_DEEPSLEEP && s_hint.magic == FAST_MAGIC;
     atomic_store(&s_ready, true);
     return ESP_OK;
 }
@@ -91,6 +121,16 @@ esp_err_t wifi_connect(const char *ssid, const char *psk)
     /* A 32-byte SSID fills the field without a terminator, which the driver accepts. */
     memcpy(cfg.sta.ssid, ssid, strlen(ssid));
     memcpy(cfg.sta.password, psk, strlen(psk));
+    if (s_hint_unused) {
+        s_hint_unused = false;
+        if (strncmp(s_hint.ssid, ssid, sizeof(s_hint.ssid)) == 0) {
+            /* A failure falls back to a full scan on the next attempt, which no longer has the hint. */
+            cfg.sta.channel = s_hint.channel;
+            cfg.sta.bssid_set = true;
+            memcpy(cfg.sta.bssid, s_hint.bssid, sizeof(cfg.sta.bssid));
+            ESP_LOGI(TAG, "fast reconnect on channel %u", s_hint.channel);
+        }
+    }
 
     if (!atomic_load(&s_started)) {
         ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "mode");
@@ -136,4 +176,20 @@ esp_err_t wifi_restore(void)
         return ESP_ERR_INVALID_STATE;
     }
     return esp_wifi_restore();
+}
+
+esp_err_t wifi_set_power_save(bool max)
+{
+    if (!atomic_load(&s_started)) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return esp_wifi_set_ps(max ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM);
+}
+
+void wifi_stop(void)
+{
+    if (atomic_exchange(&s_started, false)) {
+        atomic_store(&s_connected, false);
+        esp_wifi_stop();
+    }
 }
