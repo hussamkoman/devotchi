@@ -171,6 +171,8 @@ typedef enum {
     UI_LINK_REGISTERED,
     UI_LINK_CONNECTING,
     UI_LINK_OFFLINE,
+    /** No dot: the showcase is a local demo, the link state would only distract. */
+    UI_LINK_HIDDEN,
 } ui_link_t;
 
 typedef struct {

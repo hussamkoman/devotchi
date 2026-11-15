@@ -1542,6 +1542,13 @@ static void set_banner(const char *text, bool attention)
     }
 }
 
+void app_flow_drop_offline_banner(void)
+{
+    if (!s_attention) {
+        set_banner(NULL, false);
+    }
+}
+
 void app_flow_hide_banner(void)
 {
     set_banner(NULL, false);
