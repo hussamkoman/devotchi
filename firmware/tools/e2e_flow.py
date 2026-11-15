@@ -170,8 +170,8 @@ class Run:
                                         f"permission_response for {rid}")
         check(frame.get("granted") is granted, f"granted is {frame.get('granted')!r}, expected {granted}")
         screen = self.screen()
-        check((screen.get("request") or {}).get("sent") is True and "Sent..." in screen["texts"],
-              f"card does not show Sent...: {screen.get('texts')}")
+        check((screen.get("request") or {}).get("sent") is True and "Sent\u2026" in screen["texts"],
+              f"card does not show Sent\u2026: {screen.get('texts')}")
         bmark = self.board.mark()
         self.dismiss(rid, "answered")
         self.wait_board(lambda e: e.get("evt") == "request" and e.get("op") == "remove" and e.get("id") == rid, 5,
@@ -241,11 +241,13 @@ class Run:
         return "reject -> granted false -> dismiss -> pet"
 
     def step_high_risk(self):
-        details = "\n".join(f"line {i:02d} " + "x" * 30 for i in range(9))
+        # Five lines that fit the well's 34 columns: two pages of three lines.
+        details = "\n".join(f"line {i:02d} " + "x" * 20 for i in range(5))
         rid, _ = self.permission(risk="high", summary="rm -rf dist build node_modules/.cache", details=details)
         screen = self.wait_approval(rid)
         check(screen["request"]["pages"] == 2 and screen["request"]["page"] == 1, f"paging: {screen['request']}")
-        check("HOLD TO APPROVE" in screen["texts"], f"hint: {screen['texts']}")
+        approve_tab = (screen.get("tabs") or {}).get("approve") or {}
+        check(approve_tab.get("text") == "Hold: Allow", f"approve tab: {screen.get('tabs')}")
         self.press("action")
         screen = self.wait_screen(lambda s: (s.get("request") or {}).get("page") == 2, 3, "details page 2")
         self.press("action")
@@ -253,12 +255,13 @@ class Run:
         mark = self.mock.mark()
         bmark = self.board.mark()
         self.press("approve")
-        self.wait_toast("Hold to approve", bmark)
+        self.wait_board(lambda e: e.get("evt") == "nudge" and e.get("text") == "Hold to allow", 5, bmark,
+                        "nudge 'Hold to allow'")
         self.screenshot("approval-high")
         self.no_mock_frame(["permission_response"], rid, CONFIRM_WINDOW_S, mark)
         self.answer_and_confirm(rid, "approve", "long", True)
         self.wait_pet()
-        return "click -> 'Hold to approve' and nothing sent; long -> granted true; details paged 1 -> 2 -> 1"
+        return "click -> nudge 'Hold to allow' and nothing sent; long -> granted true; details paged 1 -> 2 -> 1"
 
     def step_defer(self):
         rid, _ = self.permission(risk="med")
@@ -368,7 +371,8 @@ class Run:
         self.send({"type": "error", "code": "INVALID_MESSAGE", "message": "granted must be a boolean", "id": rid2})
         self.wait_toast("Not delivered", bmark)
         screen = self.wait_approval(rid2)
-        check(screen["request"]["sent"] is False and "APPROVE" in screen["texts"], "buttons not re-enabled")
+        check(screen["request"]["sent"] is False and ((screen.get("tabs") or {}).get("approve") or {}).get("text") == "Allow",
+              f"buttons not re-enabled: {screen.get('tabs')}")
         mark = self.mock.mark()
         self.press("approve")
         sent_at, _ = self.wait_mock_frame("permission_response", lambda f: f.get("id") == rid2, 5, mark, "resend")
@@ -432,7 +436,8 @@ class Run:
         self.send({"type": "status", "msg": "Edit src/app.c", "project": "devotchi"})
         screen = self.wait_screen(lambda s: "Edit src/app.c" in s["texts"], 3, "status text")
         check(screen["mood"] == "happy", f"status without mood changed the mood to {screen['mood']}")
-        check("devotchi" in screen["texts"], f"project header: {screen['texts']}")
+        # The project label is in the caps style: upper case on screen.
+        check("DEVOTCHI" in screen["texts"], f"project header: {screen['texts']}")
         self.screenshot("pet")
         self.send({"type": "status", "msg": "Run tests", "mood": "sad"})
         self.wait_screen(lambda s: s["mood"] == "sad" and "Run tests" in s["texts"], 3, "status with mood")

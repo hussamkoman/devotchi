@@ -45,6 +45,11 @@ static uint8_t s_brightness = 75;
 static bool s_frame_shown;
 static bool s_asleep;
 
+/* Transfer state of flush_cb; guarded by s_lock. */
+static bool s_double_buffered;
+static bool s_in_flight;
+static bool s_last_in_flight;
+
 #if CONFIG_DEVOTCHI_SHADOW_FB
 static uint8_t *s_shadow;
 static uint8_t *s_snapshot;
@@ -74,7 +79,30 @@ static bool on_color_trans_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_e
     return woken == pdTRUE;
 }
 
-/* Runs inside lv_timer_handler(), so s_lock is held. */
+/* Caller holds s_lock. Waits for the transfer flush_cb started last, if any. */
+static void wait_transfer(void)
+{
+    if (!s_in_flight) {
+        return;
+    }
+    s_in_flight = false;
+    if (xSemaphoreTake(s_trans_done, pdMS_TO_TICKS(FLUSH_TIMEOUT_MS)) != pdTRUE) {
+        atomic_fetch_add(&s_flush_errors, 1);
+    }
+    if (s_last_in_flight && !s_frame_shown) {
+        s_frame_shown = true;
+        apply_backlight();
+    }
+}
+
+/*
+ * Runs inside lv_timer_handler(), so s_lock is held. With two draw buffers
+ * the transfer runs on while LVGL renders the next strip into the other
+ * buffer: LVGL alternates buffers after every flush, and the transfer from
+ * the buffer it renders into next is waited for at the start of the
+ * following flush or in display_flush_wait(). With one buffer the transfer
+ * is waited for here.
+ */
 static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
 #if CONFIG_DEVOTCHI_SHADOW_FB
@@ -87,6 +115,7 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
     }
 #endif
 
+    wait_transfer();
     /* A completion that arrived after an earlier timeout must not satisfy this transfer. */
     xSemaphoreTake(s_trans_done, 0);
 
@@ -94,16 +123,20 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
         esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
     if (err != ESP_OK) {
         atomic_fetch_add(&s_flush_errors, 1);
-    } else if (xSemaphoreTake(s_trans_done, pdMS_TO_TICKS(FLUSH_TIMEOUT_MS)) != pdTRUE) {
-        atomic_fetch_add(&s_flush_errors, 1);
+    } else {
+        s_in_flight = true;
+        s_last_in_flight = lv_display_flush_is_last(disp);
     }
     atomic_fetch_add(&s_flush_count, 1);
-
-    if (!s_frame_shown && lv_display_flush_is_last(disp)) {
-        s_frame_shown = true;
-        apply_backlight();
+    if (!s_double_buffered) {
+        wait_transfer();
     }
     lv_display_flush_ready(disp);
+}
+
+void display_flush_wait(void)
+{
+    wait_transfer();
 }
 
 static esp_err_t init_backlight(void)
@@ -180,9 +213,15 @@ static esp_err_t init_panel(void)
 
 static esp_err_t init_lvgl(void)
 {
-    /* The SPI driver transmits straight from this buffer, so it must be internal DMA memory. */
+    /* The SPI driver transmits straight from these buffers, so they must be internal DMA memory. */
     uint8_t *draw_buf = heap_caps_malloc(DRAW_BUF_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
     ESP_RETURN_ON_FALSE(draw_buf != NULL, ESP_ERR_NO_MEM, TAG, "draw buffer");
+    /* The second buffer only overlaps rendering with the transfer; without it the display still works. */
+    uint8_t *draw_buf2 = heap_caps_malloc(DRAW_BUF_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    if (draw_buf2 == NULL) {
+        ESP_LOGW(TAG, "one draw buffer: no internal DMA memory for the second");
+    }
+    s_double_buffered = draw_buf2 != NULL;
 
 #if CONFIG_DEVOTCHI_SHADOW_FB
     s_shadow = heap_caps_calloc(1, FRAME_SIZE, MALLOC_CAP_SPIRAM);
@@ -195,7 +234,7 @@ static esp_err_t init_lvgl(void)
     ESP_RETURN_ON_FALSE(s_disp != NULL, ESP_ERR_NO_MEM, TAG, "lv_display");
     lv_display_set_color_format(s_disp, LV_COLOR_FORMAT_RGB565);
     lv_display_set_flush_cb(s_disp, flush_cb);
-    lv_display_set_buffers(s_disp, draw_buf, NULL, DRAW_BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_buffers(s_disp, draw_buf, draw_buf2, DRAW_BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
     return ESP_OK;
 }
 
@@ -208,8 +247,8 @@ esp_err_t display_init(void)
     ESP_RETURN_ON_ERROR(init_backlight(), TAG, "backlight");
     ESP_RETURN_ON_ERROR(init_panel(), TAG, "panel");
     ESP_RETURN_ON_ERROR(init_lvgl(), TAG, "lvgl");
-    ESP_LOGI(TAG, "ST7789 %dx%d, SPI %d Hz", BOARD_DISP_H_RES, BOARD_DISP_V_RES,
-             CONFIG_DEVOTCHI_DISPLAY_SPI_HZ);
+    ESP_LOGI(TAG, "ST7789 %dx%d, SPI %d Hz, %d draw buffer(s)", BOARD_DISP_H_RES, BOARD_DISP_V_RES,
+             CONFIG_DEVOTCHI_DISPLAY_SPI_HZ, s_double_buffered ? 2 : 1);
     return ESP_OK;
 }
 

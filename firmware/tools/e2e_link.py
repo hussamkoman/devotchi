@@ -373,9 +373,10 @@ class Run:
 
         # The same against an address nothing answers from.
         self.cmd(f"server ws://{BLACK_HOLE}:{self.args.mock_port}")
-        self.board.wait_state(lambda s: s["link"]["wsPhase"] == "running" and s["screen"] == "connecting", 20,
+        # Registered earlier in this boot, the board keeps the pet screen (with the offline banner) while it retries.
+        self.board.wait_state(lambda s: s["link"]["wsPhase"] == "running" and BLACK_HOLE in s["link"]["server"], 20,
                               "connect attempt to the black hole")
-        self.measurements["screenshots"]["connecting"] = self.screenshot("connecting")
+        self.measurements["screenshots"]["black-hole"] = self.screenshot("black-hole")
         self.cmd(f"server {self.url}")
         try:
             hole_ms = self.press_while_stopping("black hole")
@@ -461,15 +462,15 @@ class Run:
         check(state["wifiConfigured"], "4003 erased the WiFi credentials")
         code_event = self.mock.wait_for(lambda e: e.get("ev") == "pair_code", 15, "flow A start")
         code = code_event["code"]
-        shown = f"{code[:3]} {code[3:]}"
+        # The code is shown in two groups of three, one label each.
         deadline = time.monotonic() + 10
         texts = []
         while time.monotonic() < deadline:
             texts = self.board.texts()
-            if shown in texts:
+            if code[:3] in texts and code[3:] in texts:
                 break
             time.sleep(0.5)
-        check(shown in texts, f"code {shown} is not on screen: {texts}")
+        check(code[:3] in texts and code[3:] in texts, f"code {code} is not on screen: {texts}")
         check("Pairing revoked" in texts, f"'Pairing revoked' is not on screen: {texts}")
         check(any(code in t and "devotchi pair" in t for t in texts), f"no 'devotchi pair {code}' hint: {texts}")
         self.measurements["screenshots"]["pairing"] = self.screenshot("pairing")
@@ -477,7 +478,7 @@ class Run:
         state = self.wait_registered(20, "registration after flow A")
         check(state["paired"], "flow A did not store a pairing")
         self.remember_tokens()
-        return f"4003 -> pairing {1000 * (stamp - closed_at):.0f} ms later, code {shown} shown, confirmed, registered"
+        return f"4003 -> pairing {1000 * (stamp - closed_at):.0f} ms later, code {code[:3]} {code[3:]} shown, confirmed, registered"
 
     def step_rejected_token(self):
         self.mock.ctl("confirm-after 3")

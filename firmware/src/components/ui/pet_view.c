@@ -132,7 +132,7 @@ static lv_obj_t *line(lv_obj_t *parent, int32_t width)
     lv_obj_t *l = lv_line_create(parent);
     lv_obj_set_style_line_width(l, width, 0);
     lv_obj_set_style_line_rounded(l, true, 0);
-    lv_obj_set_style_line_color(l, UI_COLOR_PET_INK, 0);
+    lv_obj_set_style_line_color(l, UI_C_PET_INK, 0);
     lv_obj_remove_flag(l, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     return l;
 }
@@ -199,27 +199,27 @@ static void set_accessory(pet_accessory_t a)
     case PET_ACC_ZZZ:
         lv_label_set_text_static(s_acc, "Zzz");
         lv_obj_set_style_text_font(s_acc, UI_FONT_BODY, 0);
-        lv_obj_set_style_text_color(s_acc, UI_COLOR_PET_ZZZ, 0);
+        lv_obj_set_style_text_color(s_acc, UI_C_PET_ZZZ, 0);
         lv_obj_set_pos(s_acc, 146, 0);
         break;
     case PET_ACC_DOTS:
         lv_label_set_text_static(s_acc, "...");
         lv_obj_set_style_text_font(s_acc, UI_FONT_TITLE, 0);
-        lv_obj_set_style_text_color(s_acc, UI_COLOR_PET_DOTS, 0);
+        lv_obj_set_style_text_color(s_acc, UI_C_PET_DOTS, 0);
         lv_obj_set_pos(s_acc, 148, 0);
         break;
     case PET_ACC_SPARKLES:
         /* One label draws both sparkles: the letter spacing puts them at the two upper corners. */
         lv_label_set_text_static(s_acc, "++");
         lv_obj_set_style_text_font(s_acc, UI_FONT_TITLE, 0);
-        lv_obj_set_style_text_color(s_acc, UI_COLOR_PET_SPARKLE, 0);
+        lv_obj_set_style_text_color(s_acc, UI_C_PET_SPARKLE, 0);
         lv_obj_set_style_text_letter_space(s_acc, 150, 0);
         lv_obj_set_pos(s_acc, 4, 0);
         break;
     case PET_ACC_SWEAT:
     case PET_ACC_TEAR:
         lv_label_set_text_static(s_acc, "");
-        lv_obj_set_style_bg_color(s_acc, UI_COLOR_PET_DROP, 0);
+        lv_obj_set_style_bg_color(s_acc, UI_C_PET_DROP, 0);
         lv_obj_set_style_bg_opa(s_acc, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(s_acc, LV_RADIUS_CIRCLE, 0);
         place_drop(a);
@@ -378,7 +378,7 @@ static void render(uint32_t now)
     if (s_eye_shut != (int)shut) {
         s_eye_shut = (int)shut;
         for (int i = 0; i < 2; i++) {
-            lv_obj_set_style_bg_color(s_eye[i], shut ? UI_COLOR_PET_INK : UI_COLOR_PET_EYE, 0);
+            lv_obj_set_style_bg_color(s_eye[i], shut ? UI_C_PET_INK : UI_C_PET_EYE, 0);
             show(s_pupil[i], !shut);
         }
     }
@@ -474,18 +474,18 @@ void pet_view_create(lv_obj_t *parent)
     lv_obj_remove_flag(s_group, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_group, UI_FLAG_NO_TEXT);
 
-    s_body = plain(s_group, UI_COLOR_PET_EYE);
+    s_body = plain(s_group, UI_C_PET_EYE);
     lv_obj_set_style_radius(s_body, BODY_RADIUS, 0);
     for (int i = 0; i < 2; i++) {
-        s_eye[i] = plain(s_body, UI_COLOR_PET_EYE);
+        s_eye[i] = plain(s_body, UI_C_PET_EYE);
         lv_obj_set_style_radius(s_eye[i], LV_RADIUS_CIRCLE, 0);
-        s_pupil[i] = plain(s_eye[i], UI_COLOR_PET_INK);
+        s_pupil[i] = plain(s_eye[i], UI_C_PET_INK);
         lv_obj_set_style_radius(s_pupil[i], LV_RADIUS_CIRCLE, 0);
         s_brow[i] = line(s_body, BROW_W);
         s_arc[i] = line(s_body, ARC_W);
         lv_obj_add_flag(s_arc[i], LV_OBJ_FLAG_HIDDEN);
     }
-    s_hole = plain(s_body, UI_COLOR_PET_INK);
+    s_hole = plain(s_body, UI_C_PET_INK);
     lv_obj_set_style_radius(s_hole, LV_RADIUS_CIRCLE, 0);
     s_mouth = line(s_body, MOUTH_W);
     s_acc = lv_label_create(s_group);

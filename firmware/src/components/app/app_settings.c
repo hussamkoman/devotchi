@@ -137,7 +137,7 @@ static void set_mode(uint16_t value, uint32_t now)
     char extra[24];
     snprintf(extra, sizeof(extra), ",\"mode\":\"%s\"", proto_mode_name(mode));
     app_link_send(now, "set_mode", s_tx, proto_write_set_mode(s_tx, sizeof(s_tx), mode), extra);
-    app_toast(mode == PROTO_MODE_DESK ? "At desk: on" : "At desk: off");
+    app_toast_kind(UI_TOAST_DESK, mode == PROTO_MODE_DESK ? "At desk: on" : "At desk: off");
 }
 
 static void set_value(settings_row_t row, uint16_t value, uint32_t now)
@@ -235,6 +235,30 @@ uint32_t app_settings_deadline(void)
     return s_active && s_menu.confirming ? s_menu.confirm_until : 0;
 }
 
+/* What ACTION does on row, for its tab: a value row steps its value, the others open or ask to confirm. */
+static const char *action_label(settings_row_t row)
+{
+    switch (row) {
+    case SETTINGS_ROW_WIFI_SETUP:
+        return "Set up";
+    case SETTINGS_ROW_UNPAIR:
+        return "Unpair";
+    case SETTINGS_ROW_FACTORY_RESET:
+        return "Erase";
+    case SETTINGS_ROW_ABOUT:
+        return "Open";
+    case SETTINGS_ROW_BRIGHTNESS:
+    case SETTINGS_ROW_SCREEN_TIMEOUT:
+    case SETTINGS_ROW_DEEP_SLEEP:
+    case SETTINGS_ROW_HAPTICS:
+    case SETTINGS_ROW_LED:
+    case SETTINGS_ROW_MODE:
+    case SETTINGS_ROW_COUNT:
+        break;
+    }
+    return "Change";
+}
+
 void app_settings_render(bool preview)
 {
     ui_settings_t ui;
@@ -251,6 +275,7 @@ void app_settings_render(bool preview)
     }
     ui.cursor = (uint8_t)s_menu.cursor;
     ui.confirming = s_menu.confirming;
+    ui.action = action_label(s_menu.cursor);
     ui_settings_set(&ui);
 }
 

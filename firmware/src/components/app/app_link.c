@@ -1080,6 +1080,10 @@ static void handle_request(app_request_t *req, uint32_t now)
         s_info.preview = s_preview != PREVIEW_OFF;
         app_request_complete(true, "");
         return;
+    case APP_REQUEST_RENDER:
+        s_screen_valid = false;
+        app_request_complete(true, "");
+        return;
     case APP_REQUEST_FACTORY_RESET:
         app_request_complete(true, "restarting");
         app_factory_reset();
@@ -1209,7 +1213,7 @@ static const char *wifi_fail_text(void)
 static void render_wifi(uint32_t now)
 {
     char retry[LINE_SIZE] = "";
-    const char *state = "Connecting...";
+    const char *state = "Joining Wi-Fi";
     const char *reason = wifi_fail_text();
     switch (s_info.wifi) {
     case APP_WIFI_INIT_FAILED:
@@ -1233,10 +1237,9 @@ static void render_wifi(uint32_t now)
         break;
     }
     if (s_wifi_retry_at != 0) {
-        snprintf(retry, sizeof(retry), "Retry in %lu s", (unsigned long)seconds_until(s_wifi_retry_at, now));
+        snprintf(retry, sizeof(retry), "retry in %lu s", (unsigned long)seconds_until(s_wifi_retry_at, now));
     }
-    ui_wifi_set(s_trial.active ? s_trial.ssid : s_ssid, state, reason, retry,
-                s_wifi_failures >= WIFI_HINT_FAILURES ? "APPROVE: WiFi setup" : "");
+    ui_wifi_set(s_trial.active ? s_trial.ssid : s_ssid, state, reason, retry, s_wifi_failures >= WIFI_HINT_FAILURES);
     show(UI_SCREEN_WIFI);
 }
 
@@ -1259,13 +1262,13 @@ static void render_connecting(uint32_t now)
 {
     char retry[LINE_SIZE] = "";
     if (s_info.retry_at_ms != 0) {
-        snprintf(retry, sizeof(retry), "Retry in %lu s", (unsigned long)seconds_until(s_info.retry_at_ms, now));
+        snprintf(retry, sizeof(retry), "retry in %lu s", (unsigned long)seconds_until(s_info.retry_at_ms, now));
     }
     const char *state = "Waiting";
     if (s_info.ws == APP_WS_CONNECTING) {
-        state = "Connecting...";
+        state = "Connecting\xE2\x80\xA6";
     } else if (s_info.ws == APP_WS_CONNECTED) {
-        state = "Registering...";
+        state = "Registering\xE2\x80\xA6";
     }
     ui_connecting_set(s_url_text, state, s_info.last_error, retry);
     show(UI_SCREEN_CONNECTING);
@@ -1459,6 +1462,10 @@ void app_link_on_button(const btn_fsm_out_t *out)
         app_settings_open(now);
     } else if (out->kind != BTN_CLICK) {
         return;
+    } else if (s_state == APP_STATE_PROVISIONING && out->id == BTN_ACTION) {
+        ui_provisioning_set_step(ui_provisioning_step() == 0 ? 1 : 0);
+    } else if (s_state == APP_STATE_PROVISIONING && out->id == BTN_REJECT && ui_provisioning_step() == 1) {
+        ui_provisioning_set_step(0);
     } else if (s_state == APP_STATE_PAIRING && out->id == BTN_ACTION && s_pair.phase != PAIR_STARTING && s_wifi_up) {
         backoff_reset(&s_pair.backoff);
         pair_request_code();

@@ -100,6 +100,8 @@ class PetRun(FlowRun):
         return super().step_record()
 
     def step_claim(self):
+        # A board left idle by an earlier run is dimmed: the rig is paused and the first press is swallowed.
+        self.cmd("wake")
         super().step_claim()
         event = self.mock.wait_for(lambda e: e.get("ev") == "registered", 5, "registration")
         self.registered_t = event["t"]
@@ -181,8 +183,14 @@ class PetRun(FlowRun):
         self.wait_board(lambda e: e.get("evt") == "pet" and e.get("action") == "pat", 3, mark, "pat")
         self.wait_board(lambda e: e.get("evt") == "fb" and e.get("pattern") == "tick", 3, mark, "tick pattern")
         check(self.pose()["reaction"] == "pat", "pat not shown")
+        tabs = self.screen().get("tabs") or {}
+        check(((tabs.get("approve") or {}).get("text")) == "Pat" and ((tabs.get("reject") or {}).get("text")) == "Poke",
+              f"home tabs after a press: {tabs}")
         time.sleep(1.7)
         check(self.pose()["reaction"] == "none", "pat did not end after 1.5 s")
+        time.sleep(1.6)
+        tabs = self.screen().get("tabs") or {}
+        check(not any(tabs.values()), f"home tabs still shown 3.3 s after the press: {tabs}")
         mark = self.board.mark()
         self.press("reject")
         self.wait_board(lambda e: e.get("evt") == "pet" and e.get("action") == "poke", 3, mark, "poke")
@@ -200,7 +208,7 @@ class PetRun(FlowRun):
         check(self.pose()["reaction"] == "dizzy", "dizzy not shown")
         time.sleep(2.2)
         check(self.pose()["reaction"] == "none", "dizzy did not end after 2 s")
-        return "pat (tick pattern), poke, three pokes -> dizzy; each ended on time"
+        return "pat (tick pattern), home tabs for 3 s, poke, three pokes -> dizzy; each ended on time"
 
     def step_pages(self):
         self.cmd("pet freeze on")
@@ -208,11 +216,25 @@ class PetRun(FlowRun):
         self.press("action")
         screen = self.wait_screen(lambda s: s["page"] == "about", 3, "about page")
         texts = screen["texts"]
-        for prefix in ("Name: ", "Firmware: ", "Device: dv-", "Uptime: ", "Reset: ", "WiFi: ", "IP: ", "RSSI: ",
-                       "Server: ws://", "Link: online", "Error: ", "NVS: ok"):
-            check(any(t.startswith(prefix) for t in texts), f"About lacks '{prefix}': {texts}")
+        # Each row is a label and its value; the value follows its label in the texts.
+        for label, prefix in (("Name", ""), ("Firmware", ""), ("Device", "dv-"), ("Wi-Fi", ""), ("RSSI", ""),
+                              ("IP", ""), ("Server", "ws://"), ("Link", "online")):
+            check(label in texts and texts.index(label) + 1 < len(texts)
+                  and texts[texts.index(label) + 1].startswith(prefix), f"About 1/2 lacks '{label}' {prefix}: {texts}")
         check(not self.pose()["animating"], "the face animates behind the About page")
         self.screenshot("about")
+        self.press("action")
+        screen = self.wait_screen(lambda s: s["page"] == "about2", 3, "about page 2")
+        texts = screen["texts"]
+        for label, prefix in (("Uptime", ""), ("Reset", ""), ("Last err", ""), ("NVS", "ok")):
+            check(label in texts and texts.index(label) + 1 < len(texts)
+                  and texts[texts.index(label) + 1].startswith(prefix), f"About 2/2 lacks '{label}' {prefix}: {texts}")
+        self.press("reject")
+        self.wait_screen(lambda s: s["page"] == "pet", 3, "REJECT back to the pet page")
+        self.press("action")
+        self.wait_screen(lambda s: s["page"] == "about", 3, "about page")
+        self.press("action")
+        self.wait_screen(lambda s: s["page"] == "about2", 3, "about page 2")
         self.press("action")
         self.wait_screen(lambda s: s["page"] == "pet", 3, "back to the pet page")
         check(self.pose()["animating"] or self.pose()["frozen"], "face not running again")
@@ -224,7 +246,7 @@ class PetRun(FlowRun):
                         "return to the pet page")
         idle = time.monotonic() - t0
         check(PAGE_IDLE_S - 1 <= idle <= PAGE_IDLE_S + 2, f"About returned after {idle:.1f} s")
-        return f"ACTION cycles pet/about; About has every row; idle return after {idle:.1f} s"
+        return f"ACTION cycles pet/about/about2, REJECT goes back; About has every row; idle return after {idle:.1f} s"
 
     def step_settings(self):
         self.cmd("pet freeze on")

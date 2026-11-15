@@ -1,0 +1,15 @@
+# Fails the build when the application image is larger than the app slot.
+#   cmake -DBIN=<path to devotchi.bin> -DMAX=<bytes> -P check_app_size.cmake
+if(NOT DEFINED BIN OR NOT DEFINED MAX)
+    message(FATAL_ERROR "usage: cmake -DBIN=<devotchi.bin> -DMAX=<bytes> -P check_app_size.cmake")
+endif()
+if(NOT EXISTS "${BIN}")
+    message(FATAL_ERROR "${BIN} does not exist")
+endif()
+file(SIZE "${BIN}" size)
+get_filename_component(name "${BIN}" NAME)
+message(STATUS "${name}: ${size} bytes of ${MAX}")
+if(size GREATER MAX)
+    math(EXPR over "${size} - ${MAX}")
+    message(FATAL_ERROR "${name} is ${over} bytes over the ${MAX}-byte app slot")
+endif()

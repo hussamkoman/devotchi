@@ -259,7 +259,7 @@ class PowerRun(FlowRun):
         self.wait_toast("Battery low", mark, timeout=5)
         self.wait_screen(lambda s: s["id"] == "lowbatt", 45, "lowbatt screen")
         texts = self.board.texts()
-        check("Battery empty" in texts and "Plug in USB-C" in texts, f"lowbatt texts {texts}")
+        check("Battery empty" in texts and any(t.startswith("Plug in USB-C") for t in texts), f"lowbatt texts {texts}")
         shown = time.monotonic()
         evt = self.wait_power_evt(power_evt(action="deep_sleep"), 10, mark, "deep-sleep decision")
         check(evt.get("reason") == "battery" and evt.get("dryRun") is True, f"decision {evt}")

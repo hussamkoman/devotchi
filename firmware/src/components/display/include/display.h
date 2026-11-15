@@ -47,3 +47,10 @@ uint32_t display_flush_errors(void);
 
 /** Areas flushed to the panel since boot; a change means a frame was rendered. */
 uint32_t display_flush_count(void);
+
+/**
+ * Waits until the panel has the strip the last flush sent. The ui task calls
+ * it before it releases the lock, so no transfer is in flight while the lock
+ * is free. Caller holds the lock.
+ */
+void display_flush_wait(void);
