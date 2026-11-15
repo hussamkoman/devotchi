@@ -3,6 +3,7 @@
 #include "cJSON.h"
 #include "console.h"
 #include "display.h"
+#include "power.h"
 #include "storage.h"
 #include "ui.h"
 
@@ -31,12 +32,21 @@ void app_main(void)
     const app_task_cfg_t console_task = APP_TASK_CONSOLE;
     ESP_ERROR_CHECK(console_start(console_task.name, console_task.stack, console_task.prio));
 
+    /* Before any driver configures the pads that a deep sleep left held. */
+    power_boot_early();
+    power_wake_t wake;
+    power_get_wake(&wake);
+
     /* A storage failure is reported by storage_is_degraded(); the device runs with defaults. */
     storage_init();
 
     ESP_ERROR_CHECK(display_init());
     display_set_brightness((uint8_t)storage_get_setting(STORAGE_SETTING_BRIGHTNESS));
     ESP_ERROR_CHECK(ui_init());
+    /* A wake from deep sleep goes straight to the pet; the server's replay fills it in. */
+    if (wake.deep_sleep) {
+        ESP_ERROR_CHECK(ui_show_screen(UI_SCREEN_PET));
+    }
     const app_task_cfg_t ui_task = APP_TASK_UI;
     ESP_ERROR_CHECK(ui_start(ui_task.name, ui_task.stack, ui_task.prio));
 

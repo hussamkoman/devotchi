@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app.h"
+#include "power_fsm.h"
 #include "storage.h"
 #include "ui.h"
 
@@ -63,14 +64,52 @@ bool app_link_online(void);
 
 /** App task: Unpair from Settings: erases token and room id (backup rule), stops the socket, starts pairing. */
 void app_link_unpair(uint32_t now);
+/** App task: renders the current screen now (the power stages pause rendering while the panel sleeps). */
+void app_link_render(uint32_t now);
+/** App task, before deep sleep: stops the socket and makes no further WiFi, socket or HTTP attempts. */
+void app_link_suspend(uint32_t now);
+/** True while no WebSocket client exists. */
+bool app_link_ws_idle(void);
+/**
+ * App task, before deep sleep: keeps handling link events until no WebSocket
+ * client exists or timeout_ms passed (false); other events are dropped.
+ */
+bool app_wait_link_idle(uint32_t timeout_ms);
 
 /* ---- app.c: activity hooks for the power stages (architecture 4.8) ---- */
+
+typedef struct {
+    app_state_t state;
+    uint32_t last_user_ms;
+    uint32_t last_agent_ms;
+} app_activity_t;
+
+/** Any task: the part of the snapshot the power stages need. */
+void app_get_activity(app_activity_t *out);
 
 /** Something the user should see happened: resets the idle timers. */
 void app_user_activity(uint32_t now);
 
 /** Agent traffic: postpones deep sleep without waking the screen. */
 void app_agent_activity(uint32_t now);
+
+/* ---- app_power.c: power stages, sleep and the `power` command (architecture 4.8) ---- */
+/** Reads the power settings and registers the `power` console command. */
+esp_err_t app_power_init(void);
+/**
+ * App task, once before the link starts: after a battery-protection sleep,
+ * decides from a fresh battery reading whether to sleep again (may not return).
+ */
+void app_power_boot_check(void);
+/** App task, after every event: evaluates power_fsm and applies the stage, locks and sleep decisions. */
+void app_power_update(uint32_t now);
+/** The stage applied last. */
+power_stage_t app_power_stage(void);
+bool app_power_screen_off(void);
+/** The lowbatt card owns the screen. */
+bool app_power_lowbatt(void);
+/** App task: a setting changed; the screen timeout, deep-sleep and brightness values are re-read at the next update. */
+void app_power_on_setting(storage_setting_t id);
 
 /* ---- app_flow.c: pet model, request queue and the approval flow (protocol 4.3-4.13) ---- */
 
@@ -137,6 +176,10 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
 
 /** Any task: copies the last rendered view. */
 void app_flow_get_view(app_flow_view_t *out);
+/** App task: a screen outside the flow (the lowbatt card) takes the whole display. */
+void app_flow_hide_banner(void);
+/** App task: requests in the on-device queue. */
+uint8_t app_flow_pending_count(void);
 
 /* ---- app_settings.c: the Settings screen (architecture 4.5) ---- */
 
@@ -176,6 +219,8 @@ void app_telemetry_on_registered(uint32_t now);
 
 /** App task, once a second and on every battery change: periodic and change-driven samples while registered. */
 void app_telemetry_tick(uint32_t now);
+/** App task, before a battery-protection sleep: one sample with alert battery_critical. */
+void app_telemetry_send_final(uint32_t now);
 
 /* ---- requests from the console task to the app task ---- */
 
@@ -198,6 +243,8 @@ typedef enum {
     APP_REQUEST_PREVIEW,
     /** Erases the devotchi namespace and the WiFi configuration, then restarts. */
     APP_REQUEST_FACTORY_RESET,
+    /** text: `stage`, `dry-run` or `sleep`; arg: the stage, on|off, or the timer wake in seconds. */
+    APP_REQUEST_POWER,
 } app_request_kind_t;
 
 typedef struct {
@@ -227,3 +274,6 @@ app_request_t *app_request_current(void);
 
 /** App task: finishes the current request and wakes the console task. */
 void app_request_complete(bool ok, const char *message);
+
+/** App task: APP_REQUEST_POWER. text: `stage`, `dry-run` or `sleep`; arg: its value. */
+void app_power_on_request(app_request_t *req);

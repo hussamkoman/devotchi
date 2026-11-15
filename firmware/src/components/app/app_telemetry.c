@@ -51,11 +51,14 @@ static bool same(const char *a, const char *b)
     return a == b || (a != NULL && b != NULL && strcmp(a, b) == 0);
 }
 
-static void send(uint32_t now, const char *reason)
+static void send(uint32_t now, const char *reason, const char *alert)
 {
     power_battery_t b;
     battery_view_t v;
     read_battery(&b, &v);
+    if (alert != NULL) {
+        v.alert = alert;
+    }
     wifi_status_t w;
     wifi_get_status(&w);
     const proto_telemetry_t t = {
@@ -71,7 +74,7 @@ static void send(uint32_t now, const char *reason)
         .reset_reason = app_reset_reason(),
         .fw = esp_app_get_description()->version,
         .screen = ui_current_screen_name(),
-        .stage = "active",
+        .stage = power_stage_name(app_power_stage()),
         .alert = v.alert,
     };
     const int len = proto_write_telemetry(s_tx, sizeof(s_tx), &t);
@@ -88,7 +91,7 @@ static void send(uint32_t now, const char *reason)
 
 void app_telemetry_on_registered(uint32_t now)
 {
-    send(now, "register");
+    send(now, "register", NULL);
     s_period_ms = now;
 }
 
@@ -105,7 +108,7 @@ void app_telemetry_tick(uint32_t now)
         if (now - s_period_ms >= PERIOD_MS) {
             s_period_ms = now;
         }
-        send(now, "period");
+        send(now, "period", NULL);
         return;
     }
     power_battery_t b;
@@ -113,6 +116,13 @@ void app_telemetry_tick(uint32_t now)
     read_battery(&b, &v);
     const bool pct_step = (v.pct < 0) != (s_last_pct < 0) || abs(v.pct - s_last_pct) >= PCT_STEP;
     if (!same(v.state, s_last_state) || pct_step || !same(v.alert, s_last_alert)) {
-        send(now, "battery");
+        send(now, "battery", NULL);
+    }
+}
+
+void app_telemetry_send_final(uint32_t now)
+{
+    if (app_link_online()) {
+        send(now, "battery", "battery_critical");
     }
 }

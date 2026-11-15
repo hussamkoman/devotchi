@@ -17,6 +17,7 @@ lv_obj_t *screen_pet_create(void);
 lv_obj_t *screen_approval_create(void);
 lv_obj_t *screen_identify_create(void);
 lv_obj_t *screen_settings_create(void);
+lv_obj_t *screen_lowbatt_create(void);
 
 /** Caller holds the ui lock; tells the pet screen whether it is the loaded screen. */
 void screen_pet_set_shown(bool shown);

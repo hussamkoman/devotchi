@@ -12,6 +12,7 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 
+#include <stdatomic.h>
 #include <string.h>
 
 static const char *TAG = "ui";
@@ -35,6 +36,7 @@ static const char *const SCREEN_NAMES[UI_SCREEN_COUNT] = {
 };
 
 static TaskHandle_t s_task;
+static atomic_bool s_running = true;
 
 /* Everything below is guarded by the ui lock. */
 static lv_obj_t *s_screens[UI_SCREEN_COUNT];
@@ -108,6 +110,11 @@ static void ui_task(void *arg)
 {
     (void)arg;
     for (;;) {
+        if (!atomic_load(&s_running)) {
+            /* Parked: notifications from ui_unlock() only bring the task back here. */
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            continue;
+        }
         uint32_t sleep_ms = UI_MIN_SLEEP_MS;
         if (ui_lock()) {
             const uint32_t flushed = display_flush_count();
@@ -141,6 +148,7 @@ esp_err_t ui_init(void)
     s_screens[UI_SCREEN_APPROVAL] = screen_approval_create();
     s_screens[UI_SCREEN_IDENTIFY] = screen_identify_create();
     s_screens[UI_SCREEN_SETTINGS] = screen_settings_create();
+    s_screens[UI_SCREEN_LOWBATT] = screen_lowbatt_create();
     ui_status_bar_create();
     ui_overlay_create();
     ui_status_bar_set_visible(false);
@@ -155,6 +163,19 @@ esp_err_t ui_start(const char *task_name, uint32_t stack_size, uint32_t priority
     const BaseType_t ok = xTaskCreate(ui_task, task_name, stack_size, NULL, priority, &s_task);
     ESP_RETURN_ON_FALSE(ok == pdPASS, ESP_ERR_NO_MEM, TAG, "task");
     return ESP_OK;
+}
+
+void ui_set_running(bool running)
+{
+    atomic_store(&s_running, running);
+    if (s_task != NULL) {
+        xTaskNotifyGive(s_task);
+    }
+}
+
+bool ui_is_running(void)
+{
+    return atomic_load(&s_running);
 }
 
 const char *ui_screen_name(ui_screen_id_t id)

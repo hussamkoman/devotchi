@@ -420,7 +420,8 @@ esp_err_t power_init(power_cb_t cb)
     battery_filter_init(&s_filter);
     battery_init(&s_battery, CONFIG_DEVOTCHI_BATT_LOW_MV, CONFIG_DEVOTCHI_BATT_CRIT_MV);
     ESP_RETURN_ON_ERROR(init_adc(), TAG, "adc");
-    return init_charger_pins();
+    ESP_RETURN_ON_ERROR(init_charger_pins(), TAG, "charger pins");
+    return power_pm_init();
 }
 
 esp_err_t power_start(const char *task_name, uint32_t stack_size, uint32_t priority)

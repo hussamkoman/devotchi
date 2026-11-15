@@ -83,6 +83,11 @@ typedef enum {
 static app_state_t s_state = APP_STATE_BOOT;
 static app_link_info_t s_info;
 static bool s_splash_done;
+/* This boot is a wake from deep sleep: no splash, and the pet shows while reconnecting. */
+static bool s_deep_wake;
+static bool s_online_seen;
+/* Deep sleep is about to start: no further connection attempts. */
+static bool s_suspended;
 static bool s_screen_valid;
 static ui_screen_id_t s_screen;
 /* The pet, approval or identify screen is up, so buttons belong to the request flow. */
@@ -193,8 +198,25 @@ static void set_error(const char *text)
 
 static void set_state(app_state_t state)
 {
+    const app_state_t prev = s_state;
     s_state = state;
     app_set_state(state);
+    if (state == prev) {
+        return;
+    }
+    /*
+     * Only these transitions are user activity (architecture 4.8). Retries
+     * and reconnect cycles are not, so an unreachable server cannot keep the
+     * screen on; leaving ONLINE happens once per outage.
+     */
+    bool activity = state == APP_STATE_PAIRING || state == APP_STATE_PROVISIONING || prev == APP_STATE_ONLINE;
+    if (state == APP_STATE_ONLINE && !s_online_seen) {
+        s_online_seen = true;
+        activity = true;
+    }
+    if (activity) {
+        app_user_activity(app_now_ms());
+    }
 }
 
 static bool is_server_state(void)
@@ -326,7 +348,7 @@ static void request_stop(uint32_t now)
 
 static void try_connect(uint32_t now)
 {
-    if (!s_wifi_up || s_token[0] == '\0') {
+    if (!s_wifi_up || s_token[0] == '\0' || s_suspended) {
         return;
     }
     if (s_info.ws_phase != APP_WS_PHASE_IDLE) {
@@ -622,7 +644,7 @@ static void on_job_result(const net_job_result_t *r, uint32_t now)
 
 static void submit_next_job(void)
 {
-    if (s_http_busy || !s_wifi_up) {
+    if (s_http_busy || !s_wifi_up || s_suspended) {
         return;
     }
     /* Static: a job carries the server URL and does not belong on the stack. */
@@ -885,6 +907,9 @@ static void on_wifi_down(net_wifi_fail_t fail, uint32_t now)
 static void wifi_attempt(uint32_t now)
 {
     s_wifi_retry_at = 0;
+    if (s_suspended) {
+        return;
+    }
     const char *ssid = s_trial.active ? s_trial.ssid : s_ssid;
     const char *psk = s_trial.active ? s_trial.psk : s_psk;
     const esp_err_t err = wifi_connect(ssid, psk);
@@ -1058,6 +1083,9 @@ static void handle_request(app_request_t *req, uint32_t now)
     case APP_REQUEST_FACTORY_RESET:
         app_request_complete(true, "restarting");
         app_factory_reset();
+        return;
+    case APP_REQUEST_POWER:
+        app_power_on_request(req);
         return;
     }
 }
@@ -1248,6 +1276,9 @@ static const char *offline_banner(uint32_t now, char buf[LINE_SIZE])
     if (s_state == APP_STATE_ONLINE) {
         return NULL;
     }
+    if (s_deep_wake && !s_registered_this_boot && s_info.last_error[0] == '\0' && s_wifi_failures == 0) {
+        return "Reconnecting";
+    }
     if (!s_wifi_up) {
         return "No WiFi";
     }
@@ -1331,7 +1362,13 @@ static void render_flow(uint32_t now, app_flow_preview_t preview)
 
 static void render(uint32_t now)
 {
-    if (!s_splash_done) {
+    if (!s_splash_done || app_power_screen_off()) {
+        return;
+    }
+    if (app_power_lowbatt()) {
+        s_flow_shown = false;
+        app_flow_hide_banner();
+        show(UI_SCREEN_LOWBATT);
         return;
     }
     render_status_bar();
@@ -1380,7 +1417,7 @@ static void render(uint32_t now)
     case APP_STATE_WIFI_CONNECTING:
     case APP_STATE_WIFI_FAILED:
         /* After the first registration of a boot the pet stays up with an offline banner. */
-        if (s_registered_this_boot) {
+        if (s_registered_this_boot || s_deep_wake) {
             render_flow(now, APP_FLOW_PREVIEW_OFF);
         } else {
             render_wifi(now);
@@ -1392,7 +1429,7 @@ static void render(uint32_t now)
     case APP_STATE_SERVER_CONNECTING:
     case APP_STATE_ONLINE:
     case APP_STATE_OFFLINE:
-        if (s_registered_this_boot) {
+        if (s_registered_this_boot || s_deep_wake) {
             render_flow(now, APP_FLOW_PREVIEW_OFF);
         } else {
             render_connecting(now);
@@ -1451,6 +1488,23 @@ void app_link_unpair(uint32_t now)
 {
     forget_pairing();
     reconnect_now(now);
+}
+
+void app_link_render(uint32_t now)
+{
+    render(now);
+}
+
+void app_link_suspend(uint32_t now)
+{
+    s_suspended = true;
+    s_want_connect = false;
+    request_stop(now);
+}
+
+bool app_link_ws_idle(void)
+{
+    return s_info.ws_phase == APP_WS_PHASE_IDLE;
 }
 
 bool app_link_handle_event(const app_event_t *ev)
@@ -1548,6 +1602,10 @@ esp_err_t app_link_init(void)
 void app_link_start(void)
 {
     const uint32_t now = app_now_ms();
+    power_wake_t wake;
+    power_get_wake(&wake);
+    s_deep_wake = wake.deep_sleep;
+    s_splash_done = s_deep_wake;
     load_server_url();
     s_info.paired = storage_get_pairing(s_token, NULL);
     char name[STORAGE_DEV_NAME_SIZE];
