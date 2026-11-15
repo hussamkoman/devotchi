@@ -49,6 +49,7 @@ interface StatusThrottle {
 const MOODS_REPLACED_BY_WORKING: ReadonlySet<Mood> = new Set(["thinking", "idle", "sleeping"]);
 const FAILURES_BEFORE_NOTIFY = 3;
 const STOP_TEXT_BYTES = 120;
+const USAGE_LIMIT_NOTIFY = { event: "usage_limit", mood: "sleeping", detail: "Usage limit reached", urgency: 2 } as const;
 
 function str(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
@@ -115,6 +116,7 @@ export class HookDispatcher {
     const hook = hookSession(body);
     const now = Date.now();
     const session = this.touch(room, hook, now);
+    if (event !== "Notification") session.usageLimited = false;
 
     switch (event) {
       case "UserPromptSubmit":
@@ -175,6 +177,11 @@ export class HookDispatcher {
         permissions.cancelMainConversation(room, hook.sid);
         session.dialogMaybeOpen = false;
         this.dropQueuedStatus(room);
+        if (body.error === "rate_limit") {
+          session.usageLimited = true;
+          this.emitNotify(room, hook, USAGE_LIMIT_NOTIFY);
+          return;
+        }
         this.emitNotify(room, hook, {
           event: "error",
           mood: "sad",
@@ -203,7 +210,7 @@ export class HookDispatcher {
     let session = room.sessions.get(hook.key);
     if (session && now - session.lastSeen >= this.deps.config.timing.sessionTtlMs) session = undefined;
     if (!session) {
-      session = { sid: hook.key, lastSeen: now, lastPromptAt: null, failures: 0, dialogMaybeOpen: false };
+      session = { sid: hook.key, lastSeen: now, lastPromptAt: null, failures: 0, dialogMaybeOpen: false, usageLimited: false };
       room.sessions.set(hook.key, session);
     }
     session.lastSeen = now;
@@ -220,7 +227,29 @@ export class HookDispatcher {
 
   private onNotification(room: Room, hook: HookSession, session: RoomSession, body: HookBody, now: number): void {
     const type = body.notification_type;
+    if (type === "quota_auto_resume_fired") {
+      session.usageLimited = false;
+      this.emitNotify(room, hook, { event: "usage_resumed", mood: "working", detail: "Back to work", urgency: 2 });
+      return;
+    }
+    if (type === "quota_auto_resume_stale") {
+      session.usageLimited = false;
+      this.emitNotify(room, hook, {
+        event: "needs_input",
+        mood: "anxious",
+        detail: "Usage is back: press Enter in the terminal",
+        urgency: 3,
+      });
+      return;
+    }
+    if (type === "quota_auto_resume_disabled") {
+      session.usageLimited = true;
+      this.emitNotify(room, hook, { ...USAGE_LIMIT_NOTIFY, detail: "Continue in the terminal after the reset" });
+      return;
+    }
     if (type === "idle_prompt" || type === "agent_needs_input") {
+      // Nothing can continue before the limit resets, so the resting pet is not called to the terminal.
+      if (session.usageLimited) return;
       this.emitNotify(room, hook, { event: "needs_input", mood: "anxious", detail: "Claude is waiting", urgency: 3 });
       return;
     }

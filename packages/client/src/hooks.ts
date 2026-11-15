@@ -21,7 +21,12 @@ export const DEVOTCHI_HOOKS: readonly HookSpec[] = [
   { event: "PostToolUse", timeout: 5 },
   { event: "PostToolUseFailure", timeout: 5 },
   { event: "PostToolBatch", timeout: 5 },
-  { event: "Notification", matcher: "idle_prompt|agent_needs_input|permission_prompt", timeout: 5 },
+  {
+    event: "Notification",
+    matcher:
+      "idle_prompt|agent_needs_input|permission_prompt|quota_auto_resume_fired|quota_auto_resume_stale|quota_auto_resume_disabled",
+    timeout: 5,
+  },
   { event: "UserPromptSubmit", timeout: 5 },
   { event: "Stop", timeout: 5 },
   { event: "StopFailure", timeout: 5 },

@@ -66,6 +66,10 @@ describe("eventClass (section 5.2)", () => {
     ["task_complete", "happy", "complete"],
     ["task_paused", "sad", "none"],
     ["needs_input", "anxious", "attention"],
+    ["usage_limit", "sleeping", "rest"],
+    ["usage_limit", "sad", "rest"],
+    ["usage_resumed", "working", "wake"],
+    ["usage_resumed", "angry", "wake"],
     ["coffee", "happy", "positive"],
     ["coffee", "excited", "positive"],
     ["coffee", "proud", "positive"],
@@ -82,6 +86,8 @@ describe("eventClass (section 5.2)", () => {
     expect(defaultMoodForEvent("tests_passed")).toBe("happy");
     expect(defaultMoodForEvent("build_failed")).toBe("sad");
     expect(defaultMoodForEvent("task_complete")).toBe("idle");
+    expect(defaultMoodForEvent("usage_limit")).toBe("sleeping");
+    expect(defaultMoodForEvent("usage_resumed")).toBe("working");
     expect(defaultMoodForEvent("custom")).toBe("idle");
   });
 });
