@@ -15,6 +15,8 @@ lv_obj_t *screen_connecting_create(void);
 lv_obj_t *screen_pairing_create(void);
 lv_obj_t *screen_pet_create(void);
 lv_obj_t *screen_approval_create(void);
+lv_obj_t *screen_question_create(void);
+lv_obj_t *screen_plan_create(void);
 lv_obj_t *screen_identify_create(void);
 lv_obj_t *screen_settings_create(void);
 lv_obj_t *screen_lowbatt_create(void);
@@ -68,6 +70,31 @@ typedef enum {
     APPROVAL_DEMO_INACTIVE,
 } ui_approval_demo_t;
 
+/* `question` variants (30-37, then every field with accented text), then `plan` (29, 29b, cut, more). */
+typedef enum {
+    QUESTION_DEMO_OFF = -1,
+    QUESTION_DEMO_SINGLE,
+    QUESTION_DEMO_SECOND,
+    QUESTION_DEMO_BACK,
+    QUESTION_DEMO_READ,
+    QUESTION_DEMO_SCROLL,
+    QUESTION_DEMO_MULTI,
+    QUESTION_DEMO_SEND,
+    QUESTION_DEMO_MENU,
+    QUESTION_DEMO_REVIEW,
+    QUESTION_DEMO_ACCENTS,
+    QUESTION_DEMO_ACCENTS_REVIEW,
+} ui_question_demo_t;
+
+typedef enum {
+    PLAN_DEMO_OFF = -1,
+    PLAN_DEMO_CARD,
+    PLAN_DEMO_MENU,
+    PLAN_DEMO_CUT,
+    PLAN_DEMO_MORE,
+    PLAN_DEMO_ACCENTS,
+} ui_plan_demo_t;
+
 typedef enum {
     W_TOAST_DEMO_NONE = -1,
     W_TOAST_DEMO_POSITIVE,
@@ -86,6 +113,8 @@ void screen_connecting_demo(bool offline);
 void screen_pairing_demo(void);
 void screen_pet_demo(ui_pet_demo_t demo);
 void screen_approval_demo(int demo);
+void screen_question_demo(int demo);
+void screen_plan_demo(int demo);
 void screen_settings_demo(void);
 void screen_identify_demo(void);
 /** Draws st instead of the app's status; NULL draws the app's again. */
@@ -196,6 +225,8 @@ typedef struct {
     const char *desc;
     /** Drawn in slate: the row exists but cannot be chosen yet. */
     bool muted;
+    /** The icon is a mark in mint (a chosen or ticked option) while the row is not focused. */
+    bool accent;
 } w_list_row_t;
 
 typedef enum {
@@ -213,6 +244,10 @@ typedef enum {
 /** List in the content band: rows of row_h + 2 px, a moving focus bar and a scroll thumb when rows overflow h. */
 w_list_t *w_list_create(lv_obj_t *parent, int32_t y, int32_t h, int32_t row_h);
 void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t focus, w_list_focus_t style);
+/** The focused row's label wraps to up to lines lines (1 by default); the others keep one line. */
+void w_list_set_label_lines(w_list_t *l, uint8_t lines);
+/** Moves the list's band to y with height h. */
+void w_list_move(w_list_t *l, int32_t y, int32_t h);
 
 typedef struct w_well w_well_t;
 

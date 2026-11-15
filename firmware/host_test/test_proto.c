@@ -854,6 +854,189 @@ static void test_write_decide(void)
     TEST_ASSERT_EQUAL_INT(-1, proto_write_decide(wout, 20, ID, PROTO_CHOICE_DENY_STOP));
 }
 
+/* ---- questions, plans, deadline (protocol 14.4-14.6) ---- */
+
+static void test_parse_question(void)
+{
+    TEST_ASSERT_TRUE(parse("{\"type\":\"question\",\"id\":\"" ID "\",\"index\":1,\"count\":2,\"header\":\"Framework\","
+                           "\"text\":\"Which framework should the dashboard use?\",\"multi\":true,"
+                           "\"options\":[{\"label\":\"React\",\"desc\":\"Component library\"},{\"label\":\"Vue\"}],"
+                           "\"sid\":\"3fa9c1\",\"project\":\"devotchi\",\"timeout\":30000,"
+                           "\"timestamp\":\"2026-11-15T09:00:00.000Z\"}"));
+    TEST_ASSERT_EQUAL(PROTO_QUESTION, m.type);
+    const proto_question_t *q = &m.u.question;
+    TEST_ASSERT_EQUAL_STRING(ID, q->id);
+    TEST_ASSERT_EQUAL_UINT8(1, q->index);
+    TEST_ASSERT_EQUAL_UINT8(2, q->count);
+    TEST_ASSERT_TRUE(q->has_header);
+    TEST_ASSERT_EQUAL_STRING("Framework", q->header);
+    TEST_ASSERT_TRUE(q->multi);
+    TEST_ASSERT_EQUAL_UINT8(2, q->n_options);
+    TEST_ASSERT_EQUAL_STRING("React", q->options[0].label);
+    TEST_ASSERT_EQUAL_STRING("Component library", q->options[0].desc);
+    TEST_ASSERT_EQUAL_STRING("", q->options[1].desc);
+    TEST_ASSERT_EQUAL_UINT32(30000, q->timeout_ms);
+    TEST_ASSERT_EQUAL_STRING("3fa9c1", q->sid);
+}
+
+static void test_parse_question_header_optional(void)
+{
+    static const char *const headers[] = {"", ",\"header\":\"\"", ",\"header\":42", ",\"header\":null"};
+    for (size_t i = 0; i < sizeof(headers) / sizeof(headers[0]); i++) {
+        snprintf(frame, sizeof(frame),
+                 "{\"type\":\"question\",\"id\":\"" ID "\",\"index\":0,\"count\":1%s,\"text\":\"Q?\","
+                 "\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}],\"timeout\":1000}",
+                 headers[i]);
+        TEST_ASSERT_TRUE_MESSAGE(parse(frame), headers[i]);
+        TEST_ASSERT_FALSE(m.u.question.has_header);
+        TEST_ASSERT_FALSE(m.u.question.multi);
+    }
+}
+
+static void test_parse_question_rejects(void)
+{
+    static const char *const bad[] = {
+        /* index past count, count 0 and 5, fractional index */
+        "\"index\":1,\"count\":1,\"text\":\"Q\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]",
+        "\"index\":0,\"count\":0,\"text\":\"Q\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]",
+        "\"index\":0,\"count\":5,\"text\":\"Q\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]",
+        "\"index\":0.5,\"count\":2,\"text\":\"Q\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]",
+        /* one option, five options, empty label, a label that is not a string, no text */
+        "\"index\":0,\"count\":1,\"text\":\"Q\",\"options\":[{\"label\":\"A\"}]",
+        "\"index\":0,\"count\":1,\"text\":\"Q\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"},{\"label\":\"C\"},"
+        "{\"label\":\"D\"},{\"label\":\"E\"}]",
+        "\"index\":0,\"count\":1,\"text\":\"Q\",\"options\":[{\"label\":\"\"},{\"label\":\"B\"}]",
+        "\"index\":0,\"count\":1,\"text\":\"Q\",\"options\":[{\"label\":1},{\"label\":\"B\"}]",
+        "\"index\":0,\"count\":1,\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]",
+        "\"index\":0,\"count\":1,\"text\":\"Q\",\"multi\":1,\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]",
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        snprintf(frame, sizeof(frame), "{\"type\":\"question\",\"id\":\"" ID "\",%s,\"timeout\":1000}", bad[i]);
+        TEST_ASSERT_FALSE_MESSAGE(parse(frame), bad[i]);
+    }
+    TEST_ASSERT_FALSE(parse("{\"type\":\"question\",\"id\":\"" ID "\",\"index\":0,\"count\":1,\"text\":\"Q\","
+                            "\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]}"));
+}
+
+static void test_parse_question_largest_frame(void)
+{
+    /* Four options with long labels and descriptions: the frame stays within 2048 bytes and every field fits. */
+    char text[PROTO_Q_TEXT_SIZE];
+    char label[PROTO_Q_LABEL_SIZE];
+    char desc[PROTO_Q_DESC_SIZE];
+    memset(text, 't', sizeof(text) - 1);
+    text[sizeof(text) - 1] = '\0';
+    memset(label, 'l', sizeof(label) - 1);
+    label[sizeof(label) - 1] = '\0';
+    memset(desc, 'd', 170);
+    desc[170] = '\0';
+    const int n = snprintf(frame, sizeof(frame),
+                           "{\"type\":\"question\",\"id\":\"" ID "\",\"index\":3,\"count\":4,\"text\":\"%s\","
+                           "\"options\":[{\"label\":\"%s\",\"desc\":\"%s\"},{\"label\":\"%s\",\"desc\":\"%s\"},"
+                           "{\"label\":\"%s\",\"desc\":\"%s\"},{\"label\":\"%s\",\"desc\":\"%s\"}],\"timeout\":1}",
+                           text, label, desc, label, desc, label, desc, label, desc);
+    TEST_ASSERT_LESS_OR_EQUAL(PROTO_MAX_FRAME, n);
+    TEST_ASSERT_TRUE(parse(frame));
+    TEST_ASSERT_EQUAL_size_t(PROTO_Q_TEXT_SIZE - 1, strlen(m.u.question.text));
+    TEST_ASSERT_EQUAL_size_t(PROTO_Q_LABEL_SIZE - 1, strlen(m.u.question.options[3].label));
+    TEST_ASSERT_EQUAL_size_t(170, strlen(m.u.question.options[3].desc));
+}
+
+static void test_parse_plan(void)
+{
+    TEST_ASSERT_TRUE(parse("{\"type\":\"plan\",\"id\":\"" ID "\",\"title\":\"Add pet packs\","
+                           "\"steps\":[\"Define the pack format\",\"Add the pets partition\",\"Port Devo\"],"
+                           "\"more\":0,\"cut\":true,\"sid\":\"3fa9c1\",\"project\":\"devotchi\",\"timeout\":30000}"));
+    TEST_ASSERT_EQUAL(PROTO_PLAN, m.type);
+    TEST_ASSERT_EQUAL_STRING("Add pet packs", m.u.plan.title);
+    TEST_ASSERT_EQUAL_UINT8(3, m.u.plan.n_steps);
+    TEST_ASSERT_EQUAL_STRING("Port Devo", m.u.plan.steps[2]);
+    TEST_ASSERT_TRUE(m.u.plan.cut);
+    TEST_ASSERT_EQUAL_UINT16(0, m.u.plan.more);
+
+    /* cut absent is false; more > 0 makes the frame cut on the device as well. */
+    TEST_ASSERT_TRUE(parse("{\"type\":\"plan\",\"id\":\"" ID "\",\"title\":\"T\",\"steps\":[\"a\"],\"timeout\":1}"));
+    TEST_ASSERT_FALSE(m.u.plan.cut);
+    TEST_ASSERT_TRUE(parse("{\"type\":\"plan\",\"id\":\"" ID "\",\"title\":\"T\",\"steps\":[\"a\"],\"more\":4,"
+                           "\"timeout\":1}"));
+    TEST_ASSERT_TRUE(m.u.plan.cut);
+    TEST_ASSERT_EQUAL_UINT16(4, m.u.plan.more);
+}
+
+static void test_parse_plan_overlong(void)
+{
+    /* Thirteen steps: the thirteenth counts as more; a step longer than its buffer makes the frame cut. */
+    char steps[1024] = "";
+    for (int i = 0; i < 13; i++) {
+        char step[16];
+        snprintf(step, sizeof(step), "%s\"s%02d\"", i > 0 ? "," : "", i);
+        strcat(steps, step);
+    }
+    snprintf(frame, sizeof(frame), "{\"type\":\"plan\",\"id\":\"" ID "\",\"title\":\"T\",\"steps\":[%s],\"timeout\":1}",
+             steps);
+    TEST_ASSERT_TRUE(parse(frame));
+    TEST_ASSERT_EQUAL_UINT8(PROTO_PLAN_STEPS_MAX, m.u.plan.n_steps);
+    TEST_ASSERT_EQUAL_UINT16(1, m.u.plan.more);
+    TEST_ASSERT_TRUE(m.u.plan.cut);
+
+    char longstep[PROTO_PLAN_STEP_SIZE + 2];
+    memset(longstep, 'x', sizeof(longstep) - 1);
+    longstep[sizeof(longstep) - 1] = '\0';
+    snprintf(frame, sizeof(frame), "{\"type\":\"plan\",\"id\":\"" ID "\",\"title\":\"T\",\"steps\":[\"%s\"],\"timeout\":1}",
+             longstep);
+    TEST_ASSERT_TRUE(parse(frame));
+    TEST_ASSERT_TRUE(m.u.plan.cut);
+    TEST_ASSERT_EQUAL_size_t(PROTO_PLAN_STEP_SIZE - 1, strlen(m.u.plan.steps[0]));
+
+    TEST_ASSERT_FALSE(parse("{\"type\":\"plan\",\"id\":\"" ID "\",\"steps\":[1],\"timeout\":1}"));
+    TEST_ASSERT_FALSE(parse("{\"type\":\"plan\",\"id\":\"" ID "\",\"steps\":\"a\",\"timeout\":1}"));
+    TEST_ASSERT_FALSE(parse("{\"type\":\"plan\",\"id\":\"" ID "\",\"steps\":[],\"timeout\":0}"));
+}
+
+static void test_parse_deadline(void)
+{
+    TEST_ASSERT_TRUE(parse("{\"type\":\"deadline\",\"id\":\"" ID "\",\"timeout\":60000}"));
+    TEST_ASSERT_EQUAL(PROTO_DEADLINE, m.type);
+    TEST_ASSERT_EQUAL_STRING(ID, m.u.deadline.id);
+    TEST_ASSERT_EQUAL_UINT32(60000, m.u.deadline.timeout_ms);
+    TEST_ASSERT_FALSE(parse("{\"type\":\"deadline\",\"id\":\"" ID "\"}"));
+    TEST_ASSERT_FALSE(parse("{\"type\":\"deadline\",\"timeout\":1000}"));
+    TEST_ASSERT_EQUAL_STRING("deadline", proto_type_name(PROTO_DEADLINE));
+    TEST_ASSERT_EQUAL_STRING("question", proto_type_name(PROTO_QUESTION));
+}
+
+static void test_write_question_response(void)
+{
+    const proto_answer_t answers[] = {{.mask = 1u << 0}, {.mask = (1u << 1) | (1u << 3)}, {.mask = 0},
+                                      {.no_preference = true, .mask = 0xF}};
+    TEST_ASSERT_GREATER_THAN(0, proto_write_question_response(wout, sizeof(wout), ID, answers, 4));
+    TEST_ASSERT_EQUAL_STRING("{\"type\":\"question_response\",\"id\":\"" ID "\",\"answers\":[[0],[1,3],[],null]}", wout);
+    TEST_ASSERT_GREATER_THAN(0, proto_write_question_response(wout, sizeof(wout), ID, answers, 1));
+    TEST_ASSERT_EQUAL_STRING("{\"type\":\"question_response\",\"id\":\"" ID "\",\"answers\":[[0]]}", wout);
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_question_response(wout, sizeof(wout), ID, answers, 0));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_question_response(wout, sizeof(wout), ID, answers, 5));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_question_response(wout, sizeof(wout), "x", answers, 1));
+    const proto_answer_t bad = {.mask = 1u << 4};
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_question_response(wout, sizeof(wout), ID, &bad, 1));
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_question_response(wout, 40, ID, answers, 4));
+}
+
+static void test_write_extend_and_plan_choices(void)
+{
+    TEST_ASSERT_GREATER_THAN(0, proto_write_extend(wout, sizeof(wout), ID));
+    TEST_ASSERT_EQUAL_STRING("{\"type\":\"extend\",\"id\":\"" ID "\"}", wout);
+    TEST_ASSERT_EQUAL_INT(-1, proto_write_extend(wout, sizeof(wout), "nope"));
+    static const char *const names[] = {"approve", "approve_accept_edits", "revise", "decline"};
+    static const proto_choice_t choices[] = {PROTO_CHOICE_APPROVE, PROTO_CHOICE_APPROVE_ACCEPT_EDITS, PROTO_CHOICE_REVISE,
+                                             PROTO_CHOICE_DECLINE};
+    for (size_t i = 0; i < 4; i++) {
+        char expected[96];
+        snprintf(expected, sizeof(expected), "{\"type\":\"decide\",\"id\":\"" ID "\",\"choice\":\"%s\"}", names[i]);
+        TEST_ASSERT_GREATER_THAN(0, proto_write_decide(wout, sizeof(wout), ID, choices[i]));
+        TEST_ASSERT_EQUAL_STRING(expected, wout);
+    }
+}
+
 static void test_write_register_caps(void)
 {
     TEST_ASSERT_GREATER_THAN(0, proto_write_register(wout, sizeof(wout), "dv-e356e4", "m", "1", PROTO_CAP_DECIDE));
@@ -923,6 +1106,15 @@ int main(void)
     RUN_TEST(test_error_not_allowed_with_id);
     RUN_TEST(test_write_decide);
     RUN_TEST(test_write_register_caps);
+    RUN_TEST(test_parse_question);
+    RUN_TEST(test_parse_question_header_optional);
+    RUN_TEST(test_parse_question_rejects);
+    RUN_TEST(test_parse_question_largest_frame);
+    RUN_TEST(test_parse_plan);
+    RUN_TEST(test_parse_plan_overlong);
+    RUN_TEST(test_parse_deadline);
+    RUN_TEST(test_write_question_response);
+    RUN_TEST(test_write_extend_and_plan_choices);
     RUN_TEST(test_choice_names);
     return UNITY_END();
 }

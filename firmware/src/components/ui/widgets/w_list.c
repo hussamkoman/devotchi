@@ -41,11 +41,13 @@ struct w_list {
     uint8_t top;
     w_list_focus_t style;
     int32_t width;
+    uint8_t label_lines;
     uint32_t hash;
     bool valid;
 };
 
-#define W_LIST_MAX  2
+/* Settings, the decision menu, the question's options and menu, the plan menu. */
+#define W_LIST_MAX  5
 static struct w_list s_pool[W_LIST_MAX];
 static size_t s_used;
 
@@ -55,6 +57,7 @@ w_list_t *w_list_create(lv_obj_t *parent, int32_t y, int32_t h, int32_t row_h)
         return NULL;
     }
     w_list_t *l = &s_pool[s_used++];
+    l->label_lines = 1;
     l->h = h;
     l->row_h = row_h;
     l->clip = ui_box(parent, UI_PAD, y, UI_WIDTH_SURFACE, h);
@@ -140,6 +143,38 @@ static uint8_t desc_lines(const w_list_t *l, const w_list_row_t *row, int32_t x)
     return (uint8_t)(n > DESC_LINES ? DESC_LINES : n < 1 ? 1 : n);
 }
 
+/* Lines the focused row's label takes, up to l->label_lines. */
+static uint8_t label_lines(const w_list_t *l, const char *label, int32_t width)
+{
+    if (l->label_lines <= 1 || label == NULL || label[0] == '\0') {
+        return 1;
+    }
+    lv_point_t size;
+    lv_text_get_size(&size, label, UI_FONT_BODY, 0, 0, width, LV_TEXT_FLAG_NONE);
+    const int32_t n = size.y / lv_font_get_line_height(UI_FONT_BODY);
+    return (uint8_t)(n > l->label_lines ? l->label_lines : n < 1 ? 1 : n);
+}
+
+void w_list_set_label_lines(w_list_t *l, uint8_t lines)
+{
+    if (l != NULL && lines != l->label_lines) {
+        l->label_lines = lines > 0 ? lines : 1;
+        l->valid = false;
+    }
+}
+
+void w_list_move(w_list_t *l, int32_t y, int32_t h)
+{
+    if (l == NULL || (lv_obj_get_y(l->clip) == y && l->h == h)) {
+        return;
+    }
+    l->h = h;
+    lv_obj_set_y(l->clip, y);
+    lv_obj_set_height(l->clip, h);
+    lv_obj_set_height(l->track, h);
+    l->valid = false;
+}
+
 static uint32_t fnv1a(uint32_t h, const char *s)
 {
     for (; s != NULL && *s != '\0'; s++) {
@@ -155,7 +190,7 @@ static uint32_t rows_hash(const w_list_row_t *rows, uint8_t count, uint8_t focus
     for (uint8_t i = 0; i < count; i++) {
         h = fnv1a(fnv1a(fnv1a(fnv1a(fnv1a(h, rows[i].icon), rows[i].label), rows[i].value), rows[i].code),
                   rows[i].desc);
-        h = (h ^ (rows[i].muted ? 1u : 0u)) * 16777619u;
+        h = (h ^ (rows[i].muted ? 1u : 0u) ^ (rows[i].accent ? 2u : 0u)) * 16777619u;
     }
     return h;
 }
@@ -185,6 +220,7 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
     int32_t y = 0;
     int32_t focus_y = 0;
     int32_t focus_h = l->row_h;
+    int32_t focus_extra_label = 0;
     int32_t row_y[W_LIST_MAX_ROWS];
     uint8_t focus_lines = 0;
     bool focus_code = false;
@@ -201,15 +237,19 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
         const bool has_icon = row->icon != NULL && row->icon[0] != '\0';
         const uint8_t lines = on ? desc_lines(l, row, has_icon ? PAD_H + ICON_W + ICON_GAP : PAD_H) : 0;
         const bool code = on && row->code != NULL && row->code[0] != '\0';
+        const bool has_value = row->value != NULL && row->value[0] != '\0';
+        const int32_t text_x = has_icon ? PAD_H + ICON_W + ICON_GAP : PAD_H;
+        const int32_t label_w = l->width - text_x - PAD_H - (has_value ? VALUE_W / 2 : 0);
+        const int32_t line_h = lv_font_get_line_height(UI_FONT_BODY);
+        const uint8_t label_n = on ? label_lines(l, row->label, label_w) : 1;
+        const int32_t extra_label = (label_n - 1) * line_h;
         const int32_t extra = (code ? CODE_H : 0) + lines * DESC_LINE_H;
-        const int32_t h = l->row_h + (extra > 0 ? extra + DESC_PAD : 0);
+        const int32_t h = l->row_h + extra_label + (extra > 0 ? extra + DESC_PAD : 0);
         if (strcmp(lv_label_get_text(r->icon), has_icon ? row->icon : "") != 0) {
             lv_label_set_text_static(r->icon, has_icon ? row->icon : "");
         }
-        const int32_t text_x = has_icon ? PAD_H + ICON_W + ICON_GAP : PAD_H;
-        const bool has_value = row->value != NULL && row->value[0] != '\0';
         lv_obj_set_x(r->label, text_x);
-        lv_obj_set_width(r->label, l->width - text_x - PAD_H - (has_value ? VALUE_W / 2 : 0));
+        lv_obj_set_size(r->label, label_w, label_n * line_h);
         ui_label_set(r->label, row->label);
         ui_set_hidden(r->value, !has_value);
         ui_label_set(r->value, has_value ? row->value : "");
@@ -218,11 +258,16 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
             focus_lines = lines;
             focus_code = code;
             focus_icon = has_icon;
+            focus_extra_label = extra_label;
             ui_label_set(l->desc, lines > 0 ? row->desc : "");
             ui_label_set(l->code, code ? row->code : "");
         }
         const bool dark = !on || muted_bar;
-        lv_obj_set_style_text_color(r->icon, row->muted ? UI_C_SLATE : dark ? UI_C_FOG : UI_C_INK, 0);
+        lv_obj_set_style_text_color(r->icon, row->muted     ? UI_C_SLATE
+                                             : !dark         ? UI_C_INK
+                                             : row->accent ? UI_C_MINT
+                                                             : UI_C_FOG,
+                                    0);
         lv_obj_set_style_text_color(r->label, row->muted ? UI_C_SLATE : dark ? UI_C_CREAM : UI_C_INK, 0);
         lv_obj_set_style_text_color(r->value, dark ? UI_C_FOG : UI_C_SUB_ON_CREAM, 0);
         lv_obj_set_size(r->box, l->width, h);
@@ -240,14 +285,16 @@ void w_list_set(w_list_t *l, const w_list_row_t *rows, uint8_t count, uint8_t fo
     const int32_t sub_x = focus_icon ? PAD_H + ICON_W + ICON_GAP : PAD_H;
     ui_set_hidden(l->code, !focus_code);
     if (focus_code) {
-        lv_obj_set_pos(l->code, sub_x, focus_y + l->row_h - DESC_PAD);
+        lv_obj_set_pos(l->code, sub_x, focus_y + focus_extra_label + l->row_h - DESC_PAD);
         lv_obj_set_width(l->code, l->width - PAD_H - sub_x);
     }
     ui_set_hidden(l->desc, focus_lines == 0);
     if (focus_lines > 0) {
         const int32_t x = sub_x;
-        lv_obj_set_pos(l->desc, x, focus_y + l->row_h - DESC_PAD + (focus_code ? CODE_H : 0));
-        lv_obj_set_size(l->desc, l->width - PAD_H - x, focus_lines * DESC_LINE_H);
+        lv_obj_set_pos(l->desc, x, focus_y + focus_extra_label + l->row_h - DESC_PAD + (focus_code ? CODE_H : 0));
+        /* The last line needs the font's full height, which may exceed the line pitch. */
+        lv_obj_set_size(l->desc, l->width - PAD_H - x,
+                        (focus_lines - 1) * DESC_LINE_H + lv_font_get_line_height(UI_FONT_SMALL));
         lv_obj_set_style_text_color(l->desc, muted_bar ? UI_C_FOG : UI_C_SUB_ON_CREAM, 0);
     }
 

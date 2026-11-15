@@ -763,6 +763,9 @@ static void handle_message(const char *json, size_t len, uint32_t now)
     case PROTO_NOTIFY:
     case PROTO_MOOD:
     case PROTO_PERMISSION:
+    case PROTO_QUESTION:
+    case PROTO_PLAN:
+    case PROTO_DEADLINE:
     case PROTO_DISMISS:
     case PROTO_IDENTIFY:
         app_flow_on_message(&s_msg, now);
@@ -786,7 +789,8 @@ static void on_ws_up(uint32_t now)
     s_last_rx_ms = now;
     s_info.server_caps = 0;
     const int len = proto_write_register(s_tx, sizeof(s_tx), s_device_id, APP_MODEL,
-                                         esp_app_get_description()->version, PROTO_CAP_DECIDE);
+                                         esp_app_get_description()->version,
+                                         PROTO_CAP_DECIDE | PROTO_CAP_ASK | PROTO_CAP_PLAN);
     link_send(now, "register", len, NULL);
 }
 

@@ -144,6 +144,7 @@ typedef struct {
     ui_pet_page_t page;
     bool has_request;
     struct {
+        reqq_kind_t kind;
         char id[PROTO_ID_SIZE];
         char tool[PROTO_TOOL_SIZE];
         char summary[PROTO_SUMMARY_SIZE];
@@ -159,6 +160,18 @@ typedef struct {
         bool cut;
         bool decide;
         bool menu;
+        card_view_t view;
+        /* Questions: 1-based question and count, the options, the focused row, ticks or choice, answered questions. */
+        uint8_t question;
+        uint8_t questions;
+        uint8_t options;
+        bool multi;
+        uint8_t opt;
+        uint8_t mask;
+        uint8_t done;
+        /* Plans. */
+        uint8_t steps;
+        uint16_t more;
         card_allow_t allow;
         card_session_t session;
         uint8_t rows;

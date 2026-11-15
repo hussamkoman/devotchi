@@ -212,6 +212,40 @@ static void test_ack_tracking(void)
     TEST_ASSERT_EQUAL(0, reqq_count(&q));
 }
 
+static void test_slot_entries(void)
+{
+    static qstore_slot_t slots[QSTORE_SLOTS];
+    qstore_t store;
+    qstore_init(&store, slots);
+    proto_plan_t p = {.n_steps = 1, .timeout_ms = 20000};
+    snprintf(p.id, sizeof(p.id), "%s", id_of(7));
+    snprintf(p.project, sizeof(p.project), "devotchi");
+    TEST_ASSERT_EQUAL(QSTORE_COMPLETE, qstore_add_plan(&store, &p, 500));
+    const qstore_slot_t *slot = qstore_find(&store, id_of(7));
+    TEST_ASSERT_EQUAL(REQQ_ADDED, reqq_add_slot(&q, slot));
+    TEST_ASSERT_EQUAL(REQQ_DUPLICATE, reqq_add_slot(&q, slot));
+    const reqq_entry_t *e = reqq_find(&q, id_of(7));
+    TEST_ASSERT_EQUAL(REQQ_PLAN, e->kind);
+    TEST_ASSERT_EQUAL_PTR(slot, e->slot);
+    TEST_ASSERT_EQUAL_STRING("ExitPlanMode", e->tool);
+    TEST_ASSERT_EQUAL_STRING("devotchi", e->project);
+    TEST_ASSERT_EQUAL_UINT32(20500, e->deadline_ms);
+    TEST_ASSERT_EQUAL_UINT32(20000, e->timeout_ms);
+
+    /* deadline: longer or shorter, the server's word stands; permissions and unknown ids are ignored. */
+    TEST_ASSERT_TRUE(reqq_set_deadline(&q, id_of(7), 60000, 1000));
+    TEST_ASSERT_EQUAL_UINT32(61000, e->deadline_ms);
+    TEST_ASSERT_EQUAL_UINT32(60000, e->timeout_ms);
+    TEST_ASSERT_TRUE(reqq_set_deadline(&q, id_of(7), 5000, 2000));
+    TEST_ASSERT_EQUAL_UINT32(7000, e->deadline_ms);
+    const proto_permission_t m = perm(1, 30000);
+    reqq_add(&q, &m, 0);
+    TEST_ASSERT_FALSE(reqq_set_deadline(&q, id_of(1), 60000, 0));
+    TEST_ASSERT_EQUAL_UINT32(30000, reqq_find(&q, id_of(1))->deadline_ms);
+    TEST_ASSERT_EQUAL(REQQ_PERMISSION, reqq_find(&q, id_of(1))->kind);
+    TEST_ASSERT_FALSE(reqq_set_deadline(&q, id_of(9), 60000, 0));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -224,5 +258,6 @@ int main(void)
     RUN_TEST(test_expire_one_per_call_in_order);
     RUN_TEST(test_expire_across_clock_wrap);
     RUN_TEST(test_ack_tracking);
+    RUN_TEST(test_slot_entries);
     return UNITY_END();
 }

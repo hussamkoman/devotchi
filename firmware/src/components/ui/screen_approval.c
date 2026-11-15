@@ -312,6 +312,11 @@ static void apply_menu(const ui_approval_t *a, lv_color_t color, card_row_t focu
             *r = (w_list_row_t){.icon = UI_ICON_STOP, .label = "Deny and stop",
                                 .desc = "Ends Claude's turn. Nothing else runs."};
             break;
+        case CARD_ROW_READ_AGAIN:
+        case CARD_ROW_LET_CLAUDE:
+        case CARD_ROW_DECLINE:
+        case CARD_ROW_ACCEPT_EDITS:
+            break;
         }
     }
     w_list_focus_t style = W_LIST_FOCUS_CREAM;

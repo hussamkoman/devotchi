@@ -19,7 +19,7 @@ struct w_countdown {
 };
 
 /* One per screen that shows time left; screens are created once, so is this. */
-#define W_COUNTDOWN_MAX  4
+#define W_COUNTDOWN_MAX  6
 static struct w_countdown s_pool[W_COUNTDOWN_MAX];
 static size_t s_used;
 

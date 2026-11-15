@@ -31,7 +31,7 @@ struct w_chip {
     bool valid;
 };
 
-#define W_CHIP_MAX  2
+#define W_CHIP_MAX  4
 static struct w_chip s_pool[W_CHIP_MAX];
 static size_t s_used;
 
