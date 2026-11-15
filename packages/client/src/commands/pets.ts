@@ -1,7 +1,15 @@
 // `devotchi pets`: the room's pet gallery (protocol 14.8) and the pets on its devices.
 
 import { readFile } from "node:fs/promises";
-import { PET_ID_RE, PET_MAX_BYTES, PET_SOURCE_MAX_BYTES, type Device, type PetListEntry } from "@devotchi/shared";
+import {
+  PET_ID_RE,
+  PET_MAX_BYTES,
+  PET_SOURCE_MAX_BYTES,
+  petResultText,
+  type Device,
+  type DevicePetsResult,
+  type PetListEntry,
+} from "@devotchi/shared";
 import { ApiError, type ApiClient } from "../api.js";
 import { connectServer, printJson, type Io } from "../context.js";
 import { CliError, UsageError } from "../errors.js";
@@ -70,13 +78,15 @@ export async function addPet(file: string, options: ServerOption, io: Io): Promi
   }
   const { api } = await connectServer(options.server, io);
   let pet: PetListEntry;
+  let created: boolean;
   try {
-    pet = await api.uploadPet(body);
+    ({ pet, created } = await api.uploadPet(body));
   } catch (err) {
     if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 413)) throw new CliError(`${file}: ${err.reason}`);
     throw err;
   }
-  io.out(`Added ${pet.id} "${pet.name}" rev ${pet.rev} (${pet.size} bytes) to this room. Send it with: devotchi pets send ${pet.id}`);
+  const what = `${pet.id} "${pet.name}" rev ${pet.rev} (${pet.size} bytes)`;
+  io.out(`${created ? `Added ${what} to this room` : `${what} is already in this room, unchanged`}. Send it with: devotchi pets send ${pet.id}`);
   return 0;
 }
 
@@ -117,12 +127,38 @@ async function deviceError(err: unknown, device: Device, id: string): Promise<ne
   throw err;
 }
 
-/** Polls GET /api/devices until `done` holds for the device's pets or the wait is over. */
-async function waitFor(api: ApiClient, deviceId: string, seconds: number, done: (device: Device) => boolean): Promise<boolean> {
+/**
+ * The device's `pets.result` for the command sent at `sentAt` (protocol 14.8):
+ * same op and pet, arrived at or after the send. A server that does not
+ * report results (no `at` in the POST answer, no `petsResult`) gives none.
+ */
+function answerTo(device: Device, op: string, pet: string, sentAt: string | undefined): DevicePetsResult | undefined {
+  const result = device.petsResult;
+  if (sentAt === undefined || result === undefined || result.op !== op || result.pet !== pet) return undefined;
+  return Date.parse(result.at) >= Date.parse(sentAt) ? result : undefined;
+}
+
+/**
+ * Polls GET /api/devices until the device answers the command, or (for a
+ * server without results) until `done` holds, or the wait is over. A failed
+ * answer is a CliError at once.
+ */
+async function waitFor(
+  api: ApiClient,
+  deviceId: string,
+  seconds: number,
+  command: { op: string; pet: string; sentAt: string | undefined },
+  done: (device: Device) => boolean,
+): Promise<boolean> {
   const until = Date.now() + seconds * 1000;
   while (Date.now() < until) {
     const device = (await api.devices()).find((d) => d.id === deviceId);
-    if (device && done(device)) return true;
+    const answer = device && answerTo(device, command.op, command.pet, command.sentAt);
+    if (answer) {
+      if (answer.ok) return true;
+      throw new CliError(`${deviceId}: ${petResultText(answer)}`);
+    }
+    if (device && command.sentAt === undefined && done(device)) return true;
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
   return false;
@@ -134,13 +170,13 @@ export async function sendPet(id: string, options: PetSendOptions, io: Io): Prom
   const device = await targetDevice(api, options.device);
   const pet = (await api.pets()).find((p) => p.id === id);
   if (!pet) throw new CliError(`no pet ${id} in the catalog or this room (see devotchi pets)`);
-  await api.devicePet(device.id, { op: "install", pet: id, select: options.use === true }).catch((err: unknown) => deviceError(err, device, id));
+  const sent = await api.devicePet(device.id, { op: "install", pet: id, select: options.use === true }).catch((err: unknown) => deviceError(err, device, id));
   const wait = options.wait ?? DEFAULT_WAIT_S;
   if (wait === 0) {
     io.out(`Sent ${id} to ${device.id}.`);
     return 0;
   }
-  const ok = await waitFor(api, device.id, wait, (d) => {
+  const ok = await waitFor(api, device.id, wait, { op: "install", pet: id, sentAt: sent.at }, (d) => {
     const installed = d.pets?.installed.some((p) => p.id === id && p.rev === pet.rev) === true;
     return installed && (options.use !== true || d.pets?.selected === id);
   });
@@ -155,9 +191,9 @@ export async function usePet(id: string, options: PetSendOptions, io: Io): Promi
   checkId(id);
   const { api } = await connectServer(options.server, io);
   const device = await targetDevice(api, options.device);
-  await api.devicePet(device.id, { op: "select", pet: id }).catch((err: unknown) => deviceError(err, device, id));
+  const sent = await api.devicePet(device.id, { op: "select", pet: id }).catch((err: unknown) => deviceError(err, device, id));
   const wait = options.wait ?? DEFAULT_WAIT_S;
-  if (wait > 0 && !(await waitFor(api, device.id, wait, (d) => d.pets?.selected === id))) {
+  if (wait > 0 && !(await waitFor(api, device.id, wait, { op: "select", pet: id, sentAt: sent.at }, (d) => d.pets?.selected === id))) {
     throw new CliError(`${device.id} did not switch to ${id} within ${wait} s; is it installed there? (devotchi pets)`);
   }
   io.out(wait > 0 ? `${device.id} shows ${id}.` : `Asked ${device.id} to show ${id}.`);

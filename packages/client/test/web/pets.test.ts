@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import type { Device, DevicePetCommandRequest, PetListEntry } from "@devotchi/shared";
-import { initialState, petResultText, reduce, type State } from "../../web/src/store.js";
+import { petResultText, type Device, type DevicePetCommandRequest, type PetListEntry } from "@devotchi/shared";
+import { initialState, reduce, type State } from "../../web/src/store.js";
 import { PetsPanel } from "../../web/src/views/pets.js";
 
 // happy-dom replaces URL, so the path is built with node:path.

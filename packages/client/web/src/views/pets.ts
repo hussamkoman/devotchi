@@ -7,6 +7,7 @@
 import {
   PET_MOODS,
   parsePet,
+  petResultText,
   renderPetSvg,
   type Device,
   type DevicePetCommandRequest,
@@ -16,7 +17,7 @@ import {
 } from "@devotchi/shared";
 import { h, placeAt, setText } from "../dom.js";
 import { relativeTime } from "../format.js";
-import { petResultText, type State } from "../store.js";
+import type { State } from "../store.js";
 
 export interface PetActions {
   loadPack(id: string): Promise<Uint8Array>;

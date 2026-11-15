@@ -5,14 +5,14 @@
 
 import {
   EXTEND_MS,
+  CHOICE_WORDS,
+  petResultText,
   type DecideChoice,
   type Device,
-  type DismissChoice,
   type Mood,
   type PermissionGrant,
   type Peers,
   type PetListEntry,
-  type PetResultError,
   type PetsMessage,
   type PetsResult,
   type QuestionAnswer,
@@ -223,18 +223,6 @@ export function deviceName(state: State, id: string): string {
   return state.devices.find((d) => d.id === id)?.name ?? id;
 }
 
-/** Receipt words per `dismiss.choice` (protocol 14.3, ux-flows 3.2). */
-export const CHOICE_TEXT: Record<DismissChoice, string> = {
-  allow_session: "allowed for this session",
-  deny_ask_why: "denied, Claude was asked why",
-  deny_stop: "denied, Claude stopped",
-  approve: "plan approved, each edit still asks",
-  approve_accept_edits: "plan approved, edits accepted",
-  revise: "sent back, Claude keeps planning",
-  decline: "declined to answer",
-  answered: "answers sent",
-};
-
 function answerLabels(card: QuestionCard, answers: QuestionAnswer[]): string {
   return answers
     .map((answer, i) => {
@@ -248,7 +236,7 @@ function answerLabels(card: QuestionCard, answers: QuestionAnswer[]): string {
 
 function answeredText(card: RequestCard | undefined, msg: Extract<ServerToConsumerMessage, { type: "dismiss"; reason: "answered" }>): string {
   if (msg.choice === undefined) return msg.outcome === "allow" ? "allowed" : "denied, Claude was told to try another way";
-  const words = CHOICE_TEXT[msg.choice] ?? msg.choice;
+  const words = CHOICE_WORDS[msg.choice] ?? msg.choice;
   if (msg.choice === "allow_session" && card?.kind === "permission" && card.grant !== null) {
     return `${words}: ${card.grant.rule}${card.grant.match === "prefix" ? " …" : ""}`;
   }
@@ -306,26 +294,6 @@ function onQuestion(state: State, msg: QuestionMessage, now: number): State {
 }
 
 /** What a device's `pets.result.error` means (protocol 14.8). */
-export const PET_ERROR_TEXT: Record<PetResultError, string> = {
-  http: "the download from the server failed",
-  size: "the pack size did not match",
-  crc: "the pack was damaged on the way (CRC)",
-  format: "the device cannot read this pack",
-  mismatch: "the pack changed on the server; send it again",
-  full: "all slots are full; remove a pet on the device first",
-  unknown: "the device does not have that pet",
-  builtin: "built-in pets cannot be replaced or removed",
-  busy: "the device is busy with another download",
-  storage: "the device could not store it",
-};
-
-export function petResultText(result: PetsResult): string {
-  const verb = result.op === "install" ? "install" : result.op === "select" ? "switch to" : result.op === "remove" ? "remove" : result.op;
-  const pet = result.pet === "" ? "the pet" : result.pet;
-  if (result.ok) return result.op === "install" ? `${pet} installed` : result.op === "select" ? `now shows ${pet}` : `${pet} removed`;
-  return `could not ${verb} ${pet}: ${result.error !== undefined ? PET_ERROR_TEXT[result.error] : "unknown error"}`;
-}
-
 function onPets(state: State, msg: PetsMessage, now: number): State {
   if (msg.device === undefined) return state;
   const { type: _type, device, result, ...pets } = msg;

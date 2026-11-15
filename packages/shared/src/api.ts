@@ -9,6 +9,7 @@ import type {
   Peers,
   PetOp,
   PetsMessage,
+  PetsResult,
   RequestKind,
   Risk,
   RoomMode,
@@ -200,9 +201,16 @@ export interface Device {
   telemetryAt: string | null;
   /** Protocol 14.8: the last `pets` message of an online device, without `result`. */
   pets?: DevicePets;
+  /** Protocol 14.8: the last `result` an online device sent, with the server time it arrived. */
+  petsResult?: DevicePetsResult;
 }
 
 export type DevicePets = Omit<PetsMessage, "type" | "device" | "result">;
+
+export interface DevicePetsResult extends PetsResult {
+  /** ISO 8601 server time the `pets` message with this result arrived. */
+  at: string;
+}
 
 export interface ListDevicesResponse {
   devices: Device[];
@@ -250,6 +258,8 @@ export type DevicePetCommandRequest =
 
 export interface DevicePetCommandResponse {
   sent: true;
+  /** ISO 8601 server time the `pet_cmd` was sent; its answer is a `petsResult` at or after it. */
+  at: string;
 }
 
 // --- Room (7.6) ---

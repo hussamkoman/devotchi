@@ -14,7 +14,7 @@ export interface FormattedToolCall {
   risk: Risk;
   /** Protocol 14.2: the exact command, path and change, or the input as JSON; ASCII, at most 600 bytes. */
   cmd: string;
-  /** `cmd` is not the complete input: it was shortened, or a character had to be replaced. */
+  /** `cmd` is not the complete input: it was shortened, a character had to be replaced, or a Bash tab or CR was respaced. */
   cut?: true;
   /** Claude's own description of the call (Bash `description`). */
   desc?: string;
@@ -375,6 +375,8 @@ interface RawCall extends Assessment {
   details?: string;
   cmd: string;
   desc?: string;
+  /** `cmd` shows a tab or carriage return of a shell command as spaces or a line break, which the shell reads differently. */
+  respaced?: true;
 }
 
 const NON_ASCII = /[^\x20-\x7e\n]/;
@@ -393,7 +395,7 @@ function finish(raw: RawCall): FormattedToolCall {
   const cmd = clean(raw.cmd);
   const ascii = sanitizeAscii(cmd);
   out.cmd = utf8Truncate(ascii, LIMITS.cmd);
-  if (NON_ASCII.test(cmd) || out.cmd.length < ascii.length) out.cut = true;
+  if (raw.respaced === true || NON_ASCII.test(cmd) || out.cmd.length < ascii.length) out.cut = true;
   if (raw.desc !== undefined) {
     const desc = utf8Truncate(sanitizeAscii(clean(raw.desc).replace(/\n/g, " ")).trim(), LIMITS.desc);
     if (desc !== "") out.desc = desc;
@@ -467,7 +469,8 @@ function formatUnsafe(toolName: unknown, toolInput: unknown, cwd: string | undef
 
   switch (toolName) {
     case "Bash": {
-      const command = clean(str(input.command) ?? "");
+      const verbatim = str(input.command) ?? "";
+      const command = clean(verbatim);
       const description = str(input.description);
       const details = `${description ? `${description}\n` : ""}$ ${command}`;
       return {
@@ -477,6 +480,8 @@ function formatUnsafe(toolName: unknown, toolInput: unknown, cwd: string | undef
         ...bashRisk(command),
         cmd: command,
         desc: description,
+        // Inside quotes or a `<<-` here-document a tab is not a space, and a lone CR is not a line break.
+        ...(/[\t\r]/.test(verbatim) ? { respaced: true as const } : {}),
       };
     }
     case "Edit": {

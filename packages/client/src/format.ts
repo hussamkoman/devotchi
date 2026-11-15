@@ -1,7 +1,7 @@
 // Human-readable liveness and battery text shared by status, devices,
 // doctor and the MCP device summary.
 
-import type { Device, DismissChoice, LastRequest, PendingRequestInfo } from "@devotchi/shared";
+import { CHOICE_WORDS, type Device, type LastRequest, type PendingRequestInfo } from "@devotchi/shared";
 
 export function secondsSince(iso: string | null | undefined, now: number): number | null {
   if (iso === null || iso === undefined) return null;
@@ -68,18 +68,6 @@ export function lastRequestLine(last: LastRequest | null, now: number): string {
   const choice = last.choice !== undefined ? `, ${CHOICE_WORDS[last.choice] ?? last.choice}` : "";
   return `${last.tool}: ${last.outcome} (${last.detail}${choice})${by}, ${ago(secondsSince(last.at, now))}`;
 }
-
-/** `dismiss.choice` / `lastRequest.choice` in words (protocol 14.3). */
-export const CHOICE_WORDS: Record<DismissChoice, string> = {
-  allow_session: "allowed for this session",
-  deny_ask_why: "denied, asked why",
-  deny_stop: "denied and stopped",
-  approve: "plan approved, edits still asked",
-  approve_accept_edits: "plan approved, edits accepted",
-  revise: "plan sent back for changes",
-  decline: "declined to answer",
-  answered: "answers sent",
-};
 
 /** "2 (1 permission, 1 question)" for the pending requests of a room. */
 export function pendingLine(pending: readonly PendingRequestInfo[]): string {

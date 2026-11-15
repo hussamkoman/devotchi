@@ -215,6 +215,22 @@ describe("formatToolCall table", () => {
   }
 });
 
+describe("formatToolCall cmd and cut", () => {
+  // A tab is not a space inside quotes or a `<<-` here-document, and a lone CR is not
+  // a line break to the shell: the device would show another command (protocol 14.2).
+  it("shows a Bash tab or CR as spaces or a line break but marks the command cut", () => {
+    expect(formatToolCall("Bash", { command: "printf 'a\tb'" })).toMatchObject({ cmd: "printf 'a  b'", cut: true });
+    expect(formatToolCall("Bash", { command: "cat <<-EOF\n\tEOF\nrm x\nEOF" })).toMatchObject({ cut: true });
+    expect(formatToolCall("Bash", { command: "echo a\r\npwd" })).toMatchObject({ cmd: "echo a\npwd", cut: true });
+    expect(formatToolCall("Bash", { command: "echo café" })).toMatchObject({ cmd: "echo caf?", cut: true });
+    expect(formatToolCall("Bash", { command: "ls -la\npwd" })).not.toHaveProperty("cut");
+  });
+
+  it("keeps a tab in Edit content as two spaces without cut", () => {
+    expect(formatToolCall("Edit", { file_path: "/p/a.go", old_string: "\tx := 1", new_string: "\tx := 2" }, CWD)).not.toHaveProperty("cut");
+  });
+});
+
 describe("formatToolCall limits", () => {
   function expectWithinLimits(out: FormattedToolCall): void {
     expect(utf8ByteLength(out.tool)).toBeLessThanOrEqual(LIMITS.tool);

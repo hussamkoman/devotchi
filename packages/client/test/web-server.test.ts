@@ -389,6 +389,10 @@ describe("REST proxy", () => {
     const up = await apiFetch("/api/pets", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: copy });
     expect(up.status).toBe(201);
     expect(await up.json()).toMatchObject({ id: "viaproxy", source: "room" });
+    // The same pack again: the server answers 200 and the proxy passes it through.
+    const same = await apiFetch("/api/pets", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: copy });
+    expect(same.status).toBe(200);
+    expect(await same.json()).toMatchObject({ id: "viaproxy", source: "room" });
     const tooBig = await apiFetch("/api/pets", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: new Uint8Array(3000) });
     expect(tooBig.status).toBe(413);
     const bad = await apiFetch("/api/pets", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: new Uint8Array(400) });
