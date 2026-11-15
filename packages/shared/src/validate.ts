@@ -24,6 +24,9 @@ import {
   MOODS,
   NOTIFY_EVENT_RE,
   PET_ID_RE,
+  PET_RESULT_ERRORS,
+  PETS_MAX_BYTES,
+  PETS_MAX_INSTALLED,
   POWER_SOURCES,
   POWER_STAGES,
   PRODUCER_KINDS,
@@ -62,6 +65,10 @@ import {
   type PermissionGrant,
   type PermissionMessage,
   type PermissionResponseMessage,
+  type PetCmdMessage,
+  type PetsEntry,
+  type PetsMessage,
+  type PetsResult,
   type PingMessage,
   type PongMessage,
   type ProtocolMessage,
@@ -342,6 +349,43 @@ function parseTelemetry(obj: Fields): TelemetryMessage {
   });
 }
 
+function reqPetId(obj: Fields, key: string, where: string): string {
+  const value = obj[key];
+  if (typeof value !== "string" || !PET_ID_RE.test(value)) reject("INVALID_MESSAGE", `${where}.${key} must match [a-z0-9]{1,8}`);
+  return value;
+}
+
+function parsePets(obj: Fields): PetsMessage {
+  const slots = reqInt(obj, "slots", "pets", 0, 255);
+  const free = reqInt(obj, "free", "pets", 0, slots);
+  if (!Array.isArray(obj.installed) || obj.installed.length > PETS_MAX_INSTALLED) {
+    reject("INVALID_MESSAGE", `pets.installed must be an array of at most ${PETS_MAX_INSTALLED} entries`);
+  }
+  const installed = obj.installed.map((raw): PetsEntry => {
+    if (!isObject(raw)) reject("INVALID_MESSAGE", "pets.installed entries must be objects");
+    const entry: PetsEntry = { id: reqPetId(raw, "id", "pets.installed[]"), rev: reqInt(raw, "rev", "pets.installed[]", 0, 255) };
+    if (raw.builtin !== undefined && typeof raw.builtin !== "boolean") reject("INVALID_MESSAGE", "pets.installed[].builtin must be a boolean");
+    if (raw.builtin === true) entry.builtin = true;
+    return entry;
+  });
+  const msg: PetsMessage = { type: "pets", selected: reqPetId(obj, "selected", "pets"), slots, free, installed };
+  if (obj.result !== undefined) {
+    if (!isObject(obj.result)) reject("INVALID_MESSAGE", "pets.result must be an object");
+    const r = obj.result;
+    const op = reqString(r, "op", "pets.result");
+    if (!/^[a-z_]{1,16}$/.test(op)) reject("INVALID_MESSAGE", "pets.result.op must be 1..16 of [a-z_]");
+    const pet = reqString(r, "pet", "pets.result");
+    if (pet !== "" && !PET_ID_RE.test(pet)) reject("INVALID_MESSAGE", 'pets.result.pet must be "" or match [a-z0-9]{1,8}');
+    if (typeof r.ok !== "boolean") reject("INVALID_MESSAGE", "pets.result.ok must be a boolean");
+    const result: PetsResult = { op, pet, ok: r.ok };
+    const error = optEnum(r, "error", "pets.result", PET_RESULT_ERRORS);
+    if (!r.ok && error === undefined) reject("INVALID_MESSAGE", "pets.result.error is required when ok is false");
+    if (!r.ok) result.error = error;
+    msg.result = result;
+  }
+  return msg;
+}
+
 function parseFields(obj: Fields, type: InboundMessage["type"], tokenKind: TokenKind | undefined): InboundMessage {
   switch (type) {
     case "register":
@@ -372,6 +416,8 @@ function parseFields(obj: Fields, type: InboundMessage["type"], tokenKind: Token
       return { type: "set_mode", mode: reqEnum(obj, "mode", "set_mode", ROOM_MODES) };
     case "telemetry":
       return parseTelemetry(obj);
+    case "pets":
+      return parsePets(obj);
   }
 }
 
@@ -403,6 +449,7 @@ export function parseInbound(raw: string | Uint8Array, ctx: InboundContext): Par
   if (!isObject(parsed)) return failure("INVALID_MESSAGE", "frame must be a JSON object");
   const type = parsed.type;
   if (typeof type !== "string") return failure("INVALID_MESSAGE", "type must be a string");
+  if (type === "pets" && bytes > PETS_MAX_BYTES) return failure("MESSAGE_TOO_LARGE", `pets message of ${bytes} bytes exceeds ${PETS_MAX_BYTES}`);
 
   if (firstFrame) {
     if (type !== "register") return failure("INVALID_MESSAGE", "the first message must be register");
@@ -758,6 +805,24 @@ export function buildExtend(id: string): ExtendMessage {
 export function buildDeadline(id: string, timeout: number): DeadlineMessage {
   assertRequestId(id);
   return { type: "deadline", id, timeout: Math.max(MIN_REPLAY_REMAINING_MS, Math.round(timeout)) };
+}
+
+export function buildPetCmd(
+  input:
+    | { op: "install"; pet: string; rev: number; size: number; crc32: string; select?: boolean }
+    | { op: "select" | "remove"; pet: string },
+): PetCmdMessage {
+  if (!PET_ID_RE.test(input.pet)) throw new RangeError("pet_cmd.pet must match [a-z0-9]{1,8}");
+  if (input.op !== "install") return { type: "pet_cmd", op: input.op, pet: input.pet };
+  if (!Number.isInteger(input.rev) || input.rev < 1 || input.rev > 255) throw new RangeError("pet_cmd.rev must be 1..255");
+  if (!Number.isInteger(input.size) || input.size < 36 || input.size > MAX_FRAME_BYTES) throw new RangeError("pet_cmd.size must be 36..2048");
+  if (!/^[0-9a-f]{8}$/.test(input.crc32)) throw new RangeError("pet_cmd.crc32 must be 8 lowercase hex digits");
+  return { type: "pet_cmd", op: "install", pet: input.pet, rev: input.rev, size: input.size, crc32: input.crc32, select: input.select === true };
+}
+
+/** A device's `pets` message; `device` is added by the server for dashboards. */
+export function buildPets(input: Omit<PetsMessage, "type">): PetsMessage {
+  return compact({ type: "pets" as const, ...input });
 }
 
 export function buildTelemetry(input: Omit<TelemetryMessage, "type">): TelemetryMessage {

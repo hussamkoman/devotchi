@@ -19,6 +19,8 @@ import { cors, securityHeaders } from "./http/security.js";
 import { Logger, errorFields } from "./log.js";
 import { PairingService } from "./pairing/service.js";
 import { PermissionManager } from "./permissions/manager.js";
+import { loadCatalog } from "./pets/catalog.js";
+import { PetService } from "./pets/service.js";
 import { TimeService } from "./time/service.js";
 import { RoomRegistry } from "./rooms/registry.js";
 import { accountRoutes } from "./routes/accounts.js";
@@ -26,6 +28,7 @@ import { deviceRoutes } from "./routes/devices.js";
 import { healthRoutes } from "./routes/health.js";
 import { hookRoutes } from "./routes/hooks.js";
 import { pairingRoutes } from "./routes/pairing.js";
+import { petRoutes } from "./routes/pets.js";
 import { roomRoutes } from "./routes/room.js";
 import { tokenRoutes } from "./routes/tokens.js";
 import { StartupError } from "./startup-error.js";
@@ -135,6 +138,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   const dispatcher = new HookDispatcher({ config, db, rooms, permissions });
   const devices = new DeviceService({ db, rooms, ws, permissions, log, writeIntervalMs: config.timing.deviceWriteMs });
   const pairing = new PairingService({ db, ws, log, timing: config.timing });
+  const pets = new PetService({ db, rooms, log, catalog: loadCatalog() });
   // Nothing of a confirmed pairing's token survived the restart, so those pairings cannot be delivered.
   pairing.prune();
   const accounts = config.mode === "multi-user" ? new AccountService(db, config.bcryptCost, config.timing) : null;
@@ -150,6 +154,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
   ws.handle("extend", (conn, msg) => permissions.onExtend(conn, msg.id));
   ws.onConsumerRegistered((conn, room) => permissions.onConsumerRegistered(conn, room));
   ws.handle("telemetry", (conn, msg) => devices.onTelemetry(conn, msg));
+  ws.handle("pets", (conn, msg, room) => pets.onPets(conn, msg, room));
   ws.onConnectionClosed((conn, room) => {
     if (conn.role !== "consumer") return;
     permissions.onConsumerGone(conn, room);
@@ -178,6 +183,7 @@ export async function createServer(input: ServerConfigInput): Promise<DevotchiSe
     tokenRoutes({ db, config, auth, limits, ws }),
     pairingRoutes({ auth, limits, pairing }),
     deviceRoutes({ auth, devices }),
+    petRoutes({ auth, limits, pets }),
     roomRoutes({
       db,
       config,

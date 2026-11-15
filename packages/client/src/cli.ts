@@ -5,6 +5,7 @@ import { login, logout } from "./commands/account.js";
 import { configGet, configPath, configSet, showConfig } from "./commands/config.js";
 import { identifyDevice, listDevices, pair, removeDevice, renameDevice } from "./commands/devices.js";
 import { runDoctor } from "./commands/doctor.js";
+import { addPet, listPets, removePet, sendPet, usePet } from "./commands/pets.js";
 import { runHold, runMode, runNotify } from "./commands/room.js";
 import { runCommand } from "./commands/run.js";
 import { runStatus } from "./commands/status.js";
@@ -223,6 +224,43 @@ devices
   .option("--yes", "Confirm the removal")
   .action(exits((id: string, opts: { server?: string; yes?: boolean }) => removeDevice(id, opts, io)));
 
+const pets = program.command("pets").description("Pet gallery: list, upload or remove pets, send one to a device or switch the pet it shows");
+pets
+  .command("list", { isDefault: true })
+  .description("List the catalog and this room's uploaded pets, and the pets on each online device")
+  .option(...SERVER_OPTION)
+  .option("--json", "Print as JSON")
+  .action(exits((opts: { server?: string; json?: boolean }) => listPets(opts, io)));
+pets
+  .command("add")
+  .description("Upload a pet to this room: a .pet pack or its .pet.json source (the id comes from the pet, not the file name)")
+  .argument("<file>", "Pack or JSON source")
+  .option(...SERVER_OPTION)
+  .action(exits((file: string, opts: { server?: string }) => addPet(file, opts, io)));
+pets
+  .command("rm")
+  .description("Remove an uploaded pet from this room")
+  .argument("<id>", "Pet id")
+  .option(...SERVER_OPTION)
+  .action(exits((id: string, opts: { server?: string }) => removePet(id, opts, io)));
+pets
+  .command("send")
+  .description("Install a pet on a device and wait until the device reports it")
+  .argument("<id>", "Pet id")
+  .option(...SERVER_OPTION)
+  .option("--device <id>", "Device id (default: the only online device that reports pets)")
+  .option("--use", "Show the pet once it is installed")
+  .option("--wait <s>", "Seconds to wait for the device (0..120, 0 does not wait)", intOption(0, 120, "seconds"))
+  .action(exits((id: string, opts: { server?: string; device?: string; use?: boolean; wait?: number }) => sendPet(id, opts, io)));
+pets
+  .command("use")
+  .description("Make a device show a pet it has (built-in or installed)")
+  .argument("<id>", "Pet id")
+  .option(...SERVER_OPTION)
+  .option("--device <id>", "Device id (default: the only online device that reports pets)")
+  .option("--wait <s>", "Seconds to wait for the device (0..120, 0 does not wait)", intOption(0, 120, "seconds"))
+  .action(exits((id: string, opts: { server?: string; device?: string; wait?: number }) => usePet(id, opts, io)));
+
 program
   .command("status")
   .description("Server, token, peers, room mode and hold time, device liveness and the last request outcome")
@@ -298,7 +336,7 @@ program
   .option("--decide <choice>", "Permissions: send decide allow_session | deny_ask_why | deny_stop instead of the --approve answer")
   .option("--plan <policy>", "Plans: approve | accept-edits | revise | stop | terminal (default follows --approve)")
   .option("--extend", "Send one extend for every question and plan when it is shown")
-  .option("--caps <list>", "Caps declared in register: none, or a list of decide,ask,plan,pets (default decide,ask,plan)")
+  .option("--caps <list>", "Caps declared in register: none, or a list of decide,ask,plan,pets (default decide,ask,plan,pets)")
   .option("--code <CODE>", "Pair with a code from `devotchi pair --new` (flow B) instead of showing one")
   .option("--token <token>", "Connect with this token, no pairing (a cli token makes a memory-only consumer)")
   .option("--state <file>", "Keep the paired credentials in this file (default: memory only)")

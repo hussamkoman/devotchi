@@ -4,9 +4,11 @@ import { WebSocket } from "ws";
 import {
   CONTENT_RATE_PER_MIN,
   HOLDING_BUCKET,
+  PETS_RATE_PER_MIN,
   serialize,
   type Cap,
   type ClientKind,
+  type DevicePets,
   type DeviceTelemetry,
   type Role,
   type ServerTiming,
@@ -41,6 +43,8 @@ export class Conn {
   lastTelemetry: { data: DeviceTelemetry; at: number } | null = null;
   /** The `lastTelemetry.at` value last written to the registry. */
   telemetryWrittenAt: number | null = null;
+  /** Protocol 14.8: the last `pets` message without `result`; memory only. */
+  lastPets: DevicePets | null = null;
   registration: Registration | null = null;
   /** Protocol 14.1: what the consumer declared and the server offers; empty for phase-1 consumers and producers. */
   caps: ReadonlySet<Cap> = new Set();
@@ -48,6 +52,7 @@ export class Conn {
   readonly holding: TokenBucket;
   readonly telemetry: MinInterval;
   readonly setMode: MinInterval;
+  readonly pets: RateLog;
 
   constructor(
     /** Per-instance counter that tells connections apart in logs. */
@@ -64,6 +69,7 @@ export class Conn {
     this.holding = new TokenBucket(HOLDING_BUCKET, timing.holdingRefillMs, openedAt);
     this.telemetry = new MinInterval(timing.systemMessageIntervalMs);
     this.setMode = new MinInterval(timing.systemMessageIntervalMs);
+    this.pets = new RateLog(PETS_RATE_PER_MIN, timing.rateWindowMs);
   }
 
   get role(): Role | undefined {

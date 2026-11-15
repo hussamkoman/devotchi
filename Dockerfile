@@ -16,6 +16,8 @@ FROM manifests AS build
 RUN pnpm install --frozen-lockfile --filter "@devotchi/server..."
 COPY packages/shared packages/shared
 COPY packages/server packages/server
+# The server build encodes the pet catalog from these sources (dist/pets.json).
+COPY pets pets
 RUN pnpm --filter @devotchi/shared run build && pnpm --filter @devotchi/server run build
 
 # A separate install, so that no development package reaches the virtual store.

@@ -13,7 +13,7 @@
     "devotchi-server": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/build-pets.mjs",
     "start": "node dist/index.js"
   },
   "dependencies": {

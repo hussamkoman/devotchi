@@ -370,4 +370,34 @@ describe("REST proxy", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ deviceId: "dv-123456" });
   });
+
+  it("proxies the pets routes, binary packs included", async () => {
+    const list = await apiFetch("/api/pets");
+    expect(((await list.json()) as { pets: { id: string }[] }).pets.map((p) => p.id)).toEqual(["devo", "ember", "mochi"]);
+    const pack = await apiFetch("/api/pets/devo/pack");
+    expect(pack.status).toBe(200);
+    expect(pack.headers.get("content-type")).toBe("application/octet-stream");
+    const bytes = new Uint8Array(await pack.arrayBuffer());
+    expect(bytes.length).toBe(344);
+    // A copy of Devo under another id and name, re-sealed.
+    const copy = bytes.slice();
+    copy.set(new TextEncoder().encode("viaproxy"), 8);
+    const { crc32 } = await import("@devotchi/shared");
+    const c = crc32(copy.subarray(0, copy.length - 4));
+    copy.set([c, c >>> 8, c >>> 16, c >>> 24], copy.length - 4);
+    const up = await apiFetch("/api/pets", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: copy });
+    expect(up.status).toBe(201);
+    expect(await up.json()).toMatchObject({ id: "viaproxy", source: "room" });
+    const tooBig = await apiFetch("/api/pets", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: new Uint8Array(3000) });
+    expect(tooBig.status).toBe(413);
+    const bad = await apiFetch("/api/pets", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: new Uint8Array(400) });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { code: string }).code).toBe("invalid_request");
+    expect((await apiFetch("/api/pets/viaproxy", { method: "DELETE" })).status).toBe(204);
+    expect((await apiFetch("/api/pets/viaproxy/pack")).status).toBe(404);
+    const offline = await apiFetch(`/api/devices/dv-ffffff/pet`, { method: "POST", json: { op: "select", pet: "devo" } });
+    expect(offline.status).toBe(404);
+    const malformed = await apiFetch(`/api/devices/dv-ffffff/pet`, { method: "POST", json: { op: "select", pet: "Devo" } });
+    expect(malformed.status).toBe(400);
+  });
 });

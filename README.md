@@ -87,10 +87,11 @@ Tools: `show_status`, `notify`, `set_mood`, `get_device_state`.
 
 | Command | What it does |
 |---|---|
-| `devotchi start [--local [--lan]] [--server <url>]` | Dashboard on 127.0.0.1 (permission, question and plan cards); `--local` runs the server in the same process |
+| `devotchi start [--local [--lan]] [--server <url>]` | Dashboard on 127.0.0.1 (permission, question and plan cards, Pets page); `--local` runs the server in the same process |
 | `devotchi setup [--dir D] [--check \| --remove]` | Install, check or remove the nine Claude Code hooks |
 | `devotchi pair <CODE>` / `pair --new` | Confirm a device's code / create a code for the device console |
-| `devotchi devices [list \| rename \| identify \| rm]` | Paired devices with online state, last seen, last ack, battery |
+| `devotchi devices [list \| rename \| identify \| rm]` | Paired devices with online state, last seen, last ack, battery, pet on screen |
+| `devotchi pets [list \| add <file> \| rm <id> \| send <id> [--device D] [--use] \| use <id> [--device D]]` | Pet gallery: the catalog and this room's uploads (a `.pet` pack or its `.pet.json` source), install one on a device or switch the pet it shows |
 | `devotchi status [--json]` | Server, token, peers, mode, hold time, time zone, pending request kinds, devices, last request and choice |
 | `devotchi doctor` | Read-only checks of configuration, server, token, WebSocket, hooks, devices, the question/plan/session-grant switches and who can answer questions |
 | `devotchi mode [ask \| desk]` | Requests go to devices (ask) or straight to the terminal (desk) |
@@ -107,6 +108,13 @@ The default server is `http://localhost:8080`; every command takes
 `devotchi start`, `devotchi pair` and the dashboard give a room that has no
 time zone yet the zone of the PC or browser, so the device clock shows local
 time; the dashboard settings change it.
+
+Pets are data ([pets/README.md](pets/README.md)): Devo and Ember are built
+into the firmware, and the server ships them plus the gallery pet Mochi as its
+catalog. A room can upload up to 16 more; `devotchi pets send <id>` or "Send
+to device" on the dashboard's Pets page installs one in one of the device's 8
+slots. Every pack is checked with the same rules as the firmware before the
+server stores or serves it.
 
 ## Hardware
 

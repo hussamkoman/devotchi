@@ -1,17 +1,23 @@
-// JSON request bodies (protocol section 7): Content-Type application/json,
-// 16 KB on /api/*, 2 MB on /hook/* (hook bodies carry file contents).
+// Request bodies (protocol section 7): Content-Type application/json, 16 KB
+// on /api/*, 2 MB on /hook/* (hook bodies carry file contents). The one binary
+// body is a pet pack on POST /api/pets (protocol 14.8, at most 2048 bytes).
 
 import type { IncomingMessage } from "node:http";
 import type { Middleware } from "koa";
-import { API_BODY_LIMIT_BYTES, HOOK_BODY_LIMIT_BYTES } from "@devotchi/shared";
+import { API_BODY_LIMIT_BYTES, HOOK_BODY_LIMIT_BYTES, PET_MAX_BYTES } from "@devotchi/shared";
 import { badRequest, payloadTooLarge } from "./errors.js";
 
 declare module "koa" {
   interface Request {
     /** Parsed JSON body; undefined when the request had none. */
     body?: unknown;
+    /** An application/octet-stream body, where a route accepts one. */
+    rawBody?: Buffer;
   }
 }
+
+/** Whether this request may carry an application/octet-stream body. */
+const takesPack = (method: string, path: string) => method === "POST" && path === "/api/pets";
 
 export function bodyLimitFor(path: string): number {
   return path === "/hook" || path.startsWith("/hook/") ? HOOK_BODY_LIMIT_BYTES : API_BODY_LIMIT_BYTES;
@@ -51,11 +57,21 @@ export function bodyParser(): Middleware {
     const chunked = ctx.get("Transfer-Encoding") !== "";
     if (!chunked && (declared === "" || declared === "0")) return next();
 
-    const limit = bodyLimitFor(ctx.path);
+    const binary = takesPack(ctx.method, ctx.path) && typeof ctx.is("application/octet-stream") === "string";
+    const limit = binary ? PET_MAX_BYTES : bodyLimitFor(ctx.path);
     if (declared !== "" && Number(declared) > limit) {
       ctx.set("Connection", "close");
       ctx.req.resume();
       throw payloadTooLarge(limit);
+    }
+    if (binary) {
+      try {
+        ctx.request.rawBody = await readBody(ctx.req, limit);
+      } catch (err) {
+        ctx.set("Connection", "close");
+        throw err;
+      }
+      return next();
     }
     if (!ctx.is("application/json")) {
       ctx.set("Connection", "close");

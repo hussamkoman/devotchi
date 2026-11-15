@@ -39,13 +39,14 @@ import { ApiClient, ApiError } from "./api.js";
 import { serverWsUrl } from "./config.js";
 import { CliError, UsageError, errorMessage } from "./errors.js";
 import { isErrno, writeFileAtomic } from "./fsutil.js";
+import { SimPets } from "./sim-pets.js";
 
 /** Requests a device keeps at once (firmware on-device queue). */
 export const SIM_QUEUE_SIZE = 4;
 /** Questions and plans among them (protocol 14.10 "On-device question or plan store"). */
 export const SIM_REQUEST_STORE = 2;
-/** Everything the sim can present (protocol 14.1); `pets` is not simulated. */
-export const SIM_CAPS: readonly Cap[] = ["decide", "ask", "plan"];
+/** Everything the sim can present (protocol 14.1). */
+export const SIM_CAPS: readonly Cap[] = ["decide", "ask", "plan", "pets"];
 export const SIM_MODEL = "devotchi-sim";
 /** Exit code after the server revoked the token (close 4003). */
 export const EXIT_REVOKED = 3;
@@ -266,6 +267,9 @@ export class Sim {
   mood: Mood = "idle";
   status: string | null = null;
   mode: string | null = null;
+  private readonly pets: SimPets;
+  /** Both sides offer `pets` (protocol 14.1). */
+  private petsOn = false;
 
   constructor(private readonly opts: SimOptions) {
     const deviceId = `sim-${opts.name}`;
@@ -277,6 +281,15 @@ export class Sim {
     this.heartbeatIntervalMs = opts.heartbeatIntervalMs ?? HOLDING_INTERVAL_MS;
     this.scheduler = new HoldingAckScheduler({ intervalMs: this.heartbeatIntervalMs });
     this.done = new Promise((resolve) => (this.resolveDone = resolve));
+    this.pets = new SimPets({
+      fetchPack: (id) =>
+        fetch(`${opts.serverUrl.replace(/\/+$/, "")}/api/pets/${id}/pack`, {
+          headers: { Authorization: `Bearer ${this.token ?? ""}` },
+          signal: AbortSignal.timeout(10_000),
+        }),
+      send: (msg) => this.send(msg),
+      emit: (event, fields) => this.emit(event, fields),
+    });
   }
 
   /** Ids currently in the on-device queue, oldest first. */
@@ -635,6 +648,8 @@ export class Sim {
           utcOffsetMin: msg.utcOffsetMin,
         });
         this.sendTelemetry();
+        this.petsOn = (this.opts.caps ?? SIM_CAPS).includes("pets") && Array.isArray(msg.caps) && msg.caps.includes("pets");
+        if (this.petsOn) this.pets.report();
         this.telemetryTimer = setInterval(() => this.sendTelemetry(), this.opts.telemetryIntervalMs ?? 60_000);
         break;
       case "permission":
@@ -674,6 +689,9 @@ export class Sim {
         break;
       case "identify":
         this.emit("identify", { durationMs: msg.durationMs });
+        break;
+      case "pet_cmd":
+        if (this.petsOn) void this.pets.onCommand(msg);
         break;
       default:
         break;
@@ -902,6 +920,7 @@ export class Sim {
       fw: this.opts.version,
       screen: this.queue.size > 0 ? "request" : "pet",
       stage: "active",
+      pet: this.pets.selectedPet,
       ...(sample.state === "discharging" && sample.pct !== null && sample.pct < 10
         ? { alert: sample.pct < 5 ? ("battery_critical" as const) : ("battery_low" as const) }
         : {}),

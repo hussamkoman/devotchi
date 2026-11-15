@@ -1,0 +1,233 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  PET_MAX_BYTES,
+  PET_MIN_BYTES,
+  PetSourceError,
+  crc32,
+  crc32Hex,
+  decodePet,
+  encodePet,
+  parsePet,
+  renderPetSvg,
+  validatePet,
+  validatePetSource,
+  type PetSource,
+} from "../src/index.js";
+
+const repo = new URL("../../../", import.meta.url);
+const read = (path: string) => readFileSync(new URL(path, repo));
+const source = (id: string): PetSource => JSON.parse(read(`pets/${id}.pet.json`).toString("utf8")) as PetSource;
+const golden = (id: string) => new Uint8Array(read(`pets/golden/${id}.pet`));
+const clone = <T>(v: T): T => structuredClone(v);
+
+/** Re-seals a modified pack so only the structure checks see the change. */
+function reseal(pack: Uint8Array): Uint8Array {
+  const out = pack.slice();
+  const crc = crc32(out.subarray(0, out.length - 4));
+  out.set([crc, crc >>> 8, crc >>> 16, crc >>> 24], out.length - 4);
+  return out;
+}
+
+/**
+ * What a pack means. Two packs can differ in bytes and mean the same: bit 7 of
+ * a driver's op byte is ignored by the firmware (and by this codec; the
+ * encoder writes 0), and the JSON source keeps one override per mood and
+ * channel.
+ */
+function semantic(pack: Uint8Array): Omit<ReturnType<typeof parsePet>, "crc32" | "size" | "overrides"> & { overrides: string[] } {
+  const { crc32: _crc, size: _size, overrides, ...rest } = parsePet(pack);
+  // Overrides apply in order, so a later entry for the same mood and channel wins.
+  const effective = new Map(overrides.map((o) => [`${o.mood}/${o.channel}`, o.value]));
+  return { ...rest, overrides: [...effective].map(([k, v]) => `${k}=${v}`).sort() };
+}
+
+function lcg(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s;
+  };
+}
+
+describe("crc32", () => {
+  it("is the zlib polynomial", () => {
+    expect(crc32Hex(crc32(new TextEncoder().encode("123456789")))).toBe("cbf43926");
+    expect(crc32(new Uint8Array(0))).toBe(0);
+    expect(crc32Hex(crc32(new TextEncoder().encode("The quick brown fox jumps over the lazy dog")))).toBe("414fa339");
+  });
+});
+
+describe.each(["devo", "ember"])("golden pack %s", (id) => {
+  it("encodes byte for byte as petpack.py", () => {
+    const pack = encodePet(source(id));
+    expect(Buffer.from(pack).equals(Buffer.from(golden(id)))).toBe(true);
+    expect(crc32Hex(crc32(pack.subarray(0, pack.length - 4)))).toBe(read(`pets/golden/${id}.crc32`).toString("ascii").trim());
+  });
+
+  it("validates and reports the header", () => {
+    const result = validatePet(golden(id));
+    expect(result).toEqual({
+      ok: true,
+      pet: { id, name: source(id).name, rev: 1, size: golden(id).length, crc32: read(`pets/golden/${id}.crc32`).toString().trim() },
+    });
+  });
+
+  it("round-trips through decodePet", () => {
+    const decoded = decodePet(golden(id));
+    expect(Buffer.from(encodePet(decoded)).equals(Buffer.from(golden(id)))).toBe(true);
+    expect(Buffer.from(encodePet(JSON.parse(JSON.stringify(decoded)))).equals(Buffer.from(golden(id)))).toBe(true);
+  });
+
+  it("refuses every truncation and every extension", () => {
+    const pack = golden(id);
+    for (let len = 0; len < pack.length; len++) {
+      const result = validatePet(pack.subarray(0, len));
+      expect(result.ok, `length ${len}`).toBe(false);
+      // A truncated pack resealed with a valid CRC is still refused for its structure.
+      if (len >= PET_MIN_BYTES + 4) expect(validatePet(reseal(pack.subarray(0, len))).ok, `resealed ${len}`).toBe(false);
+    }
+    const longer = new Uint8Array(pack.length + 1);
+    longer.set(pack);
+    expect(validatePet(longer).ok).toBe(false);
+    expect(validatePet(reseal(longer)).ok).toBe(false);
+  });
+
+  it("refuses every single bit flip with crc, and resealed flips never decode inconsistently", () => {
+    const pack = golden(id);
+    for (let i = 0; i < pack.length; i++) {
+      for (let bit = 0; bit < 8; bit++) {
+        const flipped = pack.slice();
+        flipped[i] ^= 1 << bit;
+        const result = validatePet(flipped);
+        expect(result.ok).toBe(false);
+        if (i < pack.length - 4 && !result.ok) expect(result.error).toBe("crc");
+        // With a fresh CRC the structure checks decide; whatever they accept must re-encode to the same bytes.
+        const sealed = reseal(flipped);
+        const again = validatePet(sealed);
+        if (again.ok) expect(semantic(encodePet(decodePet(sealed)))).toEqual(semantic(sealed));
+        else expect(again.error).toBe("format");
+      }
+    }
+  });
+});
+
+describe("validatePet", () => {
+  it("names the failing check", () => {
+    const pack = golden("devo");
+    const cases: [Uint8Array, string | RegExp][] = [
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 0 ? 0x58 : b))), /DPET/],
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 4 ? 2 : b))), /format 2/],
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 5 ? 0 : b))), /rev/],
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 6 ? b + 1 : b))), /header size/],
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 8 ? 0x41 : b))), /id has a character/],
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 28 ? 2 : b))), /reserved flag/],
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 29 ? 0 : b))), /parts/],
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 47 ? 1 : b))), /reserved byte/],
+      [reseal(Uint8Array.from(pack, (b, i) => (i === 96 ? 1 : b))), /acc_mask/],
+    ];
+    for (const [bytes, message] of cases) {
+      const result = validatePet(bytes);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe("format");
+        expect(result.message).toMatch(message);
+      }
+    }
+    expect(validatePet(new Uint8Array(PET_MAX_BYTES + 1))).toMatchObject({ ok: false, error: "format" });
+  });
+
+  it("survives random input", () => {
+    const next = lcg(7);
+    for (let n = 0; n < 2000; n++) {
+      const len = next() % (PET_MAX_BYTES + 64);
+      const bytes = Uint8Array.from({ length: len }, () => next() & 0xff);
+      if (n % 2 === 0 && len >= 8) bytes.set([0x44, 0x50, 0x45, 0x54, 1, 1, len & 0xff, len >> 8]);
+      const input = n % 4 === 0 && len >= 4 ? reseal(bytes) : bytes;
+      if (validatePet(input).ok) expect(semantic(encodePet(decodePet(input)))).toEqual(semantic(input));
+    }
+  });
+});
+
+describe("encodePet source checks", () => {
+  const base = () => source("devo") as unknown as Record<string, unknown>;
+  const fails = (mutate: (s: Record<string, unknown>) => void, message: RegExp) => {
+    const s = clone(base());
+    mutate(s);
+    expect(() => encodePet(s)).toThrow(PetSourceError);
+    expect(() => encodePet(s)).toThrow(message);
+  };
+
+  it("gives useful messages", () => {
+    fails((s) => (s.id = "Devo"), /^id: "Devo" is not \[a-z0-9\]\{1,8\}/);
+    fails((s) => (s.name = "A name that is far too long"), /^name: /);
+    fails((s) => (s.rev = 0), /^rev: 0 is not an integer in 1\.\.255/);
+    fails((s) => ((s.palette as Record<string, unknown>).base = "red"), /^palette\.base: "red" is not a #RRGGBB colour/);
+    fails((s) => delete ((s.palette as Record<string, Record<string, unknown>>).moods.sad), /^palette\.moods\.sad: is missing/);
+    fails((s) => ((s.face as Record<string, unknown>).eyes = "square"), /^face\.eyes: "square" is not one of round, slit, dot/);
+    fails((s) => ((s.face as Record<string, unknown>).eye_dx = 61), /^face\.eye_dx: 61 is not an integer in 4\.\.60/);
+    fails((s) => ((s.face as Record<string, unknown>).replaces = ["none"]), /cannot be replaced/);
+    fails((s) => ((s.aux as Record<string, unknown>).happy = [1, 2, 3]), /^aux\.happy: needs 4 values/);
+    fails((s) => ((s.aux as Record<string, unknown>).hungry = [0, 0, 0, 0]), /^aux\.hungry: unknown field/);
+    fails((s) => (s.overrides = { idle: { eye_open: 101 } }), /^overrides\.idle\.eye_open: 101 is not an integer in 0\.\.100/);
+    fails((s) => (s.overrides = { idle: { wink: 1 } }), /^overrides\.idle\.wink: "wink" is not one of eye_open/);
+    fails((s) => (s.overrides = { lunch: { eye_open: 1 } }), /^overrides\.lunch: "lunch" is not a mood/);
+    fails((s) => (s.oscillators = [{ mood: "idle", aux: 0, wave: "sine", amp: 3 }]), /^oscillators\[0\]\.period_ms: a sine oscillator needs a period/);
+    fails((s) => (s.oscillators = [{ mood: "idle", aux: 0, wave: "sine", amp: 3, period_ms: 125 }]), /not a multiple of 50/);
+    fails((s) => ((s.parts as Record<string, unknown>[])[0].r = 7), /^parts\[0\]\.r: 7 is not an integer in 0\.\.6/);
+    fails((s) => ((s.parts as Record<string, unknown>[])[2].points = [[0, 0]]), /^parts\[2\]\.points: must be a list of 2\.\.4/);
+    fails((s) => ((s.parts as Record<string, unknown>[])[2].points = [[0, 0], [0, 200]]), /^parts\[2\]\.points\[1\]\[1\]: 200 is not an integer in -128\.\.127/);
+    fails((s) => ((s.parts as Record<string, unknown>[])[2].ring = true), /ring and squash are for rrect parts only/);
+    fails((s) => ((s.parts as Record<string, unknown>[])[6].anchor = "nope"), /^parts\[6\]\.anchor: "nope" is not the name of an earlier line part/);
+    fails((s) => ((s.parts as Record<string, unknown>[])[6].drivers = [{ op: "move_x", aux: 0, point: 0 }]), /a rrect moves as a whole/);
+    fails((s) => ((s.parts as Record<string, unknown>[])[0].colour = "red"), /^parts\[0\]\.colour: unknown field/);
+    fails((s) => (s.parts = []), /^parts: must be a list of 1\.\.28 parts/);
+    fails((s) => (s.extra = 1), /^pet\.extra: unknown field/);
+  });
+
+  it("refuses more overrides than format 1 holds", () => {
+    const s = clone(base());
+    const row = Object.fromEntries(["eye_open", "eye_size", "pupil_size", "pupil_dx", "pupil_dy", "brow_angle", "mouth_curve"].map((c) => [c, 10]));
+    s.overrides = Object.fromEntries(["happy", "sad", "excited", "anxious", "sleeping", "angry", "proud"].map((m) => [m, row]));
+    expect(() => encodePet(s)).toThrow(/^overrides: 49 overrides; at most 48/);
+  });
+
+  it("validatePetSource returns the source", () => {
+    const s = source("ember");
+    expect(validatePetSource(s)).toBe(s);
+  });
+
+  it("encodes the gallery pet Mochi under the size limit", () => {
+    const mochi = JSON.parse(read("packages/server/pets/mochi.pet.json").toString("utf8")) as unknown;
+    const pack = encodePet(mochi);
+    expect(pack.length).toBeLessThan(PET_MAX_BYTES);
+    expect(parsePet(pack).parts.length).toBeLessThanOrEqual(28);
+  });
+});
+
+describe("renderPetSvg", () => {
+  it.each(["devo", "ember"])("draws %s idle, happy and sleeping", (id) => {
+    for (const mood of ["idle", "happy", "sleeping"] as const) {
+      expect(renderPetSvg(golden(id), mood)).toMatchSnapshot(`${id}-${mood}`);
+    }
+  });
+
+  it("uses the mood colour, the derived shades and only numbers", () => {
+    const devo = renderPetSvg(golden("devo"), "happy");
+    expect(devo).toContain('fill="#FFB84D"');
+    expect(devo.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="220" height="190"')).toBe(true);
+    expect(devo).not.toMatch(/Devo/);
+    const ember = renderPetSvg(golden("ember"), "idle", { width: 110, height: 95, gray: true, idPrefix: "x" });
+    expect(ember).toContain('fill="#2FAE9C"');
+    expect(ember).toContain("grayscale(1)");
+    expect(ember).toContain('id="x-c0"');
+  });
+
+  it("applies aux drivers: the shown antenna stem follows the mood", () => {
+    // Devo's stems are variants chosen by aux 2: 0 curve (idle), 3 straight (focused).
+    const idle = renderPetSvg(golden("devo"), "idle");
+    const focused = renderPetSvg(golden("devo"), "focused");
+    expect(idle).toContain('points="0,-55 0,-67 4.38,-77 10,-81"');
+    expect(focused).toContain('points="0,-55 0,-88"');
+  });
+});

@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
   API_BODY_LIMIT_BYTES,
+  PET_MAX_BYTES,
+  type DevicePetCommandRequest,
   HARD_FRAME_BYTES,
   REQUEST_ID_RE,
   buildRegister,
@@ -141,6 +143,18 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   return body as Record<string, unknown>;
 }
 
+/** A pet pack upload (protocol 14.8: at most 2048 bytes). */
+async function readPackBody(req: IncomingMessage): Promise<Uint8Array> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req as AsyncIterable<Buffer>) {
+    size += chunk.length;
+    if (size > PET_MAX_BYTES) throw new HttpError(413, "payload_too_large", `A pack has at most ${PET_MAX_BYTES} bytes`);
+    chunks.push(chunk);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
 function optionalString(body: Record<string, unknown>, key: string): string | undefined {
   const value = body[key];
   if (value === undefined || typeof value === "string") return value;
@@ -227,7 +241,7 @@ export async function startWebServer(options: DashboardOptions): Promise<Dashboa
 
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
     const method = req.method ?? "GET";
-    const deviceMatch = /^\/api\/devices\/([^/]{1,64})(\/identify)?$/.exec(path);
+    const deviceMatch = /^\/api\/devices\/([^/]{1,64})(\/identify|\/pet)?$/.exec(path);
     let deviceId = "";
     if (deviceMatch !== null) {
       try {
@@ -238,10 +252,14 @@ export async function startWebServer(options: DashboardOptions): Promise<Dashboa
     }
     const requestMatch = /^\/api\/room\/requests\/([^/]{1,64})$/.exec(path);
     const requestId = requestMatch?.[1] ?? "";
+    const petMatch = /^\/api\/pets\/([a-z0-9]{1,8})(\/pack)?$/.exec(path);
+    const petId = petMatch?.[1] ?? "";
     const route =
       requestMatch !== null
         ? `${method} /api/room/requests/:id`
-        : `${method} ${deviceMatch === null ? path : deviceMatch[2] === undefined ? "/api/devices/:id" : "/api/devices/:id/identify"}`;
+        : petMatch !== null
+          ? `${method} /api/pets/:id${petMatch[2] ?? ""}`
+          : `${method} ${deviceMatch === null ? path : `/api/devices/:id${deviceMatch[2] ?? ""}`}`;
 
     switch (route) {
       case "GET /api/config":
@@ -268,6 +286,24 @@ export async function startWebServer(options: DashboardOptions): Promise<Dashboa
         if (durationMs !== undefined && typeof durationMs !== "number") throw new HttpError(400, "invalid_request", "durationMs must be a number");
         return sendJson(res, 202, await api.identifyDevice(deviceId, durationMs), headers);
       }
+      case "POST /api/devices/:id/pet":
+        return sendJson(res, 202, await api.devicePet(deviceId, (await readJsonBody(req)) as unknown as DevicePetCommandRequest), headers);
+      case "GET /api/pets":
+        return sendJson(res, 200, { pets: await api.pets() }, headers);
+      case "GET /api/pets/:id/pack": {
+        const pack = await api.petPack(petId);
+        res.writeHead(200, { ...headers, "Content-Type": "application/octet-stream", "Cache-Control": "no-store" });
+        res.end(pack);
+        return;
+      }
+      case "POST /api/pets": {
+        const binary = /^application\/octet-stream\b/i.test(req.headers["content-type"] ?? "");
+        const pet = await api.uploadPet(binary ? await readPackBody(req) : await readJsonBody(req));
+        return sendJson(res, 201, pet, headers);
+      }
+      case "DELETE /api/pets/:id":
+        await api.deletePet(petId);
+        return sendJson(res, 204, null, headers);
       case "POST /api/pair/confirm": {
         const body = await readJsonBody(req);
         const code = optionalString(body, "code");

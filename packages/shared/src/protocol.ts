@@ -161,6 +161,30 @@ export const TIME_INTERVAL_MS = 60 * 60_000;
 export const UTC_OFFSET_MIN = -720;
 export const UTC_OFFSET_MAX = 840;
 
+/** Section 14.8: the `pets` message from a device. */
+export const PETS_MAX_BYTES = 700;
+/** Section 14.8: entries of `pets.installed` (built-ins plus 8 slots, with room to spare). */
+export const PETS_MAX_INSTALLED = 24;
+/** Section 14.10: packs one room may upload. */
+export const ROOM_PETS_MAX = 16;
+/** `pets` messages a consumer may send per minute; a device sends one per change. */
+export const PETS_RATE_PER_MIN = 30;
+export const PET_OPS = ["install", "select", "remove"] as const;
+export type PetOp = (typeof PET_OPS)[number];
+export const PET_RESULT_ERRORS = [
+  "http",
+  "size",
+  "crc",
+  "format",
+  "mismatch",
+  "full",
+  "unknown",
+  "builtin",
+  "busy",
+  "storage",
+] as const;
+export type PetResultError = (typeof PET_RESULT_ERRORS)[number];
+
 export const MAX_URGENCY = 3;
 export const DEFAULT_URGENCY = 1;
 export const HOLDING_MAX_IDS = 8;
@@ -455,6 +479,38 @@ export interface TelemetryMessage {
   pet?: string;
 }
 
+export interface PetsEntry {
+  id: string;
+  rev: number;
+  builtin?: true;
+}
+
+export interface PetsResult {
+  /** `install`, `select`, `remove`, or what a malformed command carried. */
+  op: string;
+  /** "" when the command had no valid id. */
+  pet: string;
+  ok: boolean;
+  error?: PetResultError;
+}
+
+/** Section 14.8: device -> server, and server -> dashboards with `device` added. */
+export interface PetsMessage {
+  type: "pets";
+  /** Registry id of the reporting device (server -> dashboards only). */
+  device?: string;
+  selected: string;
+  slots: number;
+  free: number;
+  installed: PetsEntry[];
+  result?: PetsResult;
+}
+
+/** Section 14.8: server -> one device with the `pets` cap. */
+export type PetCmdMessage =
+  | { type: "pet_cmd"; op: "install"; pet: string; rev: number; size: number; crc32: string; select: boolean }
+  | { type: "pet_cmd"; op: "select" | "remove"; pet: string };
+
 export interface IdentifyMessage {
   type: "identify";
   durationMs: number;
@@ -473,7 +529,8 @@ export type ConsumerToServerMessage =
   | QuestionResponseMessage
   | ExtendMessage
   | SetModeMessage
-  | TelemetryMessage;
+  | TelemetryMessage
+  | PetsMessage;
 
 export type InboundMessage = ProducerToServerMessage | ConsumerToServerMessage;
 
@@ -491,7 +548,9 @@ export type ServerToConsumerMessage =
   | TimeMessage
   | DismissMessage
   | ModeMessage
-  | IdentifyMessage;
+  | IdentifyMessage
+  | PetCmdMessage
+  | PetsMessage;
 
 export type ProtocolMessage = InboundMessage | ServerToConsumerMessage;
 export type MessageType = ProtocolMessage["type"];
@@ -511,6 +570,7 @@ export const INBOUND_TYPES: Readonly<Record<Role, readonly InboundMessage["type"
     "extend",
     "set_mode",
     "telemetry",
+    "pets",
   ],
 };
 

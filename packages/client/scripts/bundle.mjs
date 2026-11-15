@@ -31,6 +31,8 @@ await build({
     __DEVOTCHI_CLIENT_VERSION__: JSON.stringify(pkg.version),
     __DEVOTCHI_SERVER_VERSION__: JSON.stringify(serverPkg.version),
     __DEVOTCHI_ACCOUNT_PAGE__: JSON.stringify(read("../../server/public/account.html")),
+    // Built by the server package's build (scripts/build-pets.mjs), which runs first.
+    __DEVOTCHI_PET_CATALOG__: JSON.stringify(read("../../server/dist/pets.json")),
   },
   logLevel: "warning",
 });

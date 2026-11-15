@@ -177,7 +177,7 @@ describe("register", () => {
       mode: "ask",
       peers: { producers: 1, consumers: 1, devices: 1 },
       device: { id: "dv-e356e4", name: "desk" },
-      caps: ["decide", "ask", "plan"],
+      caps: ["decide", "ask", "plan", "pets"],
       utcOffsetMin: expect.any(Number),
     });
     expect(ack.serverTime as number).toBeGreaterThanOrEqual(before);

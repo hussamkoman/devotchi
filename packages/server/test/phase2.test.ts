@@ -81,7 +81,7 @@ describe("caps and register_ack", () => {
     const { join } = await setup({ features: { questions: false, sessionGrants: false } });
     const c = await join(ALL_CAPS);
     const ack = c.received.find((m) => m.type === "register_ack")!;
-    expect(ack.caps).toEqual(["decide", "plan"]);
+    expect(ack.caps).toEqual(["decide", "plan", "pets"]);
     expect(typeof ack.utcOffsetMin).toBe("number");
   });
 

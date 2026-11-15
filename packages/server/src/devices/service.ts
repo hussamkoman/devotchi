@@ -15,6 +15,7 @@ import {
 } from "../db/devices.js";
 import { errorFields, type Logger } from "../log.js";
 import type { PermissionManager } from "../permissions/manager.js";
+import { PetService } from "../pets/service.js";
 import type { Conn } from "../rooms/conn.js";
 import type { Room, RoomRegistry } from "../rooms/registry.js";
 import type { WsServer } from "../ws/server.js";
@@ -162,6 +163,7 @@ export class DeviceService {
       }
       if (room) holding += this.deps.permissions.holdingCount(conn, room);
     }
+    const pets = PetService.stateOf(conns);
     return {
       id: row.id,
       name: row.name,
@@ -174,6 +176,7 @@ export class DeviceService {
       holding,
       telemetry,
       telemetryAt,
+      ...(pets ? { pets } : {}),
     };
   }
 }

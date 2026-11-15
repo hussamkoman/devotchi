@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import type { Logger } from "../log.js";
 import type { Db } from "./index.js";
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** The v0 schema exactly as the sql.js server created it. */
 export const V0_SCHEMA = `
@@ -209,6 +209,20 @@ function migrateV2toV3(db: Db): void {
   db.exec("ALTER TABLE room_settings ADD COLUMN time_zone TEXT NOT NULL DEFAULT ''");
 }
 
+/** Protocol 14.8: packs uploaded to a room (at most ROOM_PETS_MAX per room). */
+function migrateV3toV4(db: Db): void {
+  db.exec(`
+    CREATE TABLE pets (
+      room_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      rev INTEGER NOT NULL,
+      bytes BLOB NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (room_id, id)
+    )
+  `);
+}
+
 /** Brings the schema to SCHEMA_VERSION. Requires foreign keys to be off. */
 export function migrate(db: Db, log: Logger): void {
   const version = db.get<{ user_version: number }>("PRAGMA user_version")?.user_version ?? 0;
@@ -221,6 +235,7 @@ export function migrate(db: Db, log: Logger): void {
     if (version < 1) counts = migrateV0toV1(db);
     if (version < 2) migrateV1toV2(db);
     if (version < 3) migrateV2toV3(db);
+    if (version < 4) migrateV3toV4(db);
     const violations = db.all("PRAGMA foreign_key_check");
     if (violations.length > 0) throw new Error(`migration left ${violations.length} foreign key violations`);
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

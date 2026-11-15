@@ -52,6 +52,7 @@ devotchi mcp                      # Run MCP server on stdio
 devotchi setup [--dir D] [--check|--remove]  # Install, check or remove the nine Claude Code hooks
 devotchi pair <CODE> | pair --new # Confirm a device's code / create one for the device console
 devotchi devices [list|rename|identify|rm]   # Device registry with liveness
+devotchi pets [list|add <file>|rm <id>|send <id> [--device D] [--use]|use <id> [--device D]]  # Pet gallery and device pets
 devotchi status | doctor          # Reachability, token, pending kinds, last choice / read-only checks incl. phase-2 switches
 devotchi mode [ask|desk] | hold [s]          # Room mode and hold time (10..300 s, default 30 s)
 devotchi notify <event> [detail] | run -- <cmd...>  # Notify from scripts / wrap a command
@@ -79,10 +80,12 @@ Every command that talks to a server takes `--server <url>`. Tests set
 ## Directory structure
 
 ```
-packages/shared/src/           — Protocol types, validators, API types, config types
-packages/server/src/           — Koa server (routes, WebSocket, SQLite, permissions, devices)
+packages/shared/src/           — Protocol types, validators, API types, config types, pet pack codec and SVG renderer
+packages/server/src/           — Koa server (routes, WebSocket, SQLite, permissions, devices, pets)
+packages/server/pets/          — Gallery-only pet sources (the catalog adds pets/*.pet.json; built into dist/pets.json)
 packages/client/src/           — CLI, MCP server, hook setup, dashboard proxy, sim
 packages/client/web/           — Dashboard web UI (Vite, framework-free TypeScript)
+pets/                          — Pet JSON sources and golden packs (shared by the firmware and the TypeScript codec)
 firmware/                      — ESP32-S3 firmware (C, ESP-IDF v6.0, LVGL 9); host tests in firmware/host_test
 docs/                          — Architecture, protocol, deployment, phase-2 manual tests, hardware docs + datasheets
 ```
