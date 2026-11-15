@@ -122,7 +122,7 @@ static void test_golden_packs_decode(void)
     TEST_ASSERT_EQUAL(PET_PACK_OK, pet_pack_decode(devo->bytes, devo->len, &s_def));
     TEST_ASSERT_EQUAL_STRING("devo", s_def.id);
     TEST_ASSERT_EQUAL_STRING("Devo", s_def.name);
-    TEST_ASSERT_EQUAL_STRING("antenna glows with its mood", devo->tagline);
+    TEST_ASSERT_EQUAL_STRING("the Devotchi ghost", devo->tagline);
     TEST_ASSERT_EQUAL(4, s_def.rev);
     /* Devo is the dark PCB ghost: the body keeps the base and the mood colour goes to the ball and the chip light. */
     TEST_ASSERT_FALSE(s_def.shift_palette);
