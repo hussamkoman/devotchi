@@ -261,7 +261,7 @@ describe("event mapping", () => {
       type: "notify",
       event: "usage_limit",
       mood: "sleeping",
-      detail: "Usage limit reached",
+      detail: "Resting until reset",
       urgency: 2,
       ...session,
     });
@@ -289,7 +289,7 @@ describe("event mapping", () => {
       type: "notify",
       event: "usage_limit",
       mood: "sleeping",
-      detail: "Continue in the terminal after the reset",
+      detail: "Continue in terminal",
       urgency: 2,
       ...session,
     });
