@@ -18,6 +18,7 @@ export function holdHint(state: State): string {
 
 export interface SettingsActions {
   update(changes: Partial<RoomSettings>): Promise<void>;
+  browserTimeZone(): string;
   enableNotifications(): Promise<void>;
 }
 
@@ -26,6 +27,7 @@ export class SettingsPanel {
   private readonly desk = byId<HTMLButtonElement>("mode-desk");
   private readonly hold = byId<HTMLSelectElement>("hold-time");
   private readonly error = byId("settings-error");
+  private readonly zoneButton = byId<HTMLButtonElement>("tz-browser");
 
   constructor(private readonly actions: SettingsActions) {
     for (const ms of HOLD_CHOICES_MS) this.hold.append(h("option", { value: ms }, holdLabel(ms)));
@@ -37,6 +39,7 @@ export class SettingsPanel {
     this.desk.addEventListener("click", () => run(actions.update({ mode: "desk" })));
     this.hold.addEventListener("change", () => run(actions.update({ holdMs: Number(this.hold.value) })));
     byId("notify-optin").addEventListener("click", () => run(actions.enableNotifications()));
+    this.zoneButton.addEventListener("click", () => run(actions.update({ timeZone: actions.browserTimeZone() })));
   }
 
   update(state: State, notificationState: string): void {
@@ -52,6 +55,11 @@ export class SettingsPanel {
     }
     this.hold.disabled = holdMs === undefined;
     setText(byId("hold-hint"), holdHint(state));
+    const zone = state.settings?.timeZone;
+    const browser = this.actions.browserTimeZone();
+    setText(byId("tz-current"), zone === undefined ? "" : zone === "" ? "the server's own zone" : zone);
+    setText(this.zoneButton, `Use this browser's zone (${browser})`);
+    this.zoneButton.disabled = zone === undefined || zone === browser;
     setText(byId("notify-state"), notificationState);
     byId<HTMLButtonElement>("notify-optin").hidden = notificationState !== "off";
     const c = state.config;

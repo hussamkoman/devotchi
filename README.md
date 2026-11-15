@@ -25,10 +25,16 @@ Carry it in your pocket, clip it to your bag, or leave it on your desk — no ne
 1. **Claude Code hooks** (`devotchi setup`) send each permission request to the server over HTTP.
 2. The server shows it on your **Devotchi device** and on the local dashboard.
 3. You approve or reject with a button; Claude Code continues or stops.
-   Claude's questions (`AskUserQuestion`) and plans (`ExitPlanMode`) are
-   answered the same way on a device that can show them; free-text answers
-   stay in the terminal.
-4. The **MCP server** lets the agent send status lines, moods and notifications.
+   The card shows the exact command first, the reason for its risk and
+   Claude's own description (marked as Claude's words). A menu adds "send to
+   terminal", "allow for this session" (only for a narrow rule the server
+   can show word for word), "deny, ask why" and "deny and stop".
+4. Claude's **questions** (`AskUserQuestion`) and **plans** (`ExitPlanMode`)
+   are answered the same way: pick options on the device or the dashboard,
+   approve a plan (each edit still asks, or accept edits), send it back for
+   changes, or move it to the terminal. Reading a question or plan keeps it
+   open up to 5 minutes; free-text answers stay in the terminal.
+5. The **MCP server** lets the agent send status lines, moods and notifications.
 
 ### What happens when nobody answers
 
@@ -81,12 +87,12 @@ Tools: `show_status`, `notify`, `set_mood`, `get_device_state`.
 
 | Command | What it does |
 |---|---|
-| `devotchi start [--local [--lan]] [--server <url>]` | Dashboard on 127.0.0.1; `--local` runs the server in the same process |
+| `devotchi start [--local [--lan]] [--server <url>]` | Dashboard on 127.0.0.1 (permission, question and plan cards); `--local` runs the server in the same process |
 | `devotchi setup [--dir D] [--check \| --remove]` | Install, check or remove the nine Claude Code hooks |
 | `devotchi pair <CODE>` / `pair --new` | Confirm a device's code / create a code for the device console |
 | `devotchi devices [list \| rename \| identify \| rm]` | Paired devices with online state, last seen, last ack, battery |
-| `devotchi status [--json]` | Server, token, peers, mode, hold time, devices, last request |
-| `devotchi doctor` | Read-only checks of configuration, server, token, WebSocket, hooks and devices |
+| `devotchi status [--json]` | Server, token, peers, mode, hold time, time zone, pending request kinds, devices, last request and choice |
+| `devotchi doctor` | Read-only checks of configuration, server, token, WebSocket, hooks, devices, the question/plan/session-grant switches and who can answer questions |
 | `devotchi mode [ask \| desk]` | Requests go to devices (ask) or straight to the terminal (desk) |
 | `devotchi hold [seconds]` | How long a request waits on a device (10..300 s) |
 | `devotchi notify <event> [detail]` | Send a notification from a script |
@@ -98,6 +104,9 @@ Tools: `show_status`, `notify`, `set_mood`, `get_device_state`.
 
 The default server is `http://localhost:8080`; every command takes
 `--server <url>`. When something does not work, run `devotchi doctor` first.
+`devotchi start`, `devotchi pair` and the dashboard give a room that has no
+time zone yet the zone of the PC or browser, so the device clock shows local
+time; the dashboard settings change it.
 
 ## Hardware
 
@@ -154,6 +163,7 @@ pnpm run dev       # Web UI with HMR against `devotchi start --dev` (DEVOTCHI_DE
 - [Architecture](docs/architecture.md) — system overview, layers, data flow
 - [Protocol](docs/protocol.md) — wire protocol specification
 - [Deployment](docs/deploy.md) — LAN self-hosting, Docker Compose with Caddy, multi-user mode, backups
+- [Phase 2 manual tests](docs/phase2-manual-tests.md) — checks on a real Claude Code session for questions, plans and session grants
 - [Hardware](hardware/README.md) — components, pin assignments, PCB design
 - [Firmware conventions](firmware/CONVENTIONS.md) — plain-C rules, building, flashing and host tests
 

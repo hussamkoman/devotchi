@@ -52,7 +52,7 @@ devotchi mcp                      # Run MCP server on stdio
 devotchi setup [--dir D] [--check|--remove]  # Install, check or remove the nine Claude Code hooks
 devotchi pair <CODE> | pair --new # Confirm a device's code / create one for the device console
 devotchi devices [list|rename|identify|rm]   # Device registry with liveness
-devotchi status | doctor          # Reachability, token, devices, last request / ordered read-only checks
+devotchi status | doctor          # Reachability, token, pending kinds, last choice / read-only checks incl. phase-2 switches
 devotchi mode [ask|desk] | hold [s]          # Room mode and hold time (10..300 s, default 30 s)
 devotchi notify <event> [detail] | run -- <cmd...>  # Notify from scripts / wrap a command
 devotchi sim [--approve all|none|defer|after=MS|manual]  # Headless virtual device (JSON lines)
@@ -84,7 +84,7 @@ packages/server/src/           — Koa server (routes, WebSocket, SQLite, permis
 packages/client/src/           — CLI, MCP server, hook setup, dashboard proxy, sim
 packages/client/web/           — Dashboard web UI (Vite, framework-free TypeScript)
 firmware/                      — ESP32-S3 firmware (C, ESP-IDF v6.0, LVGL 9); host tests in firmware/host_test
-docs/                          — Architecture, protocol, deployment, hardware docs + datasheets
+docs/                          — Architecture, protocol, deployment, phase-2 manual tests, hardware docs + datasheets
 ```
 
 ## Commit message rules
@@ -96,7 +96,7 @@ docs/                          — Architecture, protocol, deployment, hardware 
 
 ## Hooks (automatic — no AI action needed)
 
-`devotchi setup` installs nine HTTP hooks into `.claude/settings.local.json` (protocol 8.7). When Claude Code is about to ask for a permission, the `PermissionRequest` hook POSTs to the server, which shows the request on every device and dashboard. A button press there allows or denies; the same path answers Claude's questions (`AskUserQuestion`, options only) and approves or revises plans (`ExitPlanMode`) on consumers that declare the `ask`/`plan` caps (protocol 14). A request nobody answers falls back to Claude Code's own terminal prompt: after the hold time (default 30 s), at once when no device is live or the room is in desk mode, or when the user picks "send to terminal". Devotchi never auto-denies. The other hooks send status lines and cancel requests the terminal already handled.
+`devotchi setup` installs nine HTTP hooks into `.claude/settings.local.json` (protocol 8.7). When Claude Code is about to ask for a permission, the `PermissionRequest` hook POSTs to the server, which shows the request on every device and dashboard. A button press there allows or denies; the decision menu adds "allow for this session" (one narrow rule the server derives from Claude Code's own suggestion, shown word for word), "deny, ask why" and "deny and stop". The same path answers Claude's questions (`AskUserQuestion`, options only) and approves, revises or stops plans (`ExitPlanMode`) on consumers that declare the `ask`/`plan` caps (protocol 14); the dashboard declares them and shows the full text. A click on a question or plan extends its hold up to 300 s. A request nobody answers falls back to Claude Code's own terminal prompt: after the hold time (default 30 s), at once when no device is live or the room is in desk mode, or when the user picks "send to terminal". Devotchi never auto-denies. Switches `DEVOTCHI_QUESTIONS`, `DEVOTCHI_PLANS` and `DEVOTCHI_SESSION_GRANTS` (`0` turns one off) cover the Claude Code behaviour listed in `docs/phase2-manual-tests.md`. The other hooks send status lines and cancel requests the terminal already handled.
 
 ## Devotchi MCP tool usage (voluntary — for AI agents with Devotchi connected)
 

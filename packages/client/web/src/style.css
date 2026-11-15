@@ -6,9 +6,11 @@
   --text: #e8eaee;
   --muted: #a3aab8;
   --accent: #f59e0b;
-  --low: #34d399;
-  --med: #fbbf24;
-  --high: #f87171;
+  --low: #5fd38d;
+  --med: #ffc53d;
+  --high: #ff6b5e;
+  --sky: #6cc4ff;
+  --fog: #a7aebb;
   --focus: #93c5fd;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg);
@@ -58,8 +60,52 @@ button.danger { border-color: var(--high); }
 .card-foot { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .approve { border-color: var(--low); }
 .reject { border-color: var(--high); }
-.approve.holding { background: linear-gradient(90deg, var(--low) 0 100%, transparent 0) no-repeat; background-size: 0 100%; animation: fill 1s linear forwards; color: #111; }
-@keyframes fill { to { background-size: 100% 100%; } }
+.approve.confirming, .grant.confirming { background: var(--med); color: #111; }
+.reject.confirming { background: var(--high); color: #111; }
+.grant { border-color: var(--med); }
+.defer, .more { border-color: var(--line); }
+.card.ask, .card.plan { border-left-color: var(--sky); }
+.chip.ask { background: var(--sky); }
+.bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 1rem; }
+.bars i { display: block; width: 4px; background: var(--line); }
+.bars i:nth-child(1) { height: 40%; }
+.bars i:nth-child(2) { height: 70%; }
+.bars i:nth-child(3) { height: 100%; }
+.bars.risk-low i.on { background: var(--low); }
+.bars.risk-med i.on { background: var(--med); }
+.bars.risk-high i.on { background: var(--high); }
+.cmd, .plan-text { margin: .6rem 0; padding: .6rem; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: .9rem; background: #12151b; border: 1px solid var(--line); border-radius: 6px; max-height: 24rem; overflow-y: auto; }
+.cmd.risk-high { border-color: var(--high); }
+.plan-text { max-height: 32rem; }
+.reason { margin: .3rem 0; font-weight: 600; }
+.reason.risk-med { color: var(--med); }
+.reason.risk-high { color: var(--high); }
+.desc { margin: .3rem 0 .6rem; color: var(--fog); overflow-wrap: anywhere; }
+.cut-note:empty { display: none; }
+.menu { display: grid; gap: .4rem; margin-top: .6rem; }
+.menu[hidden] { display: none; }
+.menu-row { text-align: left; display: block; width: 100%; }
+.menu-row.grant { border-color: var(--med); }
+.row-text { display: grid; gap: .15rem; }
+.row-title { font-weight: 600; }
+.row-desc { color: var(--fog); font-size: .9rem; }
+.rule { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; color: var(--text); background: #12151b; padding: .1rem .35rem; border-radius: 4px; justify-self: start; overflow-wrap: anywhere; }
+.questions { display: grid; gap: .8rem; margin: .6rem 0; }
+.question { border: 1px solid var(--line); border-radius: 8px; padding: .5rem .7rem .7rem; margin: 0; min-width: 0; }
+.question legend { padding: 0 .3rem; display: flex; flex-wrap: wrap; gap: .2rem .6rem; align-items: baseline; }
+.q-header { color: var(--sky); font-size: .8rem; font-weight: 700; letter-spacing: .06em; }
+.q-text { font-weight: 600; overflow-wrap: anywhere; }
+.q-kind { color: var(--fog); font-size: .85rem; }
+.option { display: flex; gap: .55rem; align-items: flex-start; padding: .35rem .2rem; border-radius: 6px; cursor: pointer; }
+.option:hover { background: #222733; }
+.option input { margin-top: .25rem; accent-color: var(--sky); }
+.option-text { display: grid; gap: .1rem; min-width: 0; }
+.option-label { font-weight: 600; overflow-wrap: anywhere; }
+.option-desc { color: var(--fog); font-size: .9rem; overflow-wrap: anywhere; }
+.option-desc:empty { display: none; }
+.option.extra { color: var(--fog); font-style: italic; }
+.steps { margin: .4rem 0; padding-left: 1.6rem; }
+.steps li { overflow-wrap: anywhere; }
 .card-note { font-size: .9rem; color: var(--muted); }
 .error { color: #fca5a5; }
 .device-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .6rem; }
@@ -79,5 +125,4 @@ button.danger { border-color: var(--high); }
 .toast { background: #2a303c; border: 1px solid var(--line); padding: .6rem .8rem; border-radius: 8px; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
-  .approve.holding { background-size: 100% 100%; }
 }

@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Browser, type BrowserPage } from "happy-dom";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ALLOW } from "../../../server/test/hook-helpers.js";
+import { ALLOW, hookInput } from "../../../server/test/hook-helpers.js";
 import { makeWorld, type World } from "../e2e/helpers.js";
 import { until } from "../helpers.js";
 import { startWebServer, type Dashboard } from "../../src/web-server.js";
@@ -48,8 +48,8 @@ describe("web UI in a DOM", () => {
     await until(() => doc().querySelector(".card") !== null, 5000, "request card");
     const card = doc().querySelector(".card")!;
     expect(card.querySelector(".chip")?.textContent).toBe("Bash");
-    expect(card.querySelector(".risk-label")?.textContent).toBe("risk hint: low");
-    expect(card.querySelector(".summary")?.textContent).toContain("ls -la");
+    expect(card.querySelector(".risk-label")?.textContent).toBe("LOW RISK");
+    expect(card.querySelector(".cmd")?.textContent).toBe("ls -la");
 
     // The tab is visible, so the dashboard acked: the server shows it as a holder.
     await until(async () => (await world.t.fetch("/api/room", { token: world.token }).then((r) => r.json()) as { pending: { holders: string[] }[] }).pending[0]?.holders.includes("dashboard") === true, 3000, "dashboard holds the request");
@@ -57,7 +57,44 @@ describe("web UI in a DOM", () => {
     (card.querySelector("button.approve") as unknown as { click(): void }).click();
     expect(await reply).toEqual(ALLOW);
     await until(() => doc().querySelector(".card") === null, 3000, "card removed");
-    expect(text("toasts")).toContain("approved, answered on the dashboard");
+    expect(text("toasts")).toContain("allowed, answered on the dashboard");
     expect(text("log-list")).toContain("ls -la");
+  });
+
+  it("answers a question with clicks: the hook gets the exact reply of protocol 14.4", async () => {
+    const questions = [
+      { question: "Which framework?", header: "Framework", options: [{ label: "React", description: "Component library" }, { label: "Vue" }], multiSelect: false },
+      { question: "Which extras?", header: "Extras", options: [{ label: "Router" }, { label: "Store" }, { label: "Tests" }], multiSelect: true },
+      { question: "Where?", options: [{ label: "Here" }, { label: "There" }] },
+    ];
+    const toolInput = { questions, metadata: { source: "test" } };
+    const reply = world.hook(hookInput("PermissionRequest", { tool_name: "AskUserQuestion", tool_input: toolInput }));
+    await until(() => doc().querySelector('.card[data-kind="question"]') !== null, 5000, "question card");
+    const card = doc().querySelector('.card[data-kind="question"]')!;
+    // The full description comes from GET /api/room/requests/:id through the proxy.
+    await until(() => card.querySelector(".option-desc")?.textContent === "Component library", 3000, "full text");
+    const inputs = [...card.querySelectorAll("fieldset")].map((f) => [...f.querySelectorAll("input")] as unknown as { click(): void }[]);
+    inputs[0]![1]!.click();
+    inputs[1]![0]!.click();
+    inputs[1]![2]!.click();
+    inputs[2]![2]!.click();
+    const send = [...card.querySelectorAll("button")].find((b) => b.textContent === "Send") as unknown as { disabled: boolean; click(): void };
+    expect(send.disabled).toBe(false);
+    send.click();
+    expect(await reply).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: {
+          behavior: "allow",
+          updatedInput: {
+            questions,
+            metadata: { source: "test" },
+            answers: { "Which framework?": "Vue", "Which extras?": "Router, Tests", "Where?": "No preference, use your judgment" },
+          },
+        },
+      },
+    });
+    await until(() => doc().querySelector(".card") === null, 3000, "card removed");
+    expect(text("toasts")).toContain("Question: answers sent: Vue; Router, Tests; no preference, answered on the dashboard");
   });
 });

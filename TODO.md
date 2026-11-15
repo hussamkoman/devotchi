@@ -30,6 +30,7 @@
 ## Phase 2 (planned)
 
 - Answer Claude Code questions (AskUserQuestion) on the device with the buttons
+- [ ] Run the checks in docs/phase2-manual-tests.md on a real Claude Code session (session grants, compound commands, interrupt, plan modes, answers) before a release
 - Richer, safe decisions on permission requests beyond approve/reject
 - Clock face with a sleeping pet when idle
 - Pet system: a signature pet plus selectable pet packs (on-device picker; more packs loaded from the dashboard)

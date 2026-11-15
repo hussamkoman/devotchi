@@ -3,6 +3,7 @@
 
 import Router from "@koa/router";
 import {
+  CAPS,
   HOLD_MAX_MS,
   HOLD_MIN_MS,
   LIMITS,
@@ -16,6 +17,7 @@ import {
   defaultMoodForEvent,
   isMood,
   utf8ByteLength,
+  type Cap,
   type Device,
   type NotifyResponse,
   type Room as RoomDto,
@@ -30,7 +32,7 @@ import { badRequest, notFound } from "../http/errors.js";
 import { objectBody, optionalString } from "../http/fields.js";
 import { byToken, type RateLimits } from "../http/rate-limit.js";
 import type { PermissionManager } from "../permissions/manager.js";
-import type { RoomRegistry } from "../rooms/registry.js";
+import type { Room, RoomRegistry } from "../rooms/registry.js";
 import type { WsServer } from "../ws/server.js";
 
 export interface RoomRouteDeps {
@@ -78,6 +80,13 @@ function parseSettings(body: unknown): Partial<RoomSettings> {
   return changes;
 }
 
+function capableConsumers(room: Room | undefined): Partial<Record<Cap, number>> {
+  const counts: Partial<Record<Cap, number>> = {};
+  for (const cap of CAPS) counts[cap] = 0;
+  for (const conn of room?.consumers ?? []) for (const cap of conn.caps) counts[cap] = (counts[cap] ?? 0) + 1;
+  return counts;
+}
+
 export function roomRoutes(deps: RoomRouteDeps): Router {
   const { db, config, auth, limits, rooms, ws, permissions, listDevices, onTimeZoneChanged } = deps;
   const router = new Router();
@@ -116,6 +125,8 @@ export function roomRoutes(deps: RoomRouteDeps): Router {
         },
       },
       devices: listDevices(roomId),
+      features: { ...config.features },
+      capableConsumers: capableConsumers(room),
     };
     ctx.body = body;
   });

@@ -248,9 +248,36 @@ export async function runDoctor(options: DoctorOptions, io: Io, cwd: string): Pr
         fix: `devotchi hold <seconds> (currently ${holdS} s, up to 300 s)`,
       });
     }
+
+    // 8. Phase-2 switches (protocol 14.11) and who can present questions and plans.
+    const features = room.features;
+    if (features === undefined) {
+      add({ id: "features", level: "INFO", message: "the server has no questions, plans or session grants; they go to the terminal" });
+    } else {
+      const word = (on: boolean, env: string) => (on ? "on" : `off (${env}=0)`);
+      add({
+        id: "features",
+        level: "INFO",
+        message:
+          `questions ${word(features.questions, "DEVOTCHI_QUESTIONS")}, plans ${word(features.plans, "DEVOTCHI_PLANS")}, ` +
+          `session grants ${word(features.sessionGrants, "DEVOTCHI_SESSION_GRANTS")}`,
+      });
+      if (features.questions || features.plans) {
+        const ask = room.capableConsumers?.ask ?? 0;
+        const plan = room.capableConsumers?.plan ?? 0;
+        const what = `${ask} consumer(s) online can answer questions, ${plan} can approve plans`;
+        add({
+          id: "questions",
+          level: (features.questions && ask === 0) || (features.plans && plan === 0) ? "WARN" : "PASS",
+          message: ask === 0 && plan === 0 ? `${what}: AskUserQuestion and ExitPlanMode go straight to the terminal` : what,
+          fix: "open the dashboard (devotchi start) or update the device firmware",
+        });
+      }
+    }
   } else {
     add({ id: "devices", level: "SKIP", message: "room not readable" });
     add({ id: "hold", level: "SKIP", message: "room not readable" });
+    add({ id: "features", level: "SKIP", message: "room not readable" });
   }
 
   const failed = checks.some((c) => c.level === "FAIL");

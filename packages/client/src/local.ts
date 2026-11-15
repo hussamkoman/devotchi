@@ -16,6 +16,8 @@ export interface LocalServerOptions {
   port: number;
   /** Server log lines (JSON); warnings and errors only. */
   logSink?: (line: string) => void;
+  /** Where the DEVOTCHI_QUESTIONS / _PLANS / _SESSION_GRANTS switches are read; default process.env. */
+  env?: Record<string, string | undefined>;
 }
 
 export interface LocalServer {
@@ -48,10 +50,11 @@ async function loadServerPackage(): Promise<typeof import("@devotchi/server")> {
 export async function startLocalServer(options: LocalServerOptions): Promise<LocalServer> {
   const { store, lan, port } = options;
   await store.ensureDir();
-  const { ConfigError: ServerConfigError, createServer } = await loadServerPackage();
+  const { ConfigError: ServerConfigError, createServer, featuresFromEnv } = await loadServerPackage();
   let server: DevotchiServer;
   try {
     server = await createServer({
+      features: featuresFromEnv(options.env ?? process.env),
       host: lan ? "0.0.0.0" : "127.0.0.1",
       port,
       dbPath: join(store.dir, LOCAL_DB_FILE),
