@@ -65,9 +65,9 @@ lv_obj_t *screen_provisioning_create(void)
     lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(col, COL_GAP, 0);
     lv_obj_t *scan = ui_text(col, UI_FONT_TITLE, UI_C_CREAM, 0, 0, COL_W, false);
-    lv_label_set_text_static(scan, "Scan with your phone");
+    lv_label_set_text_static(scan, "Scan in the ESP app");
     lv_obj_t *how = ui_text(col, UI_FONT_SMALL, UI_C_FOG, 0, 0, COL_W, false);
-    lv_label_set_text_static(how, "The camera opens Wi-Fi setup for this device.");
+    lv_label_set_text_static(how, "Use Espressif's ESP BLE Provisioning app; the camera app only shows text.");
     s_qr_note = ui_text(col, UI_FONT_SMALL, UI_C_SLATE, 0, 0, COL_W, false);
     s_step[0] = qr_step;
 
@@ -75,7 +75,7 @@ lv_obj_t *screen_provisioning_create(void)
     lv_obj_t *head = ui_text(code_step, UI_FONT_BODY, UI_C_CREAM, UI_TEXT_X, 28, UI_WIDTH_TEXT, true);
     lv_label_set_text_static(head, "Or set it up by hand");
     lv_obj_t *pick = ui_text(code_step, UI_FONT_SMALL, UI_C_FOG, UI_TEXT_X, 54, UI_WIDTH_TEXT, true);
-    lv_label_set_text_static(pick, "In the setup app, pick this device");
+    lv_label_set_text_static(pick, "In ESP BLE Provisioning, pick this device");
     s_service = code_well(code_step, 74, UI_C_SKY);
     lv_obj_t *type = ui_text(code_step, UI_FONT_SMALL, UI_C_FOG, UI_TEXT_X, 116, UI_WIDTH_TEXT, true);
     lv_label_set_text_static(type, "and type this code when it asks");
