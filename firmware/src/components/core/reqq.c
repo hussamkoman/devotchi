@@ -2,6 +2,7 @@
 
 #include "text.h"
 
+#include <stdio.h>
 #include <string.h>
 
 /* Deadlines wrap with the millisecond clock, so they are compared by signed distance. */
@@ -59,6 +60,38 @@ reqq_add_t reqq_add(reqq_t *q, const proto_permission_t *msg, uint32_t now_ms)
     e->timeout_ms = msg->timeout_ms;
     e->deadline_ms = now_ms + msg->timeout_ms;
     return REQQ_ADDED;
+}
+
+reqq_add_t reqq_add_slot(reqq_t *q, const qstore_slot_t *slot)
+{
+    if (index_of(q, slot->id) >= 0) {
+        return REQQ_DUPLICATE;
+    }
+    if (q->count >= REQQ_CAP) {
+        return REQQ_FULL;
+    }
+    reqq_entry_t *e = &q->entries[q->count++];
+    memset(e, 0, sizeof(*e));
+    e->kind = slot->kind == QSTORE_PLAN ? REQQ_PLAN : REQQ_QUESTION;
+    e->slot = slot;
+    memcpy(e->id, slot->id, sizeof(e->id));
+    snprintf(e->tool, sizeof(e->tool), "%s", e->kind == REQQ_PLAN ? "ExitPlanMode" : "AskUserQuestion");
+    memcpy(e->project, slot->project, sizeof(e->project));
+    memcpy(e->sid, slot->sid, sizeof(e->sid));
+    e->timeout_ms = slot->timeout_ms;
+    e->deadline_ms = slot->deadline_ms;
+    return REQQ_ADDED;
+}
+
+bool reqq_set_deadline(reqq_t *q, const char *id, uint32_t timeout_ms, uint32_t now_ms)
+{
+    const int i = index_of(q, id);
+    if (i < 0 || q->entries[i].kind == REQQ_PERMISSION) {
+        return false;
+    }
+    q->entries[i].timeout_ms = timeout_ms;
+    q->entries[i].deadline_ms = now_ms + timeout_ms;
+    return true;
 }
 
 static void remove_at(reqq_t *q, size_t i)

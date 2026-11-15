@@ -29,6 +29,8 @@ Control, as lines on stdin or as the body of POST /_ctl:
   reject-token / accept-token      answer 401 to every upgrade / stop doing so
   stall / unstall                  accept connections but never answer / answer again
   caps <list|none>                 capabilities named in the next register_ack (comma-separated; default decide)
+  send-burst <json array>          every frame of the array as its own text frame, written back to back in one go
+  extend-reply <on|off>            answer `extend` with `deadline` 60000 (protocol 14.6; default on)
   status                           counters and connection state as JSON
   tokens                           the tokens this server accepts (test tokens, for leak checks)
 """
@@ -184,6 +186,12 @@ class Connection:
             self._on_register(msg)
         elif kind == "ping":
             self.send_json({"type": "pong"})
+        elif kind == "extend" and isinstance(msg.get("id"), str):
+            self.state.count("extend")
+            with self.state.lock:
+                reply = self.state.extend_reply
+            if reply:
+                self.send_json({"type": "deadline", "id": msg["id"], "timeout": 60000})
         elif kind == "set_mode" and msg.get("mode") in ("ask", "desk"):
             self.state.mode = msg["mode"]
             self.state.broadcast({"type": "mode", "mode": self.state.mode})
@@ -267,6 +275,7 @@ class State:
         self.pairings = {}
         self.counters = {}
         self.caps = [c for c in args.caps.split(",") if c] if args.caps != "none" else []
+        self.extend_reply = True
 
     def count(self, name):
         with self.lock:
@@ -325,6 +334,18 @@ class State:
                 with_ping = command.endswith("-ping")
                 sent = sum(1 for c in self.live() if c.send_fragmented(payload, int(parts), with_ping))
                 return {"ok": True, "sent": sent, "bytes": len(payload), "frames": int(parts)}
+            if command == "send-burst":
+                frames = json.loads(rest)
+                if not isinstance(frames, list) or not all(isinstance(f, dict) for f in frames):
+                    raise ValueError("a JSON array of objects expected")
+                data = b"".join(encode_frame(OP_TEXT, json.dumps(f, separators=(",", ":")).encode()) for f in frames)
+                return {"ok": True, "sent": sum(1 for c in self.live() if c.send_raw(data)), "frames": len(frames)}
+            if command == "extend-reply":
+                if rest not in ("on", "off"):
+                    raise ValueError("on or off expected")
+                with self.lock:
+                    self.extend_reply = rest == "on"
+                return {"ok": True, "extendReply": rest == "on"}
             if command == "send-binary":
                 data = encode_frame(OP_BINARY, bytes.fromhex(rest))
                 return {"ok": True, "sent": sum(1 for c in self.live() if c.send_raw(data))}

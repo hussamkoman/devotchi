@@ -30,6 +30,8 @@ static const char *const SCREEN_NAMES[UI_SCREEN_COUNT] = {
     [UI_SCREEN_PAIRING] = "pairing",
     [UI_SCREEN_PET] = "pet",
     [UI_SCREEN_APPROVAL] = "approval",
+    [UI_SCREEN_QUESTION] = "question",
+    [UI_SCREEN_PLAN] = "plan",
     [UI_SCREEN_SETTINGS] = "settings",
     [UI_SCREEN_IDENTIFY] = "identify",
     [UI_SCREEN_LOWBATT] = "lowbatt",
@@ -278,6 +280,8 @@ esp_err_t ui_init(void)
     s_screens[UI_SCREEN_PAIRING] = screen_pairing_create();
     s_screens[UI_SCREEN_PET] = screen_pet_create();
     s_screens[UI_SCREEN_APPROVAL] = screen_approval_create();
+    s_screens[UI_SCREEN_QUESTION] = screen_question_create();
+    s_screens[UI_SCREEN_PLAN] = screen_plan_create();
     s_screens[UI_SCREEN_IDENTIFY] = screen_identify_create();
     s_screens[UI_SCREEN_SETTINGS] = screen_settings_create();
     s_screens[UI_SCREEN_LOWBATT] = screen_lowbatt_create();
@@ -369,6 +373,8 @@ static const demo_entry_t DEMOS[] = {
     {"approval", "low|med|details|long|high|clicked|holding|sent|next", UI_SCREEN_APPROVAL},
     {"menu", "terminal|session|high|locked", UI_SCREEN_APPROVAL},
     {"tabs", "hold|nudge|any|inactive", UI_SCREEN_APPROVAL},
+    {"question", "single|second|back|read|scroll|multi|send|menu|review|accents|accents-review", UI_SCREEN_QUESTION},
+    {"plan", "card|menu|cut|more|accents", UI_SCREEN_PLAN},
     {"settings", NULL, UI_SCREEN_SETTINGS},
     {"identify", NULL, UI_SCREEN_IDENTIFY},
     {"lowbatt", NULL, UI_SCREEN_LOWBATT},
@@ -379,7 +385,8 @@ const char *ui_demo_usage(void)
     return "splash provisioning[qr|code] wifi connecting offline pairing home[idle|working|angry|tabs] "
            "toast[positive|sticky|desk|battery|strip|receipt] about[1|2] "
            "approval[low|med|details|long|high|clicked|holding|sent|next] menu[terminal|session|high|locked] "
-           "tabs[hold|nudge|any|inactive] settings identify lowbatt | off";
+           "tabs[hold|nudge|any|inactive] question[single|second|back|read|scroll|multi|send|menu|review|accents|"
+           "accents-review] plan[card|menu|cut|more|accents] settings identify lowbatt | off";
 }
 
 /* Index of variant in the "|"-separated list, or -1. NULL or "" picks the first. */
@@ -461,6 +468,12 @@ static void demo_load(const demo_entry_t *d, int v)
         screen_approval_demo(strcmp(d->name, "tabs") == 0   ? APPROVAL_DEMO_HOLD + v
                              : strcmp(d->name, "menu") == 0 ? APPROVAL_DEMO_MENU + v
                                                             : APPROVAL_DEMO_LOW + v);
+        break;
+    case UI_SCREEN_QUESTION:
+        screen_question_demo(v);
+        break;
+    case UI_SCREEN_PLAN:
+        screen_plan_demo(v);
         break;
     case UI_SCREEN_SETTINGS:
         screen_settings_demo();

@@ -32,6 +32,17 @@
 #define PROTO_CODE_SIZE        25
 #define PROTO_DEVICE_ID_SIZE   25
 #define PROTO_HOLDING_MAX_IDS  8
+/* Questions and plans (protocol 14.4, 14.5, 14.10). */
+#define PROTO_Q_MAX            4
+#define PROTO_Q_OPTIONS_MIN    2
+#define PROTO_Q_OPTIONS_MAX    4
+#define PROTO_Q_HEADER_SIZE    25
+#define PROTO_Q_TEXT_SIZE      481
+#define PROTO_Q_LABEL_SIZE     81
+#define PROTO_Q_DESC_SIZE      201
+#define PROTO_PLAN_TITLE_SIZE  81
+#define PROTO_PLAN_STEPS_MAX   12
+#define PROTO_PLAN_STEP_SIZE   121
 
 /** Capabilities of protocol 14.1, as bits of a mask. */
 #define PROTO_CAP_DECIDE  (1u << 0)
@@ -59,6 +70,9 @@ typedef enum {
     PROTO_DISMISS,
     PROTO_MODE,
     PROTO_IDENTIFY,
+    PROTO_QUESTION,
+    PROTO_PLAN,
+    PROTO_DEADLINE,
 } proto_type_t;
 
 typedef enum {
@@ -192,6 +206,52 @@ typedef struct {
 } proto_permission_t;
 
 typedef struct {
+    char label[PROTO_Q_LABEL_SIZE];
+    char desc[PROTO_Q_DESC_SIZE];
+} proto_option_t;
+
+/** One question of an AskUserQuestion call; the server sends one frame per question (protocol 14.4). */
+typedef struct {
+    char id[PROTO_ID_SIZE];
+    /** 0-based position of this question, and how many the call has (index < count). */
+    uint8_t index;
+    uint8_t count;
+    /** The frame had a non-empty `header`. */
+    bool has_header;
+    char header[PROTO_Q_HEADER_SIZE];
+    char text[PROTO_Q_TEXT_SIZE];
+    bool multi;
+    uint8_t n_options;
+    proto_option_t options[PROTO_Q_OPTIONS_MAX];
+    char sid[PROTO_SID_SIZE];
+    char project[PROTO_PROJECT_SIZE];
+    uint32_t timeout_ms;
+} proto_question_t;
+
+/** A plan summary (protocol 14.5). */
+typedef struct {
+    char id[PROTO_ID_SIZE];
+    char title[PROTO_PLAN_TITLE_SIZE];
+    uint8_t n_steps;
+    char steps[PROTO_PLAN_STEPS_MAX][PROTO_PLAN_STEP_SIZE];
+    /** Steps left out; steps beyond PROTO_PLAN_STEPS_MAX are counted here too. */
+    uint16_t more;
+    /**
+     * The frame is not the whole plan: the server said so, or a title or step
+     * did not fit its buffer, or steps were left out.
+     */
+    bool cut;
+    char sid[PROTO_SID_SIZE];
+    char project[PROTO_PROJECT_SIZE];
+    uint32_t timeout_ms;
+} proto_plan_t;
+
+typedef struct {
+    char id[PROTO_ID_SIZE];
+    uint32_t timeout_ms;
+} proto_deadline_t;
+
+typedef struct {
     char id[PROTO_ID_SIZE];
     proto_dismiss_reason_t reason;
     proto_outcome_t outcome;
@@ -213,6 +273,9 @@ typedef struct {
         proto_dismiss_t dismiss;
         proto_mode_t mode;
         uint32_t identify_ms;
+        proto_question_t question;
+        proto_plan_t plan;
+        proto_deadline_t deadline;
     } u;
 } proto_msg_t;
 
@@ -265,6 +328,18 @@ int proto_write_permission_defer(char *buf, size_t cap, const char *id);
 /** Fails for PROTO_CHOICE_NONE and ANSWERED, which are not `decide` choices. */
 int proto_write_decide(char *buf, size_t cap, const char *id, proto_choice_t choice);
 int proto_write_set_mode(char *buf, size_t cap, proto_mode_t mode);
+
+/** One entry of `question_response.answers`. */
+typedef struct {
+    /** "No preference" (`null`); mask is ignored. */
+    bool no_preference;
+    /** Bit i: option i was chosen. An empty mask is a multi-select answer of "None of these". */
+    uint8_t mask;
+} proto_answer_t;
+
+/** `answers` in question order, one per question (1..PROTO_Q_MAX); fails for an option bit past PROTO_Q_OPTIONS_MAX. */
+int proto_write_question_response(char *buf, size_t cap, const char *id, const proto_answer_t *answers, size_t count);
+int proto_write_extend(char *buf, size_t cap, const char *id);
 
 /** Also fails when the frame would exceed PROTO_TELEMETRY_MAX bytes. */
 int proto_write_telemetry(char *buf, size_t cap, const proto_telemetry_t *t);

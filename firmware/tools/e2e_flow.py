@@ -31,7 +31,10 @@ from e2e_link import (FORBIDDEN_PORTS, Board, Mock, StepFailed, check, host_addr
                       is_registered)
 
 CLAIM_CODE = "K7M2QX"
-MOCK_OPTIONS = ("--ping", "10", "--code", CLAIM_CODE)
+MOCK_OPTIONS = ("--ping", "10", "--code", CLAIM_CODE, "--caps", "decide,ask,plan")
+SERVER_CAPS = "decide,ask,plan"
+REQUEST_SCREENS = ("approval", "question", "plan")
+MIDDOT = "\u00b7"
 TEST_BRIGHTNESS = 25
 # Without a battery the USB supply sags when the motor starts while WiFi transmits: the board was seen to
 # power-cycle at a request buzz and to stall its USB console during the attention pattern. Feedback is
@@ -46,6 +49,11 @@ CONFIRM_WINDOW_S = 1.5
 ARM_S = 0.5
 ARM_NEXT_S = 1.0
 ELLIPSIS = "\u2026"
+
+
+def tab(screen, name):
+    """The text of a button tab, "" when the tab is not shown."""
+    return ((screen.get("tabs") or {}).get(name) or {}).get("text") or ""
 
 
 def frame_of(event, kind):
@@ -195,7 +203,7 @@ class Run:
         """armed: on a request card, wait for the arming delay first (every press during it is swallowed)."""
         if armed:
             screen = self.screen()
-            if screen["id"] == "approval" and screen.get("request") and not screen["request"].get("armed"):
+            if screen["id"] in REQUEST_SCREENS and screen.get("request") and not screen["request"].get("armed"):
                 self.wait_armed()
         self.cmd(f"btn {button} {kind}", timeout=15.0)
 
@@ -833,7 +841,7 @@ class Run:
             self.dismiss(rid, "released")
             self.wait_pet()
         finally:
-            self.mock.ctl("caps decide")
+            self.mock.ctl(f"caps {SERVER_CAPS}")
             self.mock.ctl("drop")
             self.board.wait_state(lambda s: not is_registered(s), 10, "link dropped again")
             self.board.wait_state(is_registered, 30, "re-registration with decide")
@@ -845,7 +853,7 @@ class Run:
     def step_never_answered_closed(self):
         late = []
         for event in self.mock.snapshot():
-            for kind in ("permission_response", "permission_defer", "decide"):
+            for kind in ("permission_response", "permission_defer", "decide", "question_response"):
                 frame = frame_of(event, kind)
                 if frame and frame.get("id") in self.closed and event["t"] > self.closed[frame["id"]]:
                     late.append((kind, frame["id"]))
@@ -871,6 +879,469 @@ class Run:
               f"settings not restored: {state['settings']}")
         check(state["link"]["ssid"] == self.original["ssid"], "the WiFi network changed")
         return f"server={state['server']} source={state['serverSource']} paired={state['paired']}"
+
+    # ---- questions and plans (protocol 14.4-14.6) ----
+
+    def ask(self, questions, rid=None, timeout=30000, frames=None):
+        """questions: dicts with text, options [(label, desc)], header (None: no header), multi. Sent back to back."""
+        rid = rid or self.new_id()
+        burst = []
+        for index, q in enumerate(questions):
+            frame = {"type": "question", "id": rid, "index": index, "count": len(questions), "text": q["text"],
+                     "multi": q.get("multi", False),
+                     "options": [{"label": label, "desc": desc} if desc else {"label": label}
+                                 for label, desc in q["options"]],
+                     "sid": "3fa9c1", "project": "devotchi", "timeout": timeout}
+            if q.get("header") is not None:
+                frame["header"] = q["header"]
+            burst.append(frame)
+        if frames is not None:
+            burst = [burst[i] for i in frames]
+        reply = self.mock.ctl("send-burst " + json.dumps(burst, separators=(",", ":")))
+        check(reply.get("sent") == 1, f"mock sent the burst to {reply.get('sent')} sockets, expected 1")
+        if rid not in self.sent_ids:
+            self.sent_ids.append(rid)
+        return rid
+
+    def plan(self, steps, title="Add question cards to the device", more=0, cut=False, timeout=30000):
+        rid = self.new_id()
+        frame = {"type": "plan", "id": rid, "title": title, "steps": steps, "more": more, "sid": "3fa9c1",
+                 "project": "devotchi", "timeout": timeout}
+        if cut:
+            frame["cut"] = True
+        self.send(frame)
+        self.sent_ids.append(rid)
+        return rid
+
+    @staticmethod
+    def simple(text, labels, header="Pick", multi=False, descs=None):
+        descs = descs or [None] * len(labels)
+        return {"text": text, "header": header, "multi": multi, "options": list(zip(labels, descs))}
+
+    def wait_request(self, screen_id, rid, timeout=5, **expect):
+        def ok(s):
+            req = s.get("request") or {}
+            return s["id"] == screen_id and req.get("id") == rid and all(req.get(k) == v for k, v in expect.items())
+        return self.wait_screen(ok, timeout, f"{screen_id} {rid} {expect}")
+
+    def response(self, rid, mark, what="question_response"):
+        return self.wait_mock_frame("question_response", lambda f: f.get("id") == rid, 5, mark, what)[1]
+
+    def close_ask(self, rid, receipt, choice="answered", outcome="allow"):
+        bmark = self.board.mark()
+        self.dismiss(rid, "answered", outcome=outcome, choice=choice)
+        self.wait_receipt(receipt, bmark)
+        self.wait_pet()
+
+    def choose(self, opt):
+        """On a question card: move the cursor to row opt (it wraps), then APPROVE."""
+        screen = self.wait_armed()
+        for _ in range(6):
+            req = screen["request"]
+            if req["opt"] == opt:
+                break
+            self.press("action")
+            screen = self.screen()
+        check(screen["request"]["opt"] == opt, f"cursor stuck: {screen['request']}")
+        self.press("approve")
+
+    def step_q_single(self):
+        q = self.simple("Which framework should the dashboard use?", ["React", "Vue", "Svelte"], header="Framework",
+                        descs=["Component library", "Progressive framework", None])
+        rid = self.ask([q])
+        screen = self.wait_request("question", rid, view="card", questions=1, options=3)
+        check("FRAMEWORK" in screen["texts"] and "Which framework should the dashboard use?" in screen["texts"],
+              f"texts {screen['texts']}")
+        check(tab(screen, "reject") == "Terminal", f"tabs {screen['tabs']}")
+        mark = self.mock.mark()
+        # A press during the arming delay is swallowed: nothing goes out.
+        if not screen["request"]["armed"]:
+            self.press("approve", armed=False)
+        self.no_mock_frame(["question_response"], rid, 0.6, mark)
+        self.choose(1)
+        frame = self.response(rid, mark)
+        check(frame["answers"] == [[1]], f"answers {frame['answers']}")
+        self.wait_screen(lambda s: (s.get("request") or {}).get("sent") is True, 3, "sent state")
+        self.close_ask(rid, f"Answers sent {MIDDOT} Framework: Vue")
+        return "one question: APPROVE on option 2 sent [[1]] at once; receipt names header and label"
+
+    def step_q_no_header(self):
+        q = self.simple("Ship it now?", ["Yes", "Not yet"], header=None)
+        rid = self.ask([q])
+        screen = self.wait_request("question", rid)
+        check("Ship it now?" in screen["texts"] and not [t for t in screen["texts"] if t.isupper()],
+              f"a caps header is shown: {screen['texts']}")
+        mark = self.mock.mark()
+        self.choose(0)
+        check(self.response(rid, mark)["answers"] == [[0]], "answers")
+        self.close_ask(rid, f"Answers sent {MIDDOT} Yes")
+        return "question without header: chip alone, answer [[0]], receipt 'Answers sent \u00b7 Yes'"
+
+    def step_q_review_back(self):
+        qs = [self.simple("Where should paired devices be stored?", ["SQLite", "Postgres"], header="Storage"),
+              self.simple("How should the dashboard authenticate?", ["Bearer token", "Session cookie", "OAuth"],
+                          header="Auth method")]
+        rid = self.ask(qs)
+        self.wait_request("question", rid, question=1, questions=2)
+        mark = self.mock.mark()
+        self.choose(1)
+        self.wait_request("question", rid, question=2)
+        self.choose(2)
+        screen = self.wait_request("question", rid, view="review")
+        check("Postgres" in screen["texts"] and "OAuth" in screen["texts"] and "SEND 2 ANSWERS?" in screen["texts"],
+              f"review texts {screen['texts']}")
+        self.no_mock_frame(["question_response"], rid, 0.5, mark)
+        self.press("reject")
+        screen = self.wait_request("question", rid, view="card", question=2)
+        check(screen["request"]["opt"] == 2 and screen["request"]["done"] == 3, f"back keeps: {screen['request']}")
+        self.press("reject")
+        screen = self.wait_request("question", rid, view="card", question=1)
+        check(screen["request"]["opt"] == 1 and tab(screen, "reject") == "Terminal",
+              f"first question again: {screen['request']} {screen['tabs']}")
+        self.choose(0)
+        self.wait_request("question", rid, question=2)
+        self.choose(2)
+        self.wait_request("question", rid, view="review")
+        self.no_mock_frame(["question_response"], rid, 0.3, mark)
+        self.press("approve")
+        frame = self.response(rid, mark)
+        check(frame["answers"] == [[0], [2]], f"answers {frame['answers']}")
+        self.close_ask(rid, f"Answers sent {MIDDOT} Storage: SQLite {MIDDOT} Auth method: OAuth")
+        return "two questions: review, Back twice keeps answers and focus, changed answer; [[0],[2]] only after Send"
+
+    def step_q_four(self):
+        long_desc = "d" * 190
+        qs = [{"text": f"Question number {i} of four, with long options?" + " pad" * 60, "header": f"Part {i}",
+               "options": [(f"Option {i}.{o} " + "l" * 60, long_desc) for o in range(4)]} for i in range(4)]
+        before = self.board.state()
+        rid = self.ask(qs)
+        self.wait_request("question", rid, questions=4, timeout=6)
+        after = self.board.state()
+        check(after["link"]["rxDropped"] == before["link"]["rxDropped"], "frames dropped on the WebSocket")
+        check(after.get("eventsDropped") == before.get("eventsDropped"), "app events dropped")
+        mark = self.mock.mark()
+        for i in range(4):
+            screen = self.wait_request("question", rid, question=i + 1)
+            if screen["request"]["view"] == "read":
+                while self.screen()["request"]["view"] == "read":
+                    self.press("action")
+            self.choose(3 - i)
+        self.wait_request("question", rid, view="review")
+        self.press("reject")
+        self.wait_request("question", rid, question=4, view="card")
+        self.press("approve")
+        self.wait_request("question", rid, view="review")
+        self.press("approve")
+        frame = self.response(rid, mark)
+        check(frame["answers"] == [[3], [2], [1], [0]], f"answers {frame['answers']}")
+        bmark = self.board.mark()
+        self.dismiss(rid, "answered", choice="answered")
+        receipt = self.wait_board(lambda e: e.get("evt") == "receipt", 5, bmark, "receipt")
+        check(receipt["text"].startswith(f"Answers sent {MIDDOT} Part 0: Option 0.3"), f"receipt {receipt['text']}")
+        self.wait_pet()
+        return "four ~2 kB frames back to back: none dropped; read pages; answers [[3],[2],[1],[0]] in order"
+
+    def step_q_multi(self):
+        q = self.simple("What should this change include?", ["Unit tests", "End-to-end tests", "Docs"],
+                        header="Deliver", multi=True)
+        rid = self.ask([q])
+        screen = self.wait_request("question", rid, multi=True)
+        check("None of these" in screen["texts"], f"send row {screen['texts']}")
+        mark = self.mock.mark()
+        self.choose(0)
+        self.wait_screen(lambda s: (s.get("request") or {}).get("mask") == 1, 3, "first tick")
+        self.choose(2)
+        screen = self.wait_screen(lambda s: (s.get("request") or {}).get("mask") == 5, 3, "second tick")
+        check("Send 2 selected" in screen["texts"], f"send row {screen['texts']}")
+        self.no_mock_frame(["question_response"], rid, 0.3, mark)
+        self.choose(3)
+        check(self.response(rid, mark)["answers"] == [[0, 2]], "answers")
+        self.close_ask(rid, f"Answers sent {MIDDOT} Deliver: Unit tests, Docs")
+        rid = self.ask([q])
+        self.wait_request("question", rid, multi=True)
+        mark = self.mock.mark()
+        self.choose(3)
+        check(self.response(rid, mark)["answers"] == [[]], "none of these")
+        self.close_ask(rid, f"Answers sent {MIDDOT} Deliver: None of these")
+        return "multi-select: ticks [[0,2]] on 'Send 2 selected'; nothing ticked sends [[]] ('None of these')"
+
+    def step_q_read(self):
+        text = ("The devices table gained a room_id column, so the schema changed. How should existing rooms and "
+                "their paired devices be migrated when the server starts? Think about backups and about the "
+                "people who run the server on a small board with little storage, and about rollbacks.")
+        rid = self.ask([self.simple(text, ["Copy", "In place", "Fresh"], header="Migration")])
+        screen = self.wait_request("question", rid, view="read")
+        check(not tab(screen, "approve"), f"tabs {screen['tabs']}")
+        check("3 options follow" in " ".join(screen["texts"]) and screen["request"]["pages"] >= 2,
+              f"read page {screen['texts']} {screen['request']}")
+        mark = self.mock.mark()
+        self.press("approve", armed=False)
+        pages = screen["request"]["pages"]
+        for page in range(2, pages + 1):
+            self.press("action")
+            self.wait_request("question", rid, page=page)
+        check(tab(self.screen(), "action").startswith("Options"), "last page tab")
+        self.press("action")
+        self.wait_request("question", rid, view="card")
+        self.no_mock_frame(["question_response"], rid, 0.2, mark)
+        self.open_ask_menu()
+        self.menu_row("read_again")
+        self.press("approve")
+        self.wait_request("question", rid, view="read", page=1)
+        self.press("reject")
+        self.wait_mock_frame("permission_defer", lambda f: f.get("id") == rid, 5, mark, "defer from the read page")
+        bmark = self.board.mark()
+        self.dismiss(rid, "released")
+        self.wait_receipt("Moved to terminal", bmark)
+        self.wait_pet()
+        return f"long question opens on a read page ({pages} pages, no APPROVE), Options, read again, Terminal"
+
+    def open_ask_menu(self):
+        self.press("action", "long")
+        return self.wait_screen(lambda s: (s.get("request") or {}).get("view") == "menu", 3, "menu")
+
+    def menu_row(self, row):
+        screen = self.wait_armed()
+        for _ in range(4):
+            req = screen["request"]
+            if req["rows"][req["cursor"]] == row:
+                return screen
+            self.press("action")
+            screen = self.screen()
+        raise StepFailed(f"row {row} not reached: {screen['request']}")
+
+    def step_q_menu(self):
+        qs = [self.simple("First?", ["A", "B"], header="One"), self.simple("Second?", ["C", "D"], header="Two"),
+              self.simple("Third?", ["E", "F"], header="Three")]
+        rid = self.ask(qs)
+        self.wait_request("question", rid)
+        mark = self.mock.mark()
+        self.choose(1)
+        self.wait_request("question", rid, question=2)
+        screen = self.open_ask_menu()
+        check(screen["request"]["rows"] == ["terminal", "read_again", "let_claude", "decline"] and
+              screen["request"]["cursor"] == 0, f"question menu {screen['request']}")
+        check("Answer in terminal" in screen["texts"], f"texts {screen['texts']}")
+        self.press("reject")
+        self.wait_request("question", rid, view="card", question=2)
+        self.open_ask_menu()
+        self.menu_row("let_claude")
+        self.press("approve")
+        frame = self.response(rid, mark)
+        check(frame["answers"] == [[1], None, None], f"let Claude decide: {frame['answers']}")
+        self.close_ask(rid, f"Answers sent {MIDDOT} One: B {MIDDOT} Two: No preference {MIDDOT} Three: No preference")
+        rid = self.ask(qs[:1])
+        self.wait_request("question", rid)
+        mark = self.mock.mark()
+        self.open_ask_menu()
+        self.menu_row("decline")
+        self.press("approve")
+        self.decide_frame(rid, "decline", mark, "decide decline")
+        self.close_ask(rid, "Declined", choice="decline", outcome="deny")
+        return "menu rows; Back; Let Claude decide -> [[1],null,null]; Decline -> decide decline"
+
+    def step_plan_approve(self):
+        rid = self.plan(["Widen the hook reply type", "Send questions one at a time", "New question screen"])
+        screen = self.wait_request("plan", rid, allow="click", steps=3)
+        check("Add question cards to the device" in screen["texts"] and tab(screen, "reject") == "Revise",
+              f"plan card {screen['texts']} {screen['tabs']}")
+        mark = self.mock.mark()
+        self.press("approve")
+        self.decide_frame(rid, "approve", mark, "decide approve")
+        self.close_ask(rid, f"Plan approved {MIDDOT} you approve edits", choice="approve")
+        rid = self.plan(["One step"])
+        self.wait_request("plan", rid)
+        mark = self.mock.mark()
+        self.press("reject")
+        self.decide_frame(rid, "revise", mark, "decide revise")
+        self.close_ask(rid, "Sent back for changes", choice="revise", outcome="deny")
+        return "complete plan: Approve -> decide approve; Revise -> decide revise; receipts"
+
+    def step_plan_accept_edits(self):
+        rid = self.plan([f"Step {i}" for i in range(6)])
+        screen = self.wait_request("plan", rid, allow="inactive", pages=2)
+        screen = self.open_ask_menu()
+        check(screen["request"]["rows"] == ["terminal", "accept_edits", "deny_stop"], f"rows {screen['request']}")
+        self.menu_row("accept_edits")
+        check(self.screen()["request"]["session"] == "locked", "edits row locked before page 2")
+        mark = self.mock.mark()
+        self.press("approve", "long")
+        self.no_mock_frame(["decide"], rid, 0.5, mark)
+        self.press("reject")
+        self.wait_request("plan", rid, view="card")
+        self.press("action")
+        self.wait_request("plan", rid, page=2, allow="click")
+        self.open_ask_menu()
+        screen = self.menu_row("accept_edits")
+        check(screen["request"]["session"] == "ready" and tab(screen, "approve") == "Hold: Approve",
+              f"ready row {screen['request']} {screen['tabs']}")
+        bmark = self.board.mark()
+        self.press("approve")
+        self.wait_board(lambda e: e.get("evt") == "nudge" and e.get("text") == "Hold to approve", 3, bmark, "nudge")
+        self.no_mock_frame(["decide"], rid, 0.5, mark)
+        self.press("approve", "long")
+        self.decide_frame(rid, "approve_accept_edits", mark, "decide approve_accept_edits")
+        self.close_ask(rid, f"Plan approved {MIDDOT} edits accepted", choice="approve_accept_edits")
+        return "accept-edits row locked until every page was read; click nudges; hold -> approve_accept_edits"
+
+    def step_plan_cut(self):
+        rid = self.plan([f"Step {i}" for i in range(6)], cut=True)
+        screen = self.wait_request("plan", rid, cut=True)
+        check(f"Shortened {MIDDOT} full plan in the terminal" in screen["texts"], f"notice {screen['texts']}")
+        screen = self.open_ask_menu()
+        check(screen["request"]["rows"] == ["terminal", "deny_stop"], f"cut plan rows {screen['request']['rows']}")
+        self.press("reject")
+        self.wait_request("plan", rid, view="card")
+        self.press("action")
+        screen = self.wait_request("plan", rid, page=2, allow="click")
+        check(f"Shortened {MIDDOT} full plan in the terminal" in screen["texts"], "notice on page 2")
+        mark = self.mock.mark()
+        self.press("approve")
+        self.decide_frame(rid, "approve", mark, "approve on a cut plan")
+        self.close_ask(rid, f"Plan approved {MIDDOT} you approve edits", choice="approve")
+        return "cut plan: notice on every page, no accept-edits row, Approve works"
+
+    def step_plan_more(self):
+        rid = self.plan([f"Step {i}" for i in range(12)], more=3, cut=True)
+        screen = self.wait_request("plan", rid, allow="none", more=3)
+        check(f"+3 more steps {MIDDOT} read it in the terminal" in screen["texts"], f"notice {screen['texts']}")
+        check(not tab(screen, "approve"), f"approve tab {screen['tabs']}")
+        mark = self.mock.mark()
+        for _ in range(2):
+            self.press("action")
+        self.press("approve", armed=False)
+        self.no_mock_frame(["decide"], rid, 0.5, mark)
+        screen = self.open_ask_menu()
+        check(screen["request"]["rows"] == ["terminal", "deny_stop"], f"rows {screen['request']['rows']}")
+        self.menu_row("deny_stop")
+        self.press("approve")
+        self.decide_frame(rid, "deny_stop", mark, "deny_stop")
+        self.close_ask(rid, f"Denied {MIDDOT} Claude stopped", choice="deny_stop", outcome="deny")
+        return "more > 0: notice, no Approve tab, approve sends nothing; Deny and stop works"
+
+    def step_plan_not_allowed(self):
+        rid = self.plan(["One", "Two"])
+        self.wait_request("plan", rid)
+        mark = self.mock.mark()
+        self.press("approve")
+        self.decide_frame(rid, "approve", mark, "approve")
+        bmark = self.board.mark()
+        self.send({"type": "error", "code": "NOT_ALLOWED", "message": "cut", "id": rid})
+        self.wait_toast("Not allowed from this device", bmark)
+        screen = self.wait_screen(lambda s: (s.get("request") or {}).get("sent") is False, 3, "unsent plan")
+        check(tab(screen, "approve") == "Approve", f"tabs {screen['tabs']}")
+        mark = self.mock.mark()
+        self.press("reject")
+        self.decide_frame(rid, "revise", mark, "revise after NOT_ALLOWED")
+        self.close_ask(rid, "Sent back for changes", choice="revise", outcome="deny")
+        return "error NOT_ALLOWED -> toast, plan card back with its tabs, revise works"
+
+    def step_ask_extend(self):
+        rid = self.ask([self.simple("Keep it alive?", ["Yes", "No"])], timeout=20000)
+        self.wait_request("question", rid)
+        self.wait_armed()
+        mark = self.mock.mark()
+        bmark = self.board.mark()
+        self.press("action")
+        self.wait_mock_frame("extend", lambda f: f.get("id") == rid, 3, mark, "extend")
+        self.wait_board(lambda e: e.get("evt") == "deadline" and e.get("id") == rid, 3, bmark, "deadline applied")
+        left = self.screen()["request"]["remainingMs"]
+        check(left > 55000, f"remaining after the deadline {left} ms")
+        self.press("action")
+        time.sleep(0.5)
+        check(len(self.frames(mark, ["extend"], rid)) == 1, "a second extend within 5 s / above 55 s")
+        first = time.monotonic()
+        self.send({"type": "deadline", "id": rid, "timeout": 9000})
+        self.wait_screen(lambda s: (s.get("request") or {}).get("remainingMs", 99999) < 10000, 3, "shorter deadline")
+        self.send({"type": "deadline", "id": "f" * 32, "timeout": 8000})
+        time.sleep(max(0.0, first + 5.2 - time.monotonic()))
+        mark2 = self.mock.mark()
+        self.press("action")
+        self.wait_mock_frame("extend", lambda f: f.get("id") == rid, 3, mark2, "extend after 5 s")
+        self.wait_screen(lambda s: (s.get("request") or {}).get("remainingMs", 0) > 55000, 3, "extended again")
+        self.dismiss(rid, "cancelled")
+        self.wait_pet()
+        return "press -> extend -> deadline 60 s applied; no second extend at once; shorter deadline applied"
+
+    def step_ask_timeout(self):
+        rid = self.ask([self.simple("Too slow?", ["Yes", "No"])], timeout=3000)
+        self.wait_request("question", rid)
+        mark = self.mock.mark()
+        bmark = self.board.mark()
+        self.wait_receipt(f"Time ran out {MIDDOT} Sent to terminal", bmark, timeout=6)
+        self.closed[rid] = time.time()
+        self.wait_pet()
+        self.no_mock_frame(["question_response", "decide", "permission_defer"], rid, 0.3, mark)
+        return "untouched question timed out locally: receipt, nothing sent"
+
+    def step_ask_dismiss_midway(self):
+        qs = [self.simple("First?", ["A", "B"], header="One"), self.simple("Second?", ["C", "D"], header="Two")]
+        rid = self.ask(qs)
+        self.wait_request("question", rid)
+        mark = self.mock.mark()
+        self.choose(0)
+        self.wait_request("question", rid, question=2)
+        bmark = self.board.mark()
+        self.dismiss(rid, "cancelled")
+        self.wait_receipt("Answered in terminal", bmark)
+        self.wait_pet()
+        self.no_mock_frame(["question_response"], rid, 0.3, mark)
+        return "dismiss after the first answer: receipt 'Answered in terminal', nothing sent"
+
+    def step_ask_replay(self):
+        qs = [self.simple("First?", ["A", "B"], header="One"), self.simple("Second?", ["C", "D"], header="Two")]
+        rid = self.ask(qs)
+        self.wait_request("question", rid)
+        bmark = self.board.mark()
+        self.ask(qs, rid=rid)
+        self.wait_board(lambda e: e.get("evt") == "request" and e.get("id") == rid and e.get("reason") == "duplicate",
+                        3, bmark, "replayed frames are duplicates")
+        self.mock.ctl("drop")
+        self.board.wait_state(lambda s: not is_registered(s), 10, "link dropped")
+        self.board.wait_state(is_registered, 30, "re-registration")
+        self.wait_pet(5)
+        mark = self.mock.mark()
+        self.ask(qs, rid=rid)
+        self.wait_request("question", rid)
+        self.choose(1)
+        self.wait_request("question", rid, question=2)
+        self.choose(0)
+        self.wait_request("question", rid, view="review")
+        self.press("approve")
+        check(self.response(rid, mark)["answers"] == [[1], [0]], "answers after replay")
+        self.close_ask(rid, f"Answers sent {MIDDOT} One: B {MIDDOT} Two: C")
+        return "replayed frames are duplicates; after a reconnect the replay shows the question again and it answers"
+
+    def step_ask_third(self):
+        q = self.simple("Stored?", ["Yes", "No"])
+        ids = [self.ask([q, q]), self.plan(["One"])]
+        self.wait_screen(lambda s: (s.get("request") or {}).get("count") == 2, 5, "two stored")
+        # COMMON budgets with two stored requests: internal heap low-water mark and task stacks.
+        heap = self.board.state()["heap"]
+        tasks = self.board.json_command("tasks")["tasks"]
+        self.measurements["askBudgets"] = {"internalMin": heap["internalMin"],
+                                           "stackFree": {t["name"]: t["free"] for t in tasks}}
+        check(heap["internalMin"] > 40 * 1024, f"internal heap low-water mark {heap['internalMin']}")
+        check(all(t["free"] >= 512 for t in tasks), f"a task stack under 512 bytes free: {tasks}")
+        bmark = self.board.mark()
+        mark = self.mock.mark()
+        third = self.ask([q])
+        self.wait_board(lambda e: e.get("evt") == "request" and e.get("id") == third and e.get("reason") == "full",
+                        3, bmark, "third refused")
+        partial = self.new_id()
+        self.dismiss(ids[1], "cancelled")
+        self.wait_screen(lambda s: (s.get("request") or {}).get("count") == 1, 5, "one stored")
+        self.ask([q, q], rid=partial, frames=[0])
+        self.wait_board(lambda e: e.get("evt") == "request" and e.get("id") == partial and e.get("op") == "remove"
+                        and e.get("reason") == "incomplete", 4, bmark, "incomplete call dropped")
+        self.closed[third] = time.time()
+        self.closed[partial] = time.time()
+        time.sleep(HEARTBEAT_S + 0.5)
+        named = {i for _, held in self.holdings(mark) for i in held}
+        check(third not in named and partial not in named and ids[0] in named, f"holding named {named}")
+        self.dismiss(ids[0], "cancelled")
+        self.wait_pet()
+        return "third request with two stored: refused, never in holding; an incomplete call dropped after 2 s"
 
     # ---- driver ----
 
@@ -923,6 +1394,23 @@ class Run:
             ("mode", self.step_mode),
             ("identify", self.step_identify),
             ("phase1-server", self.step_phase1_server),
+            ("q-single", self.step_q_single),
+            ("q-no-header", self.step_q_no_header),
+            ("q-review-back", self.step_q_review_back),
+            ("q-four", self.step_q_four),
+            ("q-multi", self.step_q_multi),
+            ("q-read", self.step_q_read),
+            ("q-menu", self.step_q_menu),
+            ("plan-approve", self.step_plan_approve),
+            ("plan-accept-edits", self.step_plan_accept_edits),
+            ("plan-cut", self.step_plan_cut),
+            ("plan-more", self.step_plan_more),
+            ("plan-not-allowed", self.step_plan_not_allowed),
+            ("ask-extend", self.step_ask_extend),
+            ("ask-timeout", self.step_ask_timeout),
+            ("ask-dismiss-midway", self.step_ask_dismiss_midway),
+            ("ask-replay", self.step_ask_replay),
+            ("ask-third", self.step_ask_third),
         ]
         selected = self.args.steps.split(",") if self.args.steps else None
         ok = True

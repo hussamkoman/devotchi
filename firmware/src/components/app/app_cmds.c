@@ -265,7 +265,8 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
     cJSON_AddStringToObject(sb, "mode", bar.desk ? "desk" : "ask");
     cJSON_AddNumberToObject(sb, "rssiBars", bar.rssi_bars);
 
-    if (screen == UI_SCREEN_APPROVAL && s_view.has_request) {
+    if ((screen == UI_SCREEN_APPROVAL || screen == UI_SCREEN_QUESTION || screen == UI_SCREEN_PLAN) &&
+        s_view.has_request) {
         static const char *const RISK[] = {[PROTO_RISK_LOW] = "low", [PROTO_RISK_MED] = "med", [PROTO_RISK_HIGH] = "high"};
         cJSON *req = cJSON_AddObjectToObject(root, "request");
         cJSON_AddStringToObject(req, "id", s_view.request.id);
@@ -287,7 +288,22 @@ static console_rc_t cmd_screen(int argc, char **argv, const char *raw_args)
                                             [CARD_ALLOW_CLICK] = "click", [CARD_ALLOW_HOLD] = "hold"};
         cJSON_AddStringToObject(req, "allow", ALLOW[s_view.request.allow]);
         cJSON_AddStringToObject(req, "session", card_session_name(s_view.request.session));
-        cJSON_AddStringToObject(req, "view", s_view.request.menu ? "menu" : "card");
+        cJSON_AddStringToObject(req, "view", card_view_name(s_view.request.view));
+        static const char *const KIND[] = {[REQQ_PERMISSION] = "permission", [REQQ_QUESTION] = "question",
+                                           [REQQ_PLAN] = "plan"};
+        cJSON_AddStringToObject(req, "kind", KIND[s_view.request.kind]);
+        if (s_view.request.kind == REQQ_QUESTION) {
+            cJSON_AddNumberToObject(req, "question", s_view.request.question);
+            cJSON_AddNumberToObject(req, "questions", s_view.request.questions);
+            cJSON_AddNumberToObject(req, "options", s_view.request.options);
+            cJSON_AddBoolToObject(req, "multi", s_view.request.multi);
+            cJSON_AddNumberToObject(req, "opt", s_view.request.opt);
+            cJSON_AddNumberToObject(req, "mask", s_view.request.mask);
+            cJSON_AddNumberToObject(req, "done", s_view.request.done);
+        } else if (s_view.request.kind == REQQ_PLAN) {
+            cJSON_AddNumberToObject(req, "steps", s_view.request.steps);
+            cJSON_AddNumberToObject(req, "more", s_view.request.more);
+        }
         cJSON *rows = cJSON_AddArrayToObject(req, "rows");
         for (uint8_t i = 0; i < s_view.request.rows && i < CARD_MENU_ROWS; i++) {
             cJSON_AddItemToArray(rows, cJSON_CreateString(card_row_name(s_view.request.row[i])));

@@ -25,6 +25,9 @@ static const char *const TYPE_NAMES[] = {
     [PROTO_DISMISS] = "dismiss",
     [PROTO_MODE] = "mode",
     [PROTO_IDENTIFY] = "identify",
+    [PROTO_QUESTION] = "question",
+    [PROTO_PLAN] = "plan",
+    [PROTO_DEADLINE] = "deadline",
 };
 
 #define TYPE_COUNT  (sizeof(TYPE_NAMES) / sizeof(TYPE_NAMES[0]))
@@ -453,6 +456,115 @@ static bool parse_identify(const cJSON *obj, uint32_t *out)
     return true;
 }
 
+/* The remaining hold of a request (protocol 4.6): at least 1 ms. */
+static bool get_timeout(const cJSON *obj, uint32_t *out)
+{
+    double timeout;
+    if (!get_num(obj, "timeout", FIELD_REQUIRED, 0, &timeout) || !(timeout >= 1)) {
+        return false;
+    }
+    *out = (uint32_t)clamp(timeout, 1, UINT32_MAX);
+    return true;
+}
+
+/* A whole number in lo..hi. */
+static bool get_index(const cJSON *obj, const char *key, double lo, double hi, uint8_t *out)
+{
+    double v;
+    if (!get_num(obj, key, FIELD_REQUIRED, 0, &v) || !(v >= lo && v <= hi) || v != (double)(int)v) {
+        return false;
+    }
+    *out = (uint8_t)v;
+    return true;
+}
+
+static bool parse_option(const cJSON *obj, proto_option_t *out)
+{
+    return cJSON_IsObject(obj) && get_str(obj, "label", FIELD_REQUIRED, out->label, sizeof(out->label)) &&
+           out->label[0] != '\0' && get_str(obj, "desc", FIELD_OPTIONAL, out->desc, sizeof(out->desc));
+}
+
+static bool parse_question(const cJSON *obj, proto_question_t *out)
+{
+    bool has_id;
+    if (!get_id(obj, FIELD_REQUIRED, &has_id, out->id) ||
+        !get_index(obj, "index", 0, PROTO_Q_MAX - 1, &out->index) ||
+        !get_index(obj, "count", 1, PROTO_Q_MAX, &out->count) || out->index >= out->count ||
+        !get_str(obj, "text", FIELD_REQUIRED, out->text, sizeof(out->text)) || out->text[0] == '\0' ||
+        !get_bool(obj, "multi", &out->multi) || !get_str(obj, "sid", FIELD_OPTIONAL, out->sid, sizeof(out->sid)) ||
+        !get_str(obj, "project", FIELD_OPTIONAL, out->project, sizeof(out->project)) ||
+        !get_timeout(obj, &out->timeout_ms)) {
+        return false;
+    }
+    /* A header that is not a string is no header (protocol 14.4); it never makes the frame invalid. */
+    const cJSON *header = cJSON_GetObjectItemCaseSensitive(obj, "header");
+    if (cJSON_IsString(header) && header->valuestring != NULL) {
+        text_utf8_truncate(out->header, sizeof(out->header), header->valuestring);
+    }
+    out->has_header = out->header[0] != '\0';
+    const cJSON *options = cJSON_GetObjectItemCaseSensitive(obj, "options");
+    const int n = cJSON_IsArray(options) ? cJSON_GetArraySize(options) : -1;
+    if (n < PROTO_Q_OPTIONS_MIN || n > PROTO_Q_OPTIONS_MAX) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (!parse_option(cJSON_GetArrayItem(options, i), &out->options[i])) {
+            return false;
+        }
+    }
+    out->n_options = (uint8_t)n;
+    return true;
+}
+
+static bool parse_plan(const cJSON *obj, proto_plan_t *out)
+{
+    bool has_id;
+    bool present;
+    bool whole = true;
+    double more;
+    if (!get_id(obj, FIELD_REQUIRED, &has_id, out->id) ||
+        !get_str_whole(obj, "title", out->title, sizeof(out->title), &present, &whole) ||
+        !get_num(obj, "more", FIELD_OPTIONAL, 0, &more) || !get_bool(obj, "cut", &out->cut) ||
+        !get_str(obj, "sid", FIELD_OPTIONAL, out->sid, sizeof(out->sid)) ||
+        !get_str(obj, "project", FIELD_OPTIONAL, out->project, sizeof(out->project)) ||
+        !get_timeout(obj, &out->timeout_ms)) {
+        return false;
+    }
+    out->cut = out->cut || !whole;
+    out->more = (uint16_t)clamp(more, 0, UINT16_MAX);
+    const cJSON *steps = cJSON_GetObjectItemCaseSensitive(obj, "steps");
+    if (steps == NULL) {
+        return true;
+    }
+    if (!cJSON_IsArray(steps)) {
+        return false;
+    }
+    const cJSON *step;
+    cJSON_ArrayForEach(step, steps)
+    {
+        if (!cJSON_IsString(step) || step->valuestring == NULL) {
+            return false;
+        }
+        if (out->n_steps == PROTO_PLAN_STEPS_MAX) {
+            if (out->more < UINT16_MAX) {
+                out->more++;
+            }
+            continue;
+        }
+        char *dst = out->steps[out->n_steps++];
+        text_utf8_truncate(dst, PROTO_PLAN_STEP_SIZE, step->valuestring);
+        out->cut = out->cut || strlen(step->valuestring) >= PROTO_PLAN_STEP_SIZE;
+    }
+    out->cut = out->cut || out->more > 0;
+    return true;
+}
+
+static bool parse_deadline(const cJSON *obj, proto_deadline_t *out)
+{
+    bool has_id;
+    return get_id(obj, FIELD_REQUIRED, &has_id, out->id) && get_timeout(obj, &out->timeout_ms);
+}
+
 static bool parse_body(const cJSON *root, proto_msg_t *out)
 {
     switch (out->type) {
@@ -480,6 +592,12 @@ static bool parse_body(const cJSON *root, proto_msg_t *out)
         return parse_mode(root, &out->u.mode);
     case PROTO_IDENTIFY:
         return parse_identify(root, &out->u.identify_ms);
+    case PROTO_QUESTION:
+        return parse_question(root, &out->u.question);
+    case PROTO_PLAN:
+        return parse_plan(root, &out->u.plan);
+    case PROTO_DEADLINE:
+        return parse_deadline(root, &out->u.deadline);
     }
     return false;
 }
@@ -671,6 +789,50 @@ int proto_write_decide(char *buf, size_t cap, const char *id, proto_choice_t cho
     put_str(&w, id);
     put(&w, ",\"choice\":");
     put_str(&w, CHOICE_NAMES[choice]);
+    put(&w, "}");
+    return finish(&w);
+}
+
+int proto_write_question_response(char *buf, size_t cap, const char *id, const proto_answer_t *answers, size_t count)
+{
+    if (!proto_id_is_valid(id) || answers == NULL || count == 0 || count > PROTO_Q_MAX) {
+        return -1;
+    }
+    writer_t w = begin(buf, cap);
+    put(&w, "{\"type\":\"question_response\",\"id\":");
+    put_str(&w, id);
+    put(&w, ",\"answers\":[");
+    for (size_t i = 0; i < count; i++) {
+        put(&w, i > 0 ? "," : "");
+        if (answers[i].no_preference) {
+            put(&w, "null");
+            continue;
+        }
+        if (answers[i].mask >> PROTO_Q_OPTIONS_MAX != 0) {
+            w.overflow = true;
+        }
+        put(&w, "[");
+        bool first = true;
+        for (unsigned bit = 0; bit < PROTO_Q_OPTIONS_MAX; bit++) {
+            if ((answers[i].mask & (1u << bit)) != 0) {
+                put_fmt(&w, first ? "%u" : ",%u", bit);
+                first = false;
+            }
+        }
+        put(&w, "]");
+    }
+    put(&w, "]}");
+    return finish(&w);
+}
+
+int proto_write_extend(char *buf, size_t cap, const char *id)
+{
+    if (!proto_id_is_valid(id)) {
+        return -1;
+    }
+    writer_t w = begin(buf, cap);
+    put(&w, "{\"type\":\"extend\",\"id\":");
+    put_str(&w, id);
     put(&w, "}");
     return finish(&w);
 }

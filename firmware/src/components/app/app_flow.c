@@ -8,6 +8,7 @@
 #include "pet_model.h"
 #include "pet_pose.h"
 #include "proto.h"
+#include "qstore.h"
 #include "reqq.h"
 #include "storage.h"
 #include "text.h"
@@ -16,12 +17,14 @@
 
 #include "esp_app_desc.h"
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "flow";
@@ -53,6 +56,8 @@ static const char *TAG = "flow";
 /* Everything below belongs to the app task, except s_view (guarded by s_view_lock). */
 
 static reqq_t s_q;
+/* Bodies of the questions and plans in s_q (and of calls still arriving); the slots live in PSRAM. */
+static qstore_t s_store;
 static pet_model_t s_pet;
 static char s_device_id[APP_DEVICE_ID_SIZE];
 static char s_tx[TX_SIZE];
@@ -265,28 +270,31 @@ static void schedule_ack(uint32_t now)
     s_ack_due = earliest(after(now, ACK_DEBOUNCE_MS), after(s_ack_first, ACK_MAX_DELAY_MS), now);
 }
 
+static bool request_screen(ui_screen_id_t screen)
+{
+    return screen == UI_SCREEN_APPROVAL || screen == UI_SCREEN_QUESTION || screen == UI_SCREEN_PLAN;
+}
+
 static bool is_visible_head(const reqq_entry_t *e, uint32_t now)
 {
-    return e == reqq_head(&s_q) && s_screen == UI_SCREEN_APPROVAL && !identify_active(now);
+    return e == reqq_head(&s_q) && request_screen(s_screen) && !identify_active(now);
+}
+
+/* Takes a request out of the queue and frees the body of a question or plan. */
+static void drop_request(const char *id)
+{
+    char copy[PROTO_ID_SIZE];
+    strlcpy(copy, id, sizeof(copy));
+    reqq_remove(&s_q, copy);
+    qstore_release(&s_store, copy);
 }
 
 /* ---- messages ---- */
 
-static void on_permission(const proto_permission_t *p, uint32_t now)
+/* A request joined the queue: it is named in `holding` soon, and the device buzzes once. */
+static void request_added(const char *id, uint32_t now)
 {
-    const reqq_add_t rc = reqq_add(&s_q, p, now);
-    switch (rc) {
-    case REQQ_DUPLICATE:
-        request_evt("add", p->id, "duplicate");
-        return;
-    case REQQ_FULL:
-        request_evt("add", p->id, "full");
-        ESP_LOGW(TAG, "queue full, request not shown");
-        return;
-    case REQQ_ADDED:
-        break;
-    }
-    request_evt("add", p->id, "new");
+    request_evt("add", id, "new");
     app_user_activity(now);
     if (s_identify_until != 0) {
         s_identify_until = 0;
@@ -303,6 +311,67 @@ static void on_permission(const proto_permission_t *p, uint32_t now)
     }
     schedule_ack(now);
     queue_changed(now);
+}
+
+static void on_permission(const proto_permission_t *p, uint32_t now)
+{
+    const reqq_add_t rc = reqq_add(&s_q, p, now);
+    switch (rc) {
+    case REQQ_DUPLICATE:
+        request_evt("add", p->id, "duplicate");
+        return;
+    case REQQ_FULL:
+        request_evt("add", p->id, "full");
+        ESP_LOGW(TAG, "queue full, request not shown");
+        return;
+    case REQQ_ADDED:
+        break;
+    }
+    request_added(p->id, now);
+}
+
+/*
+ * A frame of a question or plan went into the store. Only a complete request
+ * joins the queue (and so `holding`); one without a slot is never named and
+ * the server lets it go neutral or another consumer answers it (protocol 14.10).
+ */
+static void on_ask_frame(const char *id, qstore_rc_t rc, uint32_t now)
+{
+    if (rc != QSTORE_COMPLETE) {
+        request_evt(rc == QSTORE_PARTIAL ? "frame" : "add", id, qstore_rc_name(rc));
+        if (rc == QSTORE_FULL) {
+            ESP_LOGW(TAG, "question store full, request not shown");
+        }
+        return;
+    }
+    switch (reqq_add_slot(&s_q, qstore_find(&s_store, id))) {
+    case REQQ_ADDED:
+        request_added(id, now);
+        return;
+    case REQQ_DUPLICATE:
+        request_evt("add", id, "duplicate");
+        return;
+    case REQQ_FULL:
+        qstore_release(&s_store, id);
+        request_evt("add", id, "full");
+        return;
+    }
+}
+
+/* The server moved a question's or plan's deadline (protocol 14.6); an unknown id is ignored. */
+static void on_deadline(const proto_deadline_t *d, uint32_t now)
+{
+    if (!reqq_set_deadline(&s_q, d->id, d->timeout_ms, now)) {
+        return;
+    }
+    if (strcmp(d->id, s_card_id) == 0) {
+        card_fsm_set_deadline(&s_card, reqq_find(&s_q, d->id)->deadline_ms);
+    }
+    schedule_nag(now);
+    char evt[96];
+    snprintf(evt, sizeof(evt), "{\"evt\":\"deadline\",\"id\":\"%s\",\"timeout\":%lu}", d->id,
+             (unsigned long)d->timeout_ms);
+    console_evt(evt);
 }
 
 static const char *dismiss_reason_name(proto_dismiss_reason_t r)
@@ -361,6 +430,10 @@ static void on_dismiss(const proto_dismiss_t *d, uint32_t now)
 {
     reqq_entry_t *e = reqq_find(&s_q, d->id);
     if (e == NULL) {
+        /* A call still being assembled is over too: its slot is free for the next request at once. */
+        if (qstore_release(&s_store, d->id)) {
+            request_evt("remove", d->id, dismiss_reason_name(d->reason));
+        }
         return;
     }
     const bool visible = is_visible_head(e, now);
@@ -369,7 +442,7 @@ static void on_dismiss(const proto_dismiss_t *d, uint32_t now)
     /* Static: the entry is about to be overwritten by the queue shift, and the app task's stack is small. */
     static card_receipt_t r;
     card_receipt_dismiss(&r, d, ours, e);
-    reqq_remove(&s_q, d->id);
+    drop_request(d->id);
     request_evt("remove", d->id, dismiss_reason_name(d->reason));
     if (visible) {
         show_receipt(&r);
@@ -397,7 +470,7 @@ static void on_error(const proto_error_t *err, uint32_t now)
         return;
     }
     if (strcmp(err->code, "UNKNOWN_REQUEST") == 0) {
-        reqq_remove(&s_q, err->id);
+        drop_request(err->id);
         request_evt("remove", err->id, "unknown");
         app_toast("No longer pending");
         queue_changed(now);
@@ -489,6 +562,15 @@ void app_flow_on_message(const proto_msg_t *msg, uint32_t now)
     case PROTO_PERMISSION:
         on_permission(&msg->u.permission, now);
         break;
+    case PROTO_QUESTION:
+        on_ask_frame(msg->u.question.id, qstore_add_question(&s_store, &msg->u.question, now), now);
+        break;
+    case PROTO_PLAN:
+        on_ask_frame(msg->u.plan.id, qstore_add_plan(&s_store, &msg->u.plan, now), now);
+        break;
+    case PROTO_DEADLINE:
+        on_deadline(&msg->u.deadline, now);
+        break;
     case PROTO_DISMISS:
         on_dismiss(&msg->u.dismiss, now);
         break;
@@ -510,6 +592,8 @@ void app_flow_on_message(const proto_msg_t *msg, uint32_t now)
 
 void app_flow_on_link_lost(uint32_t now)
 {
+    /* Calls still arriving are resent whole after the next register_ack (protocol 14.4). */
+    qstore_clear(&s_store);
     if (reqq_count(&s_q) == 0) {
         return;
     }
@@ -545,8 +629,57 @@ static ui_tab_btn_t tab_of(btn_id_t id)
     return UI_TAB_APPROVE;
 }
 
-/* The frame of a decision; -1 for none. */
-static int write_decision(card_decision_t d, const char *id, const char **type, char *extra, size_t extra_cap)
+static proto_choice_t decide_choice(card_decision_t d)
+{
+    switch (d) {
+    case CARD_DECISION_ALLOW_SESSION:
+        return PROTO_CHOICE_ALLOW_SESSION;
+    case CARD_DECISION_DENY_ASK_WHY:
+        return PROTO_CHOICE_DENY_ASK_WHY;
+    case CARD_DECISION_DENY_STOP:
+        return PROTO_CHOICE_DENY_STOP;
+    case CARD_DECISION_DECLINE:
+        return PROTO_CHOICE_DECLINE;
+    case CARD_DECISION_APPROVE:
+        return PROTO_CHOICE_APPROVE;
+    case CARD_DECISION_APPROVE_EDITS:
+        return PROTO_CHOICE_APPROVE_ACCEPT_EDITS;
+    case CARD_DECISION_REVISE:
+        return PROTO_CHOICE_REVISE;
+    default:
+        break;
+    }
+    return PROTO_CHOICE_NONE;
+}
+
+/* `[[0],[1,3],null]` for the console event; the frame itself comes from proto_write_question_response(). */
+static void answers_json(char *dst, size_t cap, const proto_answer_t *a, size_t n)
+{
+    size_t len = (size_t)snprintf(dst, cap, "[");
+    for (size_t i = 0; i < n && len < cap; i++) {
+        len += (size_t)snprintf(dst + len, cap - len, "%s", i > 0 ? "," : "");
+        if (a[i].no_preference) {
+            len += (size_t)snprintf(dst + len, cap - len, "null");
+            continue;
+        }
+        len += (size_t)snprintf(dst + len, cap - len, "[");
+        bool first = true;
+        for (unsigned bit = 0; bit < PROTO_Q_OPTIONS_MAX && len < cap; bit++) {
+            if ((a[i].mask & (1u << bit)) != 0) {
+                len += (size_t)snprintf(dst + len, cap - len, first ? "%u" : ",%u", bit);
+                first = false;
+            }
+        }
+        len += len < cap ? (size_t)snprintf(dst + len, cap - len, "]") : 0;
+    }
+    if (len < cap) {
+        snprintf(dst + len, cap - len, "]");
+    }
+}
+
+/* The frame of a decision; -1 for none. answers: the question_response answers (n of them). */
+static int write_decision(card_decision_t d, const char *id, const proto_answer_t *answers, size_t n,
+                          const char **type, char *extra, size_t extra_cap)
 {
     switch (d) {
     case CARD_DECISION_ALLOW:
@@ -559,12 +692,25 @@ static int write_decision(card_decision_t d, const char *id, const char **type, 
         *type = "permission_defer";
         snprintf(extra, extra_cap, ",\"id\":\"%s\"", id);
         return proto_write_permission_defer(s_tx, sizeof(s_tx), id);
+    case CARD_DECISION_ANSWER:
+    case CARD_DECISION_NO_PREFERENCE: {
+        if (n == 0) {
+            return -1;
+        }
+        char json[64];
+        answers_json(json, sizeof(json), answers, n);
+        *type = "question_response";
+        snprintf(extra, extra_cap, ",\"id\":\"%s\",\"answers\":%s", id, json);
+        return proto_write_question_response(s_tx, sizeof(s_tx), id, answers, n);
+    }
     case CARD_DECISION_ALLOW_SESSION:
     case CARD_DECISION_DENY_ASK_WHY:
-    case CARD_DECISION_DENY_STOP: {
-        const proto_choice_t choice = d == CARD_DECISION_ALLOW_SESSION ? PROTO_CHOICE_ALLOW_SESSION
-                                      : d == CARD_DECISION_DENY_ASK_WHY ? PROTO_CHOICE_DENY_ASK_WHY
-                                                                        : PROTO_CHOICE_DENY_STOP;
+    case CARD_DECISION_DENY_STOP:
+    case CARD_DECISION_DECLINE:
+    case CARD_DECISION_APPROVE:
+    case CARD_DECISION_APPROVE_EDITS:
+    case CARD_DECISION_REVISE: {
+        const proto_choice_t choice = decide_choice(d);
         *type = "decide";
         snprintf(extra, extra_cap, ",\"id\":\"%s\",\"choice\":\"%s\"", id, proto_choice_name(choice));
         return proto_write_decide(s_tx, sizeof(s_tx), id, choice);
@@ -576,22 +722,47 @@ static int write_decision(card_decision_t d, const char *id, const char **type, 
 }
 
 /*
+ * What the entry itself forbids, checked again next to the serialiser: a
+ * session grant needs a whole command with a grant; a plan approval needs
+ * every step on the device, and accepting all edits needs the whole plan.
+ */
+static bool entry_refuses(const reqq_entry_t *e, card_decision_t d)
+{
+    const bool plan = e->kind == REQQ_PLAN && e->slot != NULL;
+    switch (d) {
+    case CARD_DECISION_ALLOW_SESSION:
+        return e->kind != REQQ_PERMISSION || !e->has_grant || e->cut;
+    case CARD_DECISION_APPROVE:
+        return !plan || e->slot->u.plan.more > 0;
+    case CARD_DECISION_APPROVE_EDITS:
+        return !plan || e->slot->u.plan.more > 0 || e->slot->u.plan.cut;
+    case CARD_DECISION_ANSWER:
+    case CARD_DECISION_NO_PREFERENCE:
+    case CARD_DECISION_DECLINE:
+        return e->kind != REQQ_QUESTION;
+    default:
+        return false;
+    }
+}
+
+/*
  * The only way a decision reaches the wire. The card's own check runs again
- * here, next to the serialiser: a session grant needs a grant in the entry, a
- * whole command and every page shown; nothing goes out for a sent or expired card.
+ * here, next to the serialiser, with the entry's: nothing goes out for a sent
+ * or expired card, before the reading is done, or for a choice the request does not allow.
  */
 static void send_decision(reqq_entry_t *e, card_decision_t d, uint32_t now)
 {
-    if (strcmp(e->id, s_card_id) != 0 || !card_fsm_may_send(&s_card, d, now) ||
-        (d == CARD_DECISION_ALLOW_SESSION && (!e->has_grant || e->cut))) {
+    if (strcmp(e->id, s_card_id) != 0 || !card_fsm_may_send(&s_card, d, now) || entry_refuses(e, d)) {
         ESP_LOGW(TAG, "decision %s refused for the card on screen", card_decision_name(d));
         return;
     }
     char id[PROTO_ID_SIZE];
     memcpy(id, e->id, sizeof(id));
+    proto_answer_t answers[PROTO_Q_MAX];
+    const size_t n = card_fsm_answers(&s_card, d, answers);
     const char *type = "";
-    char extra[96];
-    const int len = write_decision(d, id, &type, extra, sizeof(extra));
+    char extra[160];
+    const int len = write_decision(d, id, answers, n, &type, extra, sizeof(extra));
     const bool sent = len > 0 && app_link_send(now, type, s_tx, len, extra);
     /* A failed send can take the link down, and the link loss empties the queue. */
     reqq_entry_t *still = reqq_find(&s_q, id);
@@ -601,6 +772,8 @@ static void send_decision(reqq_entry_t *e, card_decision_t d, uint32_t now)
     if (sent) {
         still->answered = true;
         still->answered_ms = now;
+        still->n_answers = (uint8_t)n;
+        memcpy(still->answers, answers, n * sizeof(answers[0]));
         card_fsm_set_sent(&s_card, true);
         schedule_nag(now);
     } else {
@@ -610,11 +783,21 @@ static void send_decision(reqq_entry_t *e, card_decision_t d, uint32_t now)
 
 static void card_evt(const char *what)
 {
-    char evt[128];
-    snprintf(evt, sizeof(evt), "{\"evt\":\"card\",\"op\":\"%s\",\"view\":\"%s\",\"page\":%u,\"row\":\"%s\"}", what,
-             s_card.view == CARD_VIEW_MENU ? "menu" : "card", s_card.page + 1,
-             card_row_name(card_fsm_focused_row(&s_card)));
+    char evt[160];
+    snprintf(evt, sizeof(evt),
+             "{\"evt\":\"card\",\"op\":\"%s\",\"view\":\"%s\",\"page\":%u,\"row\":\"%s\",\"question\":%u,"
+             "\"opt\":%u}",
+             what, card_view_name(s_card.view), s_card.page + 1, card_row_name(card_fsm_focused_row(&s_card)),
+             s_card.q + 1, s_card.opt);
     console_evt(evt);
+}
+
+/* A press on a question or plan keeps it alive while someone is reading (protocol 14.6). */
+static void send_extend(const char *id, uint32_t now)
+{
+    char extra[48];
+    snprintf(extra, sizeof(extra), ",\"id\":\"%s\"", id);
+    app_link_send(now, "extend", s_tx, proto_write_extend(s_tx, sizeof(s_tx), id), extra);
 }
 
 static void on_card_out(reqq_entry_t *e, const card_out_t *o, uint32_t now)
@@ -639,6 +822,15 @@ static void on_card_out(reqq_entry_t *e, const card_out_t *o, uint32_t now)
         app_btn_arm(now, o->arm_ms);
         card_evt(o->kind == CARD_OUT_MENU_OPEN ? "menu" : "back");
         return;
+    case CARD_OUT_VIEW:
+        play(FB_SEQ_CLICK, 0);
+        app_btn_arm(now, o->arm_ms);
+        card_evt("view");
+        return;
+    case CARD_OUT_TICK:
+        play(FB_SEQ_CLICK, 0);
+        card_evt("tick");
+        return;
     case CARD_OUT_SHAKE:
         play(FB_SEQ_CLICK, 0);
         ui_tabs_shake(tab_of(o->btn));
@@ -646,12 +838,12 @@ static void on_card_out(reqq_entry_t *e, const card_out_t *o, uint32_t now)
         return;
     case CARD_OUT_NUDGE: {
         /* A click on a hold-only tab only explains the hold (design-system 5). */
+        const char *text = s_card.kind == REQQ_PLAN && o->btn == BTN_APPROVE ? "Hold to approve" : NUDGE_TEXT[o->btn];
         play(FB_SEQ_CLICK, 0);
         ui_tabs_hold_progress(tab_of(o->btn), 0);
-        ui_tabs_nudge(tab_of(o->btn), NUDGE_TEXT[o->btn]);
+        ui_tabs_nudge(tab_of(o->btn), text);
         char evt[96];
-        snprintf(evt, sizeof(evt), "{\"evt\":\"nudge\",\"btn\":\"%s\",\"text\":\"%s\"}", btn_id_name(o->btn),
-                 NUDGE_TEXT[o->btn]);
+        snprintf(evt, sizeof(evt), "{\"evt\":\"nudge\",\"btn\":\"%s\",\"text\":\"%s\"}", btn_id_name(o->btn), text);
         console_evt(evt);
         return;
     }
@@ -670,7 +862,13 @@ static void on_approval_button(const btn_fsm_out_t *out, uint32_t now)
         return;
     }
     const card_out_t o = card_fsm_button(&s_card, out, now);
-    on_card_out(e, &o, now);
+    if (o.extend) {
+        send_extend(e->id, now);
+    }
+    /* A failed send can take the link down and empty the queue. */
+    if (reqq_find(&s_q, s_card_id) == e) {
+        on_card_out(e, &o, now);
+    }
 }
 
 static void pet_evt(ui_pet_reaction_t r)
@@ -751,7 +949,7 @@ btn_mode_t app_flow_btn_mode(btn_id_t id, uint32_t now)
     if (s_attention || identify_active(now)) {
         return BTN_MODE_CLICK;
     }
-    if (s_screen == UI_SCREEN_APPROVAL) {
+    if (request_screen(s_screen)) {
         return s_card_id[0] != '\0' ? card_fsm_mode(&s_card, id, now) : BTN_MODE_NONE;
     }
     /* Home: REJECT hold toggles desk mode, ACTION hold opens Settings. */
@@ -766,7 +964,7 @@ bool app_flow_card_visible(void)
 bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
 {
     if (out->kind == BTN_PROGRESS) {
-        if (s_screen == UI_SCREEN_APPROVAL) {
+        if (request_screen(s_screen)) {
             on_approval_button(out, now);
         }
         return true;
@@ -787,7 +985,7 @@ bool app_flow_on_button(const btn_fsm_out_t *out, uint32_t now)
         }
         return true;
     }
-    if (s_screen == UI_SCREEN_APPROVAL) {
+    if (request_screen(s_screen)) {
         on_approval_button(out, now);
         return true;
     }
@@ -821,7 +1019,11 @@ static void run_deadlines(uint32_t now)
     }
     char id[PROTO_ID_SIZE];
     bool expired = false;
+    while (qstore_expire(&s_store, now, id)) {
+        request_evt("remove", id, "incomplete");
+    }
     while (reqq_expire(&s_q, now, id)) {
+        qstore_release(&s_store, id);
         request_evt("remove", id, "expired");
         expired = true;
         if (s_card_visible && strcmp(id, s_card_id) == 0) {
@@ -877,12 +1079,15 @@ void app_flow_arm_timer(uint32_t now)
     if (reqq_next_deadline(&s_q, now, &deadline)) {
         at = earliest(at, deadline, now);
     }
+    if (qstore_next_expiry(&s_store, now, &deadline)) {
+        at = earliest(at, deadline, now);
+    }
     for (size_t i = 0; i < s_q.count; i++) {
         if (s_q.entries[i].answered) {
             at = earliest(at, after(s_q.entries[i].answered_ms, CONFIRM_MS), now);
         }
     }
-    if (s_screen == UI_SCREEN_APPROVAL && reqq_count(&s_q) > 0) {
+    if (request_screen(s_screen) && reqq_count(&s_q) > 0) {
         at = earliest(at, after(now, BAR_REFRESH_MS), now);
     }
     /* The tabs turn active when the arming delay ends. */
@@ -1022,6 +1227,7 @@ static void render_approval(const reqq_entry_t *e, const card_fsm_t *c, bool arm
     view->request.cut = e->cut;
     view->request.decide = c->decide;
     view->request.menu = c->view == CARD_VIEW_MENU;
+    view->request.view = c->view;
     view->request.allow = a.allow;
     view->request.session = a.session;
     view->request.rows = a.rows;
@@ -1029,11 +1235,146 @@ static void render_approval(const reqq_entry_t *e, const card_fsm_t *c, bool arm
     view->request.cursor = c->cursor;
 }
 
+static void remaining(const reqq_entry_t *e, uint32_t now, uint16_t *permille, uint16_t *seconds)
+{
+    const int32_t left = (int32_t)(e->deadline_ms - now);
+    *permille = 0;
+    if (left > 0 && e->timeout_ms > 0) {
+        const uint64_t p = (uint64_t)left * 1000 / e->timeout_ms;
+        *permille = p > 1000 ? 1000 : (uint16_t)p;
+    }
+    *seconds = (uint16_t)(left > 0 ? (left + 999) / 1000 : 0);
+}
+
+static void view_common(const reqq_entry_t *e, const card_fsm_t *c, bool armed, app_flow_view_t *view)
+{
+    view->has_request = true;
+    view->request.kind = e->kind;
+    strlcpy(view->request.id, e->id, sizeof(view->request.id));
+    strlcpy(view->request.tool, e->tool, sizeof(view->request.tool));
+    view->request.position = 1;
+    view->request.count = (uint8_t)reqq_count(&s_q);
+    view->request.page = (uint8_t)(c->page + 1);
+    view->request.pages = c->pages;
+    view->request.seen = c->seen;
+    view->request.deadline_ms = e->deadline_ms;
+    view->request.answered = e->answered;
+    view->request.armed = armed;
+    view->request.cut = c->cut;
+    view->request.menu = c->view == CARD_VIEW_MENU;
+    view->request.view = c->view;
+    view->request.allow = card_fsm_allow(c);
+    view->request.session = card_fsm_session(c);
+    view->request.rows = card_fsm_rows(c, view->request.row);
+    view->request.cursor = c->cursor;
+}
+
+static void render_question(const reqq_entry_t *e, const card_fsm_t *c, bool armed, uint32_t now,
+                            app_flow_view_t *view)
+{
+    /* Static: the answers in words for the review are too large for the app task's stack. */
+    static char labels[PROTO_Q_MAX][24];
+    static char answers[PROTO_Q_MAX][PROTO_Q_OPTIONS_MAX * PROTO_Q_LABEL_SIZE];
+    const qstore_question_t *q = &e->slot->u.q[c->q];
+    const bool answered = (c->answered & (1u << c->q)) != 0;
+    ui_question_t u = {
+        .view = c->view,
+        .header = q->has_header ? q->header : "",
+        .text = q->text,
+        .index = (uint8_t)(c->q + 1),
+        .count = c->q_count,
+        .page = (uint8_t)(c->page + 1),
+        .pages = c->pages,
+        .read_first = c->read_pages[c->q] > 0,
+        .n_options = q->n_options,
+        .multi = q->multi,
+        .opt = c->opt,
+        .cursor = c->cursor,
+        .armed = armed,
+        .sent = e->answered,
+    };
+    remaining(e, now, &u.remaining_permille, &u.remaining_s);
+    for (uint8_t i = 0; i < q->n_options && i < PROTO_Q_OPTIONS_MAX; i++) {
+        const bool bit = (c->mask[c->q] & (1u << i)) != 0;
+        u.labels[i] = q->options[i].label;
+        u.descs[i] = q->options[i].desc;
+        if (q->multi) {
+            u.marks[i] = bit ? UI_OPT_TICKED : UI_OPT_BOX;
+            u.ticked += bit ? 1 : 0;
+        } else {
+            u.marks[i] = answered && bit ? UI_OPT_CHOSEN : UI_OPT_PLAIN;
+        }
+    }
+    if (c->view == CARD_VIEW_REVIEW) {
+        u.answers = c->q_count;
+        for (uint8_t i = 0; i < c->q_count; i++) {
+            const qstore_question_t *qi = &e->slot->u.q[i];
+            if (qi->has_header) {
+                strlcpy(labels[i], qi->header, sizeof(labels[i]));
+            } else {
+                snprintf(labels[i], sizeof(labels[i]), "Question %u", i + 1);
+            }
+            const proto_answer_t a = {.mask = c->mask[i]};
+            card_answer_text(answers[i], sizeof(answers[i]), qi, &a);
+            u.review_label[i] = labels[i];
+            u.review_answer[i] = answers[i];
+        }
+    }
+    ui_question_set(&u);
+
+    view_common(e, c, armed, view);
+    strlcpy(view->request.summary, q->text, sizeof(view->request.summary));
+    view->request.question = (uint8_t)(c->q + 1);
+    view->request.questions = c->q_count;
+    view->request.options = q->n_options;
+    view->request.multi = q->multi;
+    view->request.opt = c->opt;
+    view->request.mask = c->mask[c->q];
+    view->request.done = c->answered;
+}
+
+static void render_plan(const reqq_entry_t *e, const card_fsm_t *c, bool armed, uint32_t now, app_flow_view_t *view)
+{
+    const qstore_plan_t *p = &e->slot->u.plan;
+    ui_plan_t u = {
+        .view = c->view,
+        .title = p->title,
+        .steps = p->steps,
+        .n_steps = p->n_steps,
+        .page = (uint8_t)(c->page + 1),
+        .pages = c->pages,
+        .more = p->more,
+        .cut = p->cut,
+        .project = e->project,
+        .approve = card_fsm_allow(c),
+        .edits = card_fsm_session(c),
+        .cursor = c->cursor,
+        .armed = armed,
+        .sent = e->answered,
+    };
+    remaining(e, now, &u.remaining_permille, &u.remaining_s);
+    u.rows = card_fsm_rows(c, u.row);
+    ui_plan_set(&u);
+
+    view_common(e, c, armed, view);
+    strlcpy(view->request.summary, p->title, sizeof(view->request.summary));
+    view->request.steps = p->n_steps;
+    view->request.more = p->more;
+}
+
 /* A card for the head request: opened when the head changes, armed whenever it comes on screen. */
 static void show_card(const reqq_entry_t *head, uint32_t now)
 {
     if (strcmp(head->id, s_card_id) != 0) {
-        card_fsm_open(&s_card, head, (app_link_server_caps() & PROTO_CAP_DECIDE) != 0);
+        if (head->kind == REQQ_PERMISSION) {
+            card_fsm_open(&s_card, head, (app_link_server_caps() & PROTO_CAP_DECIDE) != 0);
+        } else {
+            uint16_t lines[PROTO_Q_MAX] = {0};
+            for (uint8_t i = 0; head->kind == REQQ_QUESTION && i < head->slot->count && i < PROTO_Q_MAX; i++) {
+                lines[i] = ui_question_lines(head->slot->u.q[i].text);
+            }
+            card_fsm_open_ask(&s_card, head, lines, app_link_server_caps());
+        }
         card_fsm_set_sent(&s_card, head->answered);
         strlcpy(s_card_id, head->id, sizeof(s_card_id));
         ui_tabs_hold_progress(UI_TAB_APPROVE, 0);
@@ -1169,8 +1510,22 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
         screen = UI_SCREEN_IDENTIFY;
     } else if (head != NULL) {
         show_card(head, now);
-        render_approval(head, &s_card, app_btn_armed(now), 1, (uint8_t)reqq_count(&s_q), now, &view);
-        screen = UI_SCREEN_APPROVAL;
+        const bool armed = app_btn_armed(now);
+        switch (head->kind) {
+        case REQQ_QUESTION:
+            render_question(head, &s_card, armed, now, &view);
+            screen = UI_SCREEN_QUESTION;
+            break;
+        case REQQ_PLAN:
+            render_plan(head, &s_card, armed, now, &view);
+            screen = UI_SCREEN_PLAN;
+            break;
+        case REQQ_PERMISSION:
+        default:
+            render_approval(head, &s_card, armed, 1, (uint8_t)reqq_count(&s_q), now, &view);
+            screen = UI_SCREEN_APPROVAL;
+            break;
+        }
     } else {
         hide_card(now);
         ui_pet_set(s_pet.project, s_pet.mood, s_pet.status);
@@ -1188,6 +1543,12 @@ ui_screen_id_t app_flow_render(uint32_t now, const char *offline_banner, app_flo
 
 esp_err_t app_flow_init(void)
 {
+    qstore_slot_t *slots = heap_caps_calloc(QSTORE_SLOTS, sizeof(qstore_slot_t), MALLOC_CAP_SPIRAM);
+    if (slots == NULL) {
+        slots = calloc(QSTORE_SLOTS, sizeof(qstore_slot_t));
+    }
+    ESP_RETURN_ON_FALSE(slots != NULL, ESP_ERR_NO_MEM, TAG, "question store");
+    qstore_init(&s_store, slots);
     reqq_init(&s_q);
     pet_model_init(&s_pet);
     pet_pokes_init(&s_pokes);

@@ -23,6 +23,8 @@ typedef enum {
     UI_SCREEN_PAIRING,
     UI_SCREEN_PET,
     UI_SCREEN_APPROVAL,
+    UI_SCREEN_QUESTION,
+    UI_SCREEN_PLAN,
     UI_SCREEN_SETTINGS,
     UI_SCREEN_IDENTIFY,
     UI_SCREEN_LOWBATT,
@@ -356,6 +358,82 @@ typedef struct {
 /** Approval card; the content is updated in place. */
 void ui_approval_set(const ui_approval_t *a);
 
+
+/** How an option of a question is marked. */
+typedef enum {
+    UI_OPT_PLAIN,
+    /** The earlier choice of a single-choice question, after Back (mint check). */
+    UI_OPT_CHOSEN,
+    /** A multi-select option, not ticked and ticked. */
+    UI_OPT_BOX,
+    UI_OPT_TICKED,
+} ui_opt_mark_t;
+
+/** A question card (30-35), its read page (33), the question menu (36) or the review (37). Text is device text. */
+typedef struct {
+    card_view_t view;
+    /** The question's header, shown in caps; NULL or "" for none. */
+    const char *header;
+    const char *text;
+    /** 1-based position of the question and the call's question count. */
+    uint8_t index;
+    uint8_t count;
+    uint16_t remaining_permille;
+    uint16_t remaining_s;
+    /** Read page: 1-based page and page count. */
+    uint8_t page;
+    uint8_t pages;
+    /** The question had a read page: one line of it above the options. */
+    bool read_first;
+    uint8_t n_options;
+    bool multi;
+    const char *labels[PROTO_Q_OPTIONS_MAX];
+    const char *descs[PROTO_Q_OPTIONS_MAX];
+    ui_opt_mark_t marks[PROTO_Q_OPTIONS_MAX];
+    /** Multi-select: options ticked, for the send row. */
+    uint8_t ticked;
+    /** Focused row: an option, or n_options for the send row. */
+    uint8_t opt;
+    /** Focused row of the question menu. */
+    uint8_t cursor;
+    /** Review: one well per question, its header (or "Question n") and the answer in words. */
+    uint8_t answers;
+    const char *review_label[PROTO_Q_MAX];
+    const char *review_answer[PROTO_Q_MAX];
+    bool armed;
+    bool sent;
+} ui_question_t;
+
+void ui_question_set(const ui_question_t *q);
+
+/** Lines text takes in the body font across the card, for card_fsm_open_ask(). */
+uint16_t ui_question_lines(const char *text);
+
+/** The plan card (29) or the plan menu (29b). Text is device text. */
+typedef struct {
+    card_view_t view;
+    const char *title;
+    const char (*steps)[PROTO_PLAN_STEP_SIZE];
+    uint8_t n_steps;
+    /** 1-based page of CARD_PLAN_STEPS steps, and the page count. */
+    uint8_t page;
+    uint8_t pages;
+    uint16_t more;
+    bool cut;
+    const char *project;
+    uint16_t remaining_permille;
+    uint16_t remaining_s;
+    card_allow_t approve;
+    /** The "Approve, accept all edits" row. */
+    card_session_t edits;
+    uint8_t rows;
+    card_row_t row[CARD_MENU_ROWS];
+    uint8_t cursor;
+    bool armed;
+    bool sent;
+} ui_plan_t;
+
+void ui_plan_set(const ui_plan_t *p);
 
 void ui_identify_set(const char *name);
 
