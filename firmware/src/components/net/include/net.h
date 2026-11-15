@@ -36,6 +36,8 @@ typedef enum {
     NET_JOB_PAIR_START,
     NET_JOB_PAIR_POLL,
     NET_JOB_HEALTH,
+    /** GET /api/pets/<arg>/pack with the token into the pack buffer (net_pet_body). */
+    NET_JOB_PET_FETCH,
 } net_job_kind_t;
 
 /** Outcome of an HTTP job. Fields the response did not carry are zero or empty. */
@@ -54,7 +56,14 @@ typedef struct {
     char name[NET_NAME_SIZE];
     char code[NET_CODE_SIZE];
     char secret[NET_SECRET_SIZE];
+    /** NET_JOB_PET_FETCH: the Content-Length header (-1 absent or chunked), bytes read, and whether the read ended cleanly. */
+    int32_t content_length;
+    size_t pet_len;
+    bool pet_complete;
 } net_job_result_t;
+
+/** Body of the last NET_JOB_PET_FETCH; valid until the next pet fetch is submitted. */
+const uint8_t *net_pet_body(void);
 
 typedef enum {
     NET_EV_WIFI_GOT_IP,

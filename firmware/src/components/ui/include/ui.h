@@ -26,6 +26,7 @@ typedef enum {
     UI_SCREEN_QUESTION,
     UI_SCREEN_PLAN,
     UI_SCREEN_SETTINGS,
+    UI_SCREEN_PICKER,
     UI_SCREEN_IDENTIFY,
     UI_SCREEN_LOWBATT,
     UI_SCREEN_COUNT,
@@ -256,31 +257,37 @@ typedef enum {
 
 void ui_about_set(const char *const values[UI_ABOUT_COUNT]);
 
-typedef enum {
-    UI_PET_REACT_NONE,
-    /** Happy arc eyes for 1.5 s. */
-    UI_PET_REACT_PAT,
-    /** Squish and squint for 600 ms. */
-    UI_PET_REACT_POKE,
-    /** Spiral eyes for 2 s. */
-    UI_PET_REACT_DIZZY,
-} ui_pet_reaction_t;
-
-const char *ui_pet_reaction_name(ui_pet_reaction_t r);
-
-void ui_pet_react(ui_pet_reaction_t r);
+/** Plays a reaction on the home pet (pet_pose.h); PET_REACT_NONE ends a running one (attention). */
+void ui_pet_react(pet_react_t r);
 
 /** Lets the face animate (the power stage is active); false stops every animation timer. */
 void ui_pet_set_running(bool running);
 
-/** Frozen: no blink, bob, glance or jitter, and mood changes land at once (reproducible screenshots). */
+/** Frozen: no blink, bob, glance, jitter or oscillators, mood changes land at once, a reaction holds its key pose. */
 void ui_pet_freeze(bool frozen);
 
+/**
+ * The pet every view draws from now on (home, picker and start-up screens
+ * copy it). def is copied; NULL is ignored.
+ */
+void ui_pet_set_def(const pet_def_t *def);
+
+/** Rig scale of the home pet in sixteenths (debug; 15 is the design). */
+void ui_pet_set_scale(uint8_t sixteenths);
+
+/** Outline mode of the home pet (the night clock's look). */
+void ui_pet_set_outline(bool on);
+
 typedef struct {
+    char id[PET_PACK_ID_LEN + 1];
     proto_mood_t mood;
-    /** The pose the mood tween is at. */
+    /** The pose the mood tween is at, before a reaction. */
     pet_pose_t pose;
     uint16_t tween_permille;
+    uint32_t color;
+    /** Aux channels as the move drivers see them (tween, reaction and oscillators) and as the show drivers do. */
+    int16_t aux[PET_PACK_AUX_COUNT];
+    int16_t aux_sel[PET_PACK_AUX_COUNT];
     /** What is drawn: eye openness after blink and reaction, pupils with the glance, offsets in pixels. */
     int16_t eye_open;
     int16_t pupil_dx;
@@ -288,15 +295,39 @@ typedef struct {
     int16_t bob_px;
     int16_t jitter_px;
     bool blinking;
-    ui_pet_reaction_t reaction;
+    pet_react_t reaction;
     bool frozen;
+    bool outline;
+    uint8_t scale;
     /** The animation timer runs (pet page on screen and the stage allows it). */
     bool animating;
+    /** Draw items and how many changed in the last frame. */
+    uint16_t items;
+    uint16_t dirty;
+    /** The view runs at 15 fps because frames missed the budget. */
+    bool slow;
 } ui_pet_state_t;
 
 void ui_pet_get_state(ui_pet_state_t *out);
 
-#define UI_SETTINGS_ROWS        10
+/** Stored pets the picker can page through (PET_STORE_SLOTS). */
+#define UI_PICKER_STORED_MAX  8
+
+/** One page of the pet picker (60-62); def NULL is the "More pets" page. Strings must outlive the call. */
+typedef struct {
+    const pet_def_t *def;
+    const char *line;
+    bool in_use;
+    /** APPROVE shows "Use" (not on the pet in use). */
+    bool can_use;
+    uint8_t page;
+    uint8_t pages;
+} ui_picker_t;
+
+/** def is copied into the picker's view. */
+void ui_picker_set(const ui_picker_t *p);
+
+#define UI_SETTINGS_ROWS        11
 #define UI_SETTINGS_VALUE_SIZE  16
 
 typedef struct {

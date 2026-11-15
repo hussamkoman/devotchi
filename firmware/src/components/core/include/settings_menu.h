@@ -17,6 +17,8 @@ typedef enum {
     SETTINGS_ROW_HAPTICS,
     SETTINGS_ROW_LED,
     SETTINGS_ROW_MODE,
+    /** Opens the pet picker (60-62). */
+    SETTINGS_ROW_PET,
     SETTINGS_ROW_WIFI_SETUP,
     SETTINGS_ROW_UNPAIR,
     SETTINGS_ROW_FACTORY_RESET,
@@ -25,7 +27,7 @@ typedef enum {
 } settings_row_t;
 
 /** Rows before this one carry a value; the rest are actions. */
-#define SETTINGS_VALUE_ROWS  SETTINGS_ROW_WIFI_SETUP
+#define SETTINGS_VALUE_ROWS  SETTINGS_ROW_PET
 
 /** Mode row values. */
 #define SETTINGS_MODE_ASK   0

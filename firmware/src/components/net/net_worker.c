@@ -54,6 +54,9 @@ static void run_http_job(const net_job_t *job)
         case NET_JOB_HEALTH:
             pairing_health(&server, &s_result);
             break;
+        case NET_JOB_PET_FETCH:
+            pet_fetch(&server, job->arg, job->token, &s_result);
+            break;
         case NET_JOB_WS_STOP:
             break;
         }

@@ -3,6 +3,7 @@
 #include "unity.h"
 
 #include <stdbool.h>
+#include <string.h>
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -19,15 +20,10 @@ static uint32_t prng(void *ctx)
     return x;
 }
 
-/* Field by field: the struct has padding that lerp leaves undefined. */
+/* pet_pose_t is an array of int16_t channels without padding. */
 static bool same_pose(const pet_pose_t *a, const pet_pose_t *b)
 {
-    return a->eye_open == b->eye_open && a->eye_size == b->eye_size && a->pupil_size == b->pupil_size &&
-           a->pupil_dx == b->pupil_dx && a->pupil_dy == b->pupil_dy && a->brow_angle == b->brow_angle &&
-           a->mouth_curve == b->mouth_curve && a->mouth_open == b->mouth_open && a->bob_amp_px == b->bob_amp_px &&
-           a->bob_period_ms == b->bob_period_ms && a->blink_min_ms == b->blink_min_ms &&
-           a->blink_max_ms == b->blink_max_ms && a->jitter_px == b->jitter_px && a->body_color == b->body_color &&
-           a->accessory == b->accessory && a->glance == b->glance;
+    return memcmp(a, b, sizeof(*a)) == 0;
 }
 
 static uint32_t fixed_rand(void *ctx)
@@ -47,7 +43,6 @@ static void test_every_mood_has_a_distinct_pose(void)
         TEST_ASSERT_TRUE(p->pupil_dx >= -100 && p->pupil_dx <= 100 && p->pupil_dy >= -100 && p->pupil_dy <= 100);
         TEST_ASSERT_TRUE(p->bob_period_ms > 0);
         TEST_ASSERT_TRUE(p->accessory < PET_ACC_COUNT);
-        TEST_ASSERT_NOT_EQUAL(0, p->body_color);
         for (int o = 0; o < m; o++) {
             TEST_ASSERT_FALSE_MESSAGE(same_pose(p, pet_pose_for_mood((proto_mood_t)o)),
                                      "two moods share a pose");
@@ -76,7 +71,12 @@ static void test_moods_match_their_description(void)
     TEST_ASSERT_EQUAL(PET_ACC_SPARKLES, pet_pose_for_mood(MOOD_PROUD)->accessory);
     TEST_ASSERT_TRUE(pet_pose_for_mood(MOOD_PROUD)->pupil_dy < 0);
     TEST_ASSERT_EQUAL(PET_GLANCE_OFF, pet_pose_for_mood(MOOD_FOCUSED)->glance);
-    TEST_ASSERT_TRUE(pet_pose_for_mood(MOOD_FOCUSED)->eye_open < 50);
+    TEST_ASSERT_EQUAL(0, pet_pose_for_mood(MOOD_FOCUSED)->lid);
+    TEST_ASSERT_TRUE(pet_pose_for_mood(MOOD_FOCUSED)->eye_open < 70);
+    TEST_ASSERT_EQUAL(PET_ACC_TONGUE, pet_pose_for_mood(MOOD_WORKING)->accessory);
+    TEST_ASSERT_TRUE(pet_pose_for_mood(MOOD_IDLE)->mouth_curve >= 40);
+    TEST_ASSERT_EQUAL(PET_PACK_LID_OFF, pet_pose_for_mood(MOOD_IDLE)->lid);
+    TEST_ASSERT_TRUE(pet_pose_for_mood(MOOD_THINKING)->brow_lift > 0 && pet_pose_for_mood(MOOD_THINKING)->mouth_dx > 0);
     TEST_ASSERT_EQUAL(PET_GLANCE_SCAN, pet_pose_for_mood(MOOD_WORKING)->glance);
     TEST_ASSERT_TRUE(pet_pose_for_mood(MOOD_THINKING)->pupil_dx > 0 && pet_pose_for_mood(MOOD_THINKING)->pupil_dy < 0);
     TEST_ASSERT_EQUAL(PET_ACC_DOTS, pet_pose_for_mood(MOOD_THINKING)->accessory);
@@ -125,17 +125,185 @@ static void test_lerp_endpoints_and_midpoint(void)
 
 static void test_lerp_colour_per_channel(void)
 {
-    const pet_pose_t a = {.body_color = 0x00FF00};
-    const pet_pose_t b = {.body_color = 0xFF0080};
-    pet_pose_t out;
-    pet_pose_lerp(&a, &b, 500, &out);
     /* 75 % of the way per channel, no carry between channels. */
-    TEST_ASSERT_EQUAL_HEX32(0xBF4060, out.body_color);
-    pet_pose_lerp(&a, &b, 0, &out);
-    TEST_ASSERT_EQUAL_HEX32(0x00FF00, out.body_color);
-    pet_pose_lerp(&a, &b, 1000, &out);
-    TEST_ASSERT_EQUAL_HEX32(0xFF0080, out.body_color);
-    TEST_ASSERT_EQUAL_HEX32(0, out.body_color >> 24);
+    TEST_ASSERT_EQUAL_HEX32(0xBF4060, pet_color_lerp(0x00FF00, 0xFF0080, 500));
+    TEST_ASSERT_EQUAL_HEX32(0x00FF00, pet_color_lerp(0x00FF00, 0xFF0080, 0));
+    TEST_ASSERT_EQUAL_HEX32(0xFF0080, pet_color_lerp(0x00FF00, 0xFF0080, 1000));
+}
+
+static void test_lid_switches_halfway_when_it_appears(void)
+{
+    pet_pose_t a = *pet_pose_for_mood(MOOD_IDLE);
+    pet_pose_t b = *pet_pose_for_mood(MOOD_FOCUSED);
+    pet_pose_t out;
+    pet_pose_lerp(&a, &b, 499, &out);
+    TEST_ASSERT_EQUAL(PET_PACK_LID_OFF, out.lid);
+    pet_pose_lerp(&a, &b, 500, &out);
+    TEST_ASSERT_EQUAL(0, out.lid);
+    a.lid = -20;
+    b.lid = 20;
+    pet_pose_lerp(&a, &b, 500, &out);
+    TEST_ASSERT_EQUAL(10, out.lid);
+}
+
+static void test_channel_table_follows_the_format(void)
+{
+    pet_pose_t p = {0};
+    *pet_pose_channel(&p, PET_PACK_CH_EYE_OPEN) = 1;
+    *pet_pose_channel(&p, PET_PACK_CH_ACCESSORY) = 2;
+    *pet_pose_channel(&p, PET_PACK_CH_GLANCE) = 3;
+    *pet_pose_channel(&p, PET_PACK_CH_LID) = 4;
+    *pet_pose_channel(&p, PET_PACK_CH_BROW_LIFT) = 5;
+    *pet_pose_channel(&p, PET_PACK_CH_MOUTH_W) = 6;
+    TEST_ASSERT_EQUAL(1, p.eye_open);
+    TEST_ASSERT_EQUAL(2, p.accessory);
+    TEST_ASSERT_EQUAL(3, p.glance);
+    TEST_ASSERT_EQUAL(4, p.lid);
+    TEST_ASSERT_EQUAL(5, p.brow_lift);
+    TEST_ASSERT_EQUAL(6, p.mouth_w);
+    TEST_ASSERT_NULL(pet_pose_channel(&p, PET_PACK_CH_COUNT));
+}
+
+static void test_overrides_apply_per_mood(void)
+{
+    pet_def_t def = {0};
+    def.n_over = 2;
+    def.over[0] = (pet_override_t){.mood = PET_PACK_MOOD_IDLE, .channel = PET_PACK_CH_MOUTH_CURVE, .value = 30};
+    def.over[1] = (pet_override_t){.mood = PET_PACK_REACT_POKE, .channel = PET_PACK_CH_LID, .value = -6};
+    pet_pose_t p;
+    pet_pose_for_pet(&def, MOOD_IDLE, &p);
+    TEST_ASSERT_EQUAL(30, p.mouth_curve);
+    pet_pose_for_pet(&def, MOOD_HAPPY, &p);
+    TEST_ASSERT_EQUAL(80, p.mouth_curve);
+    pet_pose_for_pet(NULL, MOOD_IDLE, &p);
+    TEST_ASSERT_EQUAL(42, p.mouth_curve);
+    pet_pose_t r;
+    pet_pose_react(&def, PET_REACT_POKE, &p, &r);
+    TEST_ASSERT_EQUAL(25, r.eye_open);
+    TEST_ASSERT_EQUAL(-6, r.lid);
+    pet_pose_react(NULL, PET_REACT_POKE, &p, &r);
+    TEST_ASSERT_EQUAL(PET_PACK_LID_OFF, r.lid);
+    pet_pose_react(&def, PET_REACT_COMPLETE, &p, &r);
+    TEST_ASSERT_TRUE(same_pose(pet_pose_for_mood(MOOD_PROUD), &r));
+    pet_pose_react(&def, PET_REACT_POSITIVE, &p, &r);
+    TEST_ASSERT_TRUE(same_pose(&p, &r));
+    /* The reaction leaves the channels it does not name alone. */
+    pet_pose_react(NULL, PET_REACT_PAT, &p, &r);
+    TEST_ASSERT_EQUAL(p.eye_open, r.eye_open);
+    TEST_ASSERT_EQUAL(90, r.mouth_curve);
+}
+
+static void test_reaction_timelines(void)
+{
+    pet_react_frame_t f;
+    for (int r = PET_REACT_PAT; r < PET_REACT_COUNT; r++) {
+        pet_react_sample((pet_react_t)r, 0, &f);
+        TEST_ASSERT_TRUE_MESSAGE(f.active, pet_react_name((pet_react_t)r));
+        TEST_ASSERT_EQUAL((pet_react_t)r, pet_react_parse(pet_react_name((pet_react_t)r)));
+        if (pet_react_ends((pet_react_t)r)) {
+            pet_react_sample((pet_react_t)r, pet_react_ms((pet_react_t)r), &f);
+            TEST_ASSERT_FALSE(f.active);
+            TEST_ASSERT_EQUAL(1000, f.lids);
+        }
+    }
+    TEST_ASSERT_EQUAL(PET_REACT_COUNT, pet_react_parse("hug"));
+    pet_react_sample(PET_REACT_NONE, 0, &f);
+    TEST_ASSERT_FALSE(f.active);
+
+    pet_react_sample(PET_REACT_PAT, 600, &f);
+    TEST_ASSERT_EQUAL(1000, f.weight);
+    TEST_ASSERT_EQUAL(PET_EYES_ARC, f.eyes);
+    TEST_ASSERT_EQUAL(PET_FX_HEARTS, f.fx);
+    TEST_ASSERT_EQUAL(400, f.fx_permille);
+
+    pet_react_sample(PET_REACT_POKE, 80, &f);
+    TEST_ASSERT_EQUAL(12, f.squish);
+    TEST_ASSERT_EQUAL(PET_FX_IMPACT, f.fx);
+    pet_react_sample(PET_REACT_POKE, 400, &f);
+    TEST_ASSERT_EQUAL(0, f.squish);
+    TEST_ASSERT_EQUAL(PET_FX_NONE, f.fx);
+
+    pet_react_sample(PET_REACT_DIZZY, 1000, &f);
+    TEST_ASSERT_EQUAL(PET_EYES_SPIRAL, f.eyes);
+    TEST_ASSERT_TRUE(f.sway >= -2 && f.sway <= 2);
+
+    /* Wake: eyes open first, then the yawn stretches the body, then a blink. */
+    pet_react_sample(PET_REACT_WAKE, 100, &f);
+    TEST_ASSERT_EQUAL(PET_FX_ZZZ1, f.fx);
+    TEST_ASSERT_EQUAL(0, f.mouth);
+    pet_react_sample(PET_REACT_WAKE, 700, &f);
+    TEST_ASSERT_EQUAL(1000, f.mouth);
+    TEST_ASSERT_EQUAL(-8, f.squish);
+    TEST_ASSERT_EQUAL(1000, f.weight);
+    pet_react_sample(PET_REACT_WAKE, 900, &f);
+    TEST_ASSERT_EQUAL(0, f.lids);
+    pet_react_sample(PET_REACT_WAKE, 1200, &f);
+    TEST_ASSERT_TRUE(f.weight < 1000 && f.weight > 0);
+
+    /* Attention: hop at the start of every 4 s cycle, the badge stays once it popped in. */
+    pet_react_sample(PET_REACT_ATTENTION, 150, &f);
+    TEST_ASSERT_EQUAL(6, f.hop);
+    TEST_ASSERT_EQUAL(PET_FX_NONE, f.fx);
+    pet_react_sample(PET_REACT_ATTENTION, 1000, &f);
+    TEST_ASSERT_EQUAL(0, f.hop);
+    TEST_ASSERT_EQUAL(PET_FX_BANG, f.fx);
+    pet_react_sample(PET_REACT_ATTENTION, 4150, &f);
+    TEST_ASSERT_EQUAL(6, f.hop);
+    TEST_ASSERT_EQUAL(PET_FX_BANG, f.fx);
+    TEST_ASSERT_EQUAL(1000, f.weight);
+    pet_react_sample(PET_REACT_ATTENTION, 4000 * 50 + 10, &f);
+    TEST_ASSERT_TRUE(f.active);
+
+    pet_react_sample(PET_REACT_POSITIVE, 150, &f);
+    TEST_ASSERT_EQUAL(5, f.hop);
+    TEST_ASSERT_EQUAL(PET_FX_SPARKLES, f.fx);
+    pet_react_sample(PET_REACT_NEGATIVE, 200, &f);
+    TEST_ASSERT_EQUAL(-3, f.hop);
+    pet_react_sample(PET_REACT_COMPLETE, 1000, &f);
+    TEST_ASSERT_EQUAL(1000, f.weight);
+    TEST_ASSERT_EQUAL(MOOD_PROUD, pet_react_aux_row(PET_REACT_COMPLETE));
+    TEST_ASSERT_EQUAL(PET_PACK_MOODS + 4, pet_react_aux_row(PET_REACT_ATTENTION));
+    TEST_ASSERT_EQUAL(-1, pet_react_aux_row(PET_REACT_POSITIVE));
+}
+
+static void test_sin(void)
+{
+    TEST_ASSERT_EQUAL(0, pet_sin(0, 100));
+    TEST_ASSERT_EQUAL(100, pet_sin(90, 100));
+    TEST_ASSERT_EQUAL(-100, pet_sin(270, 100));
+    TEST_ASSERT_EQUAL(-100, pet_sin(-90, 100));
+    TEST_ASSERT_INT_WITHIN(1, 50, pet_sin(30, 100));
+    TEST_ASSERT_EQUAL(0, pet_sin(180, 100));
+    TEST_ASSERT_EQUAL(100, pet_sin(450, 100));
+}
+
+static void test_aux_lerp_and_oscillators(void)
+{
+    const int16_t a[4] = {0, 0, 0, 0};
+    const int16_t b[4] = {20, -8, 3, 1};
+    int16_t cur[4], sel[4];
+    pet_aux_lerp(a, b, 500, cur, sel);
+    TEST_ASSERT_EQUAL(15, cur[0]);
+    TEST_ASSERT_EQUAL(-6, cur[1]);
+    TEST_ASSERT_EQUAL(3, sel[2]);
+    pet_aux_lerp(a, b, 499, cur, sel);
+    TEST_ASSERT_EQUAL(0, sel[2]);
+
+    const pet_osc_t sine = {.wave = PET_WAVE_SINE, .amp = 3, .period_ms = 4000};
+    TEST_ASSERT_EQUAL(0, pet_osc_value(&sine, 0, 0, 0, 0));
+    TEST_ASSERT_EQUAL(3, pet_osc_value(&sine, 1000, 0, 0, 0));
+    TEST_ASSERT_EQUAL(-3, pet_osc_value(&sine, 7000, 0, 0, 0));
+    const pet_osc_t bob = {.wave = PET_WAVE_BOB, .amp = 10};
+    TEST_ASSERT_EQUAL(-5, pet_osc_value(&bob, 0, -500, 0, 0));
+    const pet_osc_t scan = {.wave = PET_WAVE_SCAN, .amp = -14};
+    TEST_ASSERT_EQUAL(-14, pet_osc_value(&scan, 0, 0, 1000, 0));
+    const pet_osc_t jit = {.wave = PET_WAVE_JITTER, .amp = -2, .period_ms = 100};
+    for (uint32_t r = 0; r < 20; r++) {
+        const int16_t v = pet_osc_value(&jit, 0, 0, 0, r * 7919);
+        TEST_ASSERT_TRUE(v >= -2 && v <= 2);
+    }
+    const pet_osc_t zero = {.wave = PET_WAVE_SINE, .amp = 3, .period_ms = 0};
+    TEST_ASSERT_EQUAL(0, pet_osc_value(&zero, 123, 0, 0, 0));
 }
 
 static void test_blink_range(void)
@@ -287,6 +455,12 @@ int main(void)
     RUN_TEST(test_ease_out);
     RUN_TEST(test_lerp_endpoints_and_midpoint);
     RUN_TEST(test_lerp_colour_per_channel);
+    RUN_TEST(test_lid_switches_halfway_when_it_appears);
+    RUN_TEST(test_channel_table_follows_the_format);
+    RUN_TEST(test_overrides_apply_per_mood);
+    RUN_TEST(test_reaction_timelines);
+    RUN_TEST(test_sin);
+    RUN_TEST(test_aux_lerp_and_oscillators);
     RUN_TEST(test_blink_range);
     RUN_TEST(test_glance_look_timing);
     RUN_TEST(test_glance_extremes_and_off);

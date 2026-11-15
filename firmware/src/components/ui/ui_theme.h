@@ -31,13 +31,31 @@
 #define UI_C_EMBER         lv_color_hex(0x9A4A26)
 #define UI_C_EMBER_DIM     lv_color_hex(0x6E3620)
 
-/* The pet's body colour comes from its pose (pet_pose.c); these draw the features on it. */
-#define UI_C_PET_INK       lv_color_hex(0x1A1D26)
-#define UI_C_PET_EYE       UI_C_CREAM
-#define UI_C_PET_DROP      lv_color_hex(0xB3E5FC)
-#define UI_C_PET_SPARKLE   UI_C_MANGO
-#define UI_C_PET_ZZZ       UI_C_FOG
-#define UI_C_PET_DOTS      UI_C_CREAM
+/*
+ * Pet colours (pet-animations 2, design-system 2.3) as 0xRRGGBB: the rig mixes
+ * them with the pack's palette, so they are numbers rather than lv_color_t.
+ * Body, accent and cream come from the pack; these are the fixed roles and
+ * the shared face and effects.
+ */
+#define UI_PET_INK         0x1A1D26
+#define UI_PET_WHITE       0xFFFFFF
+#define UI_PET_CORAL       0xFF6B5E
+#define UI_PET_FLAME       0xFF8A3D
+#define UI_PET_SURFACE     0x161A22
+#define UI_PET_FOG         0xA7AEBB
+#define UI_PET_YELLOW      0xFFC53D
+#define UI_PET_SLATE       0x7C8597
+#define UI_PET_CREAM       0xF3EEE3
+#define UI_PET_TONGUE      0xFF8A80
+#define UI_PET_HEART       0xFF8FA3
+#define UI_PET_SPARKLE     0xFFE9A8
+#define UI_PET_DROP        0xB3E5FC
+#define UI_PET_NIGHT       0x9A4A26
+/* Shades of a pet colour (design-system 2.3), in 1/255. */
+#define UI_PET_DARK_T      71
+#define UI_PET_LIGHT_T     102
+#define UI_PET_CHEEK_T     107
+#define UI_PET_ACC_DARK_T  64
 
 LV_FONT_DECLARE(ui_font_display64)
 LV_FONT_DECLARE(ui_font_title24)

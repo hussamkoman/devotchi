@@ -1,110 +1,158 @@
 #include "ui_priv.h"
 
+#include "pet_builtin.h"
+#include "pet_pack.h"
 #include "pet_pose.h"
 #include "ui_theme.h"
 
+#include "esp_heap_caps.h"
 #include "esp_random.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 /*
- * The group holds body and accessory and stays put. The body bobs and jitters
- * alone, with its features as children, which keeps the area redrawn per
- * frame small enough for the frame budget at 160 MHz.
+ * The rig draws a pet as a list of simple items (filled or ringed rounded
+ * rects, polylines, triangles) in the draw event of one object, back to
+ * front. Every frame the list is rebuilt from the pack, the pose and the aux
+ * channels; only items whose geometry or colour changed are invalidated, as
+ * a few merged rectangles. One object per pet instead of one per part keeps
+ * an Ember (about 60 shapes) inside the LVGL heap, keeps triangles in their
+ * place in the back-to-front order, and lets outline mode restyle every
+ * shape without new objects.
+ *
+ * Geometry is computed in sixteenths of a body unit ("q") and turned into
+ * pixels once, as q * scale / 256 rounded half away from zero, so a part and
+ * its mirror land on the same pixels.
  */
-#define GROUP_W          190
-#define GROUP_H          160
-#define GROUP_Y          32
-#define BODY_X           20
-#define BODY_Y           24
-#define BODY_W           150
-#define BODY_H           124
-#define BODY_RADIUS      46
-/* Feature positions in body coordinates. */
-#define EYE_Y            50
-#define EYE_LEFT_X       48
-#define EYE_RIGHT_X      102
-#define EYE_MIN_H        4
-/* Below this openness the eye is drawn as a closed lid. */
-#define EYE_SHUT_OPEN    15
-#define BROW_GAP         7
-#define BROW_HALF        11
-#define BROW_W           4
-#define BROW_MIN_ANGLE   4
-#define MOUTH_X          75
-#define MOUTH_Y          90
-#define MOUTH_HALF_W     24
-#define MOUTH_SAG_MAX    14
-#define MOUTH_W          4
-#define MOUTH_POINTS     7
-#define MOUTH_SHOW_OPEN  5
-#define HOLE_MIN_W       24
-#define HOLE_MIN_H       6
-#define HOLE_MAX_H       26
-#define ARC_POINTS       12
-#define ARC_W            4
-#define SQUISH_PX        12
-#define POKE_EYE_OPEN    25
-
+#define BOX_W            220
+#define BOX_H            190
+/* The body centre sits this far below the top of the box (the mockups' viewBox). */
+#define BOX_CY           107
+#define MAX_ITEMS        128
+#define ITEM_PTS         12
+#define MAX_DIRTY        4
+#define DIRTY_JOIN_PX    8
 #define FRAME_MS         33
+/*
+ * A pet that misses the frame budget (architecture 7.4: Ember's flapping
+ * wings, about 35 ms at 30 fps) animates at 15 fps until frames are cheap again.
+ */
+#define FRAME_SLOW_MS    66
+#define SLOW_ABOVE_X10   300
+#define FAST_BELOW_X10   200
 #define JITTER_STEP_MS   100
-#define PAT_MS           1500
-#define POKE_MS          600
-#define DIZZY_MS         2000
+#define LIFT_STEP_MS     50
+#define Q                16
+#define EYE_SHUT_OPEN    15
+#define BROW_MIN_ANGLE   4
+#define MOUTH_POINTS     7
+#define SPIRAL_POINTS    12
+#define TEAR_FALL_MS     2500
+#define DOTS_STEP_MS     400
+
+typedef enum {
+    IT_HIDDEN,
+    IT_RECT,
+    IT_LINE,
+    IT_TRI,
+} item_kind_t;
 
 typedef struct {
-    int32_t x, y, w, h;
+    int16_t x, y;
+} ipt_t;
+
+typedef struct {
+    uint8_t kind;
+    uint8_t n;
+    uint8_t width;
+    /* rect: fill on/off and border width */
+    uint8_t fill;
+    uint8_t border;
+    int8_t clip;
+    int16_t radius;
+    uint32_t color;
+    uint32_t border_color;
+    /* rect: x, y, w, h in p[0], p[1]; line and tri: the points. Pixels, relative to the view object. */
+    ipt_t p[ITEM_PTS];
+} item_t;
+
+typedef struct {
+    int32_t x1, y1, x2, y2;
     bool valid;
-} place_t;
+} box_t;
 
-static lv_obj_t *s_group;
-static lv_obj_t *s_body;
-static lv_obj_t *s_eye[2];
-static lv_obj_t *s_pupil[2];
-static lv_obj_t *s_brow[2];
-static lv_obj_t *s_hole;
-static lv_obj_t *s_mouth;
-static lv_obj_t *s_arc[2];
-static lv_obj_t *s_acc;
-static lv_timer_t *s_timer;
+struct pet_view {
+    lv_obj_t *obj;
+    lv_timer_t *timer;
+    pet_def_t def;
+    uint8_t scale;
+    int32_t cx, cy;
+    int32_t ox, oy;
 
-/* Everything below is guarded by the ui lock. lv_line keeps a pointer to its points. */
-static lv_point_precise_t s_brow_pts[2][2];
-static lv_point_precise_t s_mouth_pts[MOUTH_POINTS];
-static lv_point_precise_t s_arc_pts[2][ARC_POINTS];
+    proto_mood_t mood;
+    bool has_mood;
+    pet_pose_t from, to, cur;
+    uint32_t col_from, col_to, col_cur;
+    int16_t aux_from[PET_PACK_AUX_COUNT], aux_to[PET_PACK_AUX_COUNT];
+    int16_t aux_cur[PET_PACK_AUX_COUNT], aux_sel[PET_PACK_AUX_COUNT];
+    int16_t drop_from, drop_to, drop_cur;
+    uint32_t tween_start;
+    uint16_t tween;
 
-static place_t s_place_group, s_place_body, s_place_eye[2], s_place_pupil[2], s_place_hole, s_place_acc;
-static int32_t s_brow_key[2] = {INT32_MIN, INT32_MIN};
-static int32_t s_mouth_key = INT32_MIN;
-static int32_t s_arc_key = INT32_MIN;
-static uint32_t s_body_color = UINT32_MAX;
-static int s_eye_shut = -1;
-static int s_acc_shown = -1;
+    uint32_t blink_at, blink_start;
+    bool blinking;
+    pet_glance_t glance;
+    int16_t jitter;
+    uint32_t jitter_at;
+    int16_t bob_q;
+    int16_t bob_permille;
+    int16_t osc_jitter[PET_PACK_MAX_OSC];
+    uint32_t osc_at[PET_PACK_MAX_OSC];
 
-static bool s_has_mood;
-static proto_mood_t s_mood;
-static pet_pose_t s_from;
-static pet_pose_t s_to;
-static pet_pose_t s_cur;
-static uint32_t s_tween_start;
-static uint16_t s_tween_permille = 1000;
+    pet_react_t react;
+    uint32_t react_start;
+    pet_react_frame_t rf;
 
-static uint32_t s_blink_at;
-static uint32_t s_blink_start;
-static bool s_blinking;
-static pet_glance_t s_glance;
-static int16_t s_jitter;
-static uint32_t s_jitter_at;
-static int16_t s_bob;
+    int16_t lift_px, lift_target;
+    uint32_t lift_at;
 
-static ui_pet_reaction_t s_reaction;
-static uint32_t s_reaction_until;
+    bool visible, powered, frozen, outline, follow, slow;
 
-static bool s_visible;
+    uint16_t n_items;
+    uint16_t dirty_count;
+    item_t items[MAX_ITEMS];
+    box_t prev_box[MAX_ITEMS];
+    uint32_t prev_hash[MAX_ITEMS];
+    /* Last point of each line part per side, in q, for anchored parts. */
+    int32_t anchor_q[PET_PACK_MAX_PARTS][2][2];
+
+    ui_pet_state_t state;
+};
+
+/* What a frozen reaction shows: the moment each one reads best. */
+static const uint32_t FROZEN_AT[PET_REACT_COUNT] = {
+    [PET_REACT_PAT] = 600,       [PET_REACT_POKE] = 100,      [PET_REACT_DIZZY] = 1000,
+    [PET_REACT_WAKE] = 650,      [PET_REACT_ATTENTION] = 1000, [PET_REACT_POSITIVE] = 150,
+    [PET_REACT_NEGATIVE] = 200,  [PET_REACT_COMPLETE] = 1000,
+};
+
+#define MAX_VIEWS  4
+
+/* Guarded by the ui lock. */
+static pet_view_t *s_views[MAX_VIEWS];
+static pet_def_t s_def;
+static bool s_def_ready;
 static bool s_powered = true;
-static bool s_frozen;
-static ui_pet_state_t s_state;
+
+const pet_def_t *ui_pet_def(void)
+{
+    if (!s_def_ready) {
+        const pet_builtin_t *b = pet_builtin_find(PET_BUILTIN_DEFAULT);
+        s_def_ready = pet_pack_decode(b->bytes, *b->len, &s_def) == PET_PACK_OK;
+    }
+    return &s_def;
+}
 
 static uint32_t rand_cb(void *ctx)
 {
@@ -117,465 +165,1267 @@ static bool reached(uint32_t at, uint32_t now)
     return (int32_t)(now - at) >= 0;
 }
 
-static lv_obj_t *plain(lv_obj_t *parent, lv_color_t color)
+static int32_t div_round(int32_t num, int32_t den)
 {
-    lv_obj_t *o = lv_obj_create(parent);
-    lv_obj_remove_style_all(o);
-    lv_obj_set_style_bg_color(o, color, 0);
-    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
-    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    return o;
+    return num >= 0 ? (num + den / 2) / den : -((-num + den / 2) / den);
 }
 
-static lv_obj_t *line(lv_obj_t *parent, int32_t width)
+/* q (sixteenths of a body unit) to pixels at the view's scale. */
+static int32_t px(const pet_view_t *v, int32_t q)
 {
-    lv_obj_t *l = lv_line_create(parent);
-    lv_obj_set_style_line_width(l, width, 0);
-    lv_obj_set_style_line_rounded(l, true, 0);
-    lv_obj_set_style_line_color(l, UI_C_PET_INK, 0);
-    lv_obj_remove_flag(l, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    return l;
+    return div_round(q * v->scale, Q * 16);
 }
 
-static void place(lv_obj_t *o, place_t *cache, int32_t x, int32_t y, int32_t w, int32_t h)
+static int32_t clampi(int32_t x, int32_t lo, int32_t hi)
 {
-    if (cache->valid && cache->x == x && cache->y == y && cache->w == w && cache->h == h) {
+    return x < lo ? lo : x > hi ? hi : x;
+}
+
+static uint32_t shade(uint32_t c, uint32_t to, unsigned t)
+{
+    return pet_pack_mix(c, to, t);
+}
+
+/* ---- item builders (q in, pixels out) ---- */
+
+static item_t *slot(pet_view_t *v)
+{
+    if (v->n_items >= MAX_ITEMS) {
+        return NULL;
+    }
+    item_t *it = &v->items[v->n_items++];
+    memset(it, 0, sizeof(*it));
+    it->clip = -1;
+    return it;
+}
+
+/* Rect from centre and size in q; radius in q (clamped to half the short side). */
+static void rect_q(pet_view_t *v, item_t *it, int32_t cx, int32_t cy, int32_t w, int32_t h, int32_t r, uint32_t color)
+{
+    if (it == NULL) {
         return;
     }
-    *cache = (place_t){.x = x, .y = y, .w = w, .h = h, .valid = true};
-    lv_obj_set_pos(o, x, y);
-    lv_obj_set_size(o, w, h);
-}
-
-static void show(lv_obj_t *o, bool visible)
-{
-    if (lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN) == visible) {
-        if (visible) {
-            lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-}
-
-static int32_t sin_scaled(int32_t degrees, int32_t amplitude)
-{
-    return (lv_trigo_sin((int16_t)(degrees % 360)) * amplitude) >> LV_TRIGO_SHIFT;
-}
-
-static int16_t clamp100(int32_t v)
-{
-    return (int16_t)(v < -100 ? -100 : v > 100 ? 100 : v);
-}
-
-/* Drops sit on the body and follow its bob and jitter; the other accessories float above it. */
-static void place_drop(pet_accessory_t a)
-{
-    if (a == PET_ACC_SWEAT) {
-        place(s_acc, &s_place_acc, BODY_X + 126 + s_jitter, BODY_Y + 14 + s_bob, 10, 15);
-    } else if (a == PET_ACC_TEAR) {
-        place(s_acc, &s_place_acc, BODY_X + EYE_LEFT_X - 14 + s_jitter, BODY_Y + EYE_Y + 16 + s_bob, 9, 13);
-    }
-}
-
-static void set_accessory(pet_accessory_t a)
-{
-    if (s_acc_shown == (int)a) {
-        place_drop(a);
+    const int32_t x1 = px(v, cx - w / 2);
+    const int32_t y1 = px(v, cy - h / 2);
+    int32_t pw = px(v, cx + w / 2) - x1;
+    int32_t ph = px(v, cy + h / 2) - y1;
+    if (pw < 1 || ph < 1) {
+        it->kind = IT_HIDDEN;
         return;
     }
-    s_acc_shown = (int)a;
-    s_place_acc.valid = false;
-    lv_obj_set_style_bg_opa(s_acc, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_radius(s_acc, 0, 0);
-    lv_obj_set_style_text_letter_space(s_acc, 0, 0);
-    lv_obj_set_size(s_acc, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    switch (a) {
-    case PET_ACC_NONE:
-    case PET_ACC_COUNT:
-        lv_label_set_text_static(s_acc, "");
-        show(s_acc, false);
-        return;
-    case PET_ACC_ZZZ:
-        lv_label_set_text_static(s_acc, "Zzz");
-        lv_obj_set_style_text_font(s_acc, UI_FONT_BODY, 0);
-        lv_obj_set_style_text_color(s_acc, UI_C_PET_ZZZ, 0);
-        lv_obj_set_pos(s_acc, 146, 0);
-        break;
-    case PET_ACC_DOTS:
-        lv_label_set_text_static(s_acc, "...");
-        lv_obj_set_style_text_font(s_acc, UI_FONT_TITLE, 0);
-        lv_obj_set_style_text_color(s_acc, UI_C_PET_DOTS, 0);
-        lv_obj_set_pos(s_acc, 148, 0);
-        break;
-    case PET_ACC_SPARKLES:
-        /* One label draws both sparkles: the letter spacing puts them at the two upper corners. */
-        lv_label_set_text_static(s_acc, "++");
-        lv_obj_set_style_text_font(s_acc, UI_FONT_TITLE, 0);
-        lv_obj_set_style_text_color(s_acc, UI_C_PET_SPARKLE, 0);
-        lv_obj_set_style_text_letter_space(s_acc, 150, 0);
-        lv_obj_set_pos(s_acc, 4, 0);
-        break;
-    case PET_ACC_SWEAT:
-    case PET_ACC_TEAR:
-        lv_label_set_text_static(s_acc, "");
-        lv_obj_set_style_bg_color(s_acc, UI_C_PET_DROP, 0);
-        lv_obj_set_style_bg_opa(s_acc, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(s_acc, LV_RADIUS_CIRCLE, 0);
-        place_drop(a);
-        break;
+    int32_t pr = px(v, r);
+    const int32_t half = (pw < ph ? pw : ph) / 2;
+    if (pr > half) {
+        pr = half;
     }
-    show(s_acc, true);
+    it->kind = IT_RECT;
+    it->fill = 1;
+    it->p[0] = (ipt_t){(int16_t)(v->ox + x1), (int16_t)(v->oy + y1)};
+    it->p[1] = (ipt_t){(int16_t)pw, (int16_t)ph};
+    it->radius = (int16_t)pr;
+    it->color = color;
 }
 
-static void set_brow(int i, int32_t cx, int32_t y, int32_t angle, int32_t dx)
+static void circle_q(pet_view_t *v, item_t *it, int32_t cx, int32_t cy, int32_t r, uint32_t color)
 {
-    const int32_t key = (cx + dx) * 1000000 + y * 1000 + angle;
-    if (key == s_brow_key[i]) {
+    rect_q(v, it, cx, cy, 2 * r, 2 * r, r, color);
+}
+
+static void ring(pet_view_t *v, item_t *it, uint32_t color, int32_t width_q)
+{
+    if (it == NULL || it->kind != IT_RECT) {
         return;
     }
-    s_brow_key[i] = key;
-    const int32_t d = sin_scaled(angle + 360, BROW_HALF);
-    /* The inner end is the one nearer the middle of the face. */
-    const int32_t left_dy = i == 0 ? -d : d;
-    s_brow_pts[i][0] = (lv_point_precise_t){cx + dx - BROW_HALF, y + left_dy};
-    s_brow_pts[i][1] = (lv_point_precise_t){cx + dx + BROW_HALF, y - left_dy};
-    lv_line_set_points(s_brow[i], s_brow_pts[i], 2);
+    it->fill = 0;
+    it->border = (uint8_t)clampi(px(v, width_q), 2, 8);
+    it->border_color = color;
 }
 
-static void set_mouth(int32_t curve, int32_t dx)
+static void line_q(pet_view_t *v, item_t *it, const int32_t (*pts)[2], int n, int32_t width_q, uint32_t color)
 {
-    const int32_t key = curve * 1000 + dx;
-    if (key == s_mouth_key) {
+    if (it == NULL) {
         return;
     }
-    s_mouth_key = key;
-    const int32_t sag = curve * MOUTH_SAG_MAX / 100;
-    const int32_t half = (MOUTH_POINTS - 1) / 2;
-    const int32_t h2 = half * half;
-    for (int32_t i = 0; i < MOUTH_POINTS; i++) {
-        const int32_t u = i - half;
-        /* Rounded to the nearest pixel: truncation leaves a notch in shallow curves. */
-        const int32_t num = sag * (h2 - u * u);
-        s_mouth_pts[i] = (lv_point_precise_t){
-            MOUTH_X + dx - MOUTH_HALF_W + i * 2 * MOUTH_HALF_W / (MOUTH_POINTS - 1),
-            MOUTH_Y + (num >= 0 ? num + h2 / 2 : num - h2 / 2) / h2,
-        };
+    it->kind = IT_LINE;
+    it->n = (uint8_t)(n > ITEM_PTS ? ITEM_PTS : n);
+    it->width = (uint8_t)clampi(px(v, width_q), 2, 16);
+    it->color = color;
+    for (int i = 0; i < it->n; i++) {
+        it->p[i] = (ipt_t){(int16_t)(v->ox + px(v, pts[i][0])), (int16_t)(v->oy + px(v, pts[i][1]))};
     }
-    lv_line_set_points(s_mouth, s_mouth_pts, MOUTH_POINTS);
 }
 
-/* Happy "^" arcs for a pat, spirals when dizzy. */
-static void set_arcs(ui_pet_reaction_t r, int32_t dx)
+static void tri_q(pet_view_t *v, item_t *it, const int32_t (*pts)[2], uint32_t color)
 {
-    const int32_t key = (int32_t)r * 1000 + dx;
-    if (key == s_arc_key) {
+    if (it == NULL) {
         return;
     }
-    s_arc_key = key;
-    const int32_t xs[2] = {EYE_LEFT_X + dx, EYE_RIGHT_X + dx};
-    for (int i = 0; i < 2; i++) {
-        uint32_t n;
-        if (r == UI_PET_REACT_DIZZY) {
-            n = ARC_POINTS;
-            for (int32_t k = 0; k < ARC_POINTS; k++) {
-                const int32_t radius = 2 + k;
-                /* Opposite turning directions on the two eyes. */
-                const int32_t deg = (i == 0 ? 1 : -1) * k * 60 + 360 * 4;
-                s_arc_pts[i][k] = (lv_point_precise_t){
-                    xs[i] + sin_scaled(deg + 90, radius),
-                    EYE_Y + sin_scaled(deg, radius),
-                };
-            }
-        } else {
-            n = 3;
-            s_arc_pts[i][0] = (lv_point_precise_t){xs[i] - 11, EYE_Y + 5};
-            s_arc_pts[i][1] = (lv_point_precise_t){xs[i], EYE_Y - 6};
-            s_arc_pts[i][2] = (lv_point_precise_t){xs[i] + 11, EYE_Y + 5};
-        }
-        lv_line_set_points(s_arc[i], s_arc_pts[i], n);
+    it->kind = IT_TRI;
+    it->n = 3;
+    it->color = color;
+    for (int i = 0; i < 3; i++) {
+        it->p[i] = (ipt_t){(int16_t)(v->ox + px(v, pts[i][0])), (int16_t)(v->oy + px(v, pts[i][1]))};
     }
 }
 
-static void schedule_blink(uint32_t now)
+/* Outline mode: fills become a 2 px border on black, lines 2 px, triangles closed polylines. */
+static void to_outline(item_t *it)
 {
-    const uint32_t wait = pet_blink_next(&s_cur, esp_random());
-    s_blink_at = wait > 0 ? now + wait : 0;
-}
-
-/* Brings every object in line with the pose at now. */
-static void render(uint32_t now)
-{
-    if (s_tween_permille < 1000) {
-        const uint32_t t = now - s_tween_start;
-        s_tween_permille = s_frozen || t >= PET_TWEEN_MS ? 1000 : (uint16_t)(t * 1000 / PET_TWEEN_MS);
-        pet_pose_lerp(&s_from, &s_to, s_tween_permille, &s_cur);
+    if (it == NULL || it->kind == IT_HIDDEN) {
+        return;
     }
-    const pet_pose_t *p = &s_cur;
-
-    if (s_reaction != UI_PET_REACT_NONE && reached(s_reaction_until, now)) {
-        s_reaction = UI_PET_REACT_NONE;
-    }
-
-    if (s_frozen) {
-        s_blinking = false;
-    } else if (s_blinking && now - s_blink_start >= PET_BLINK_MS) {
-        s_blinking = false;
-        schedule_blink(now);
-    } else if (!s_blinking && s_blink_at != 0 && reached(s_blink_at, now)) {
-        s_blinking = true;
-        s_blink_start = now;
-    } else if (!s_blinking && s_blink_at == 0 && p->blink_min_ms > 0) {
-        schedule_blink(now);
-    }
-
-    pet_glance_set_mode(&s_glance, s_frozen ? PET_GLANCE_OFF : (pet_glance_mode_t)p->glance, now);
-    pet_glance_update(&s_glance, now);
-
-    s_bob = 0;
-    if (!s_frozen && p->bob_amp_px > 0 && p->bob_period_ms > 0) {
-        const uint32_t period = (uint32_t)p->bob_period_ms;
-        s_bob = (int16_t)sin_scaled((int32_t)((now % period) * 360 / period), p->bob_amp_px);
-    }
-    int32_t jitter_amp = p->jitter_px;
-    if (s_reaction == UI_PET_REACT_DIZZY) {
-        jitter_amp = 2;
-    }
-    if (s_frozen || jitter_amp == 0) {
-        s_jitter = 0;
-    } else if (reached(s_jitter_at, now)) {
-        s_jitter_at = now + JITTER_STEP_MS;
-        s_jitter = (int16_t)((int32_t)(esp_random() % (uint32_t)(2 * jitter_amp + 1)) - jitter_amp);
-    }
-
-    int32_t open = p->eye_open;
-    if (s_blinking) {
-        const int32_t half = PET_BLINK_MS / 2;
-        const int32_t t = (int32_t)(now - s_blink_start);
-        open = open * abs(t - half) / half;
-    }
-    const bool squish = s_reaction == UI_PET_REACT_POKE;
-    const bool arcs = s_reaction == UI_PET_REACT_PAT || s_reaction == UI_PET_REACT_DIZZY;
-    if (squish && open > POKE_EYE_OPEN) {
-        open = POKE_EYE_OPEN;
-    }
-    const int16_t pdx = clamp100(p->pupil_dx + s_glance.dx);
-    const int16_t pdy = clamp100(p->pupil_dy + s_glance.dy);
-
-    const int32_t sq = squish ? SQUISH_PX : 0;
-    place(s_group, &s_place_group, (LV_HOR_RES - GROUP_W) / 2, GROUP_Y, GROUP_W, GROUP_H);
-    place(s_body, &s_place_body, BODY_X - sq / 2 + s_jitter, BODY_Y + sq + s_bob, BODY_W + sq, BODY_H - sq);
-    if (p->body_color != s_body_color) {
-        s_body_color = p->body_color;
-        lv_obj_set_style_bg_color(s_body, lv_color_hex(p->body_color), 0);
-    }
-
-    /* Features keep their place on the body when it widens. */
-    const int32_t dx = sq / 2;
-    const int32_t size = p->eye_size;
-    const int32_t xs[2] = {EYE_LEFT_X + dx, EYE_RIGHT_X + dx};
-    const bool shut = open < EYE_SHUT_OPEN;
-    if (s_eye_shut != (int)shut) {
-        s_eye_shut = (int)shut;
-        for (int i = 0; i < 2; i++) {
-            lv_obj_set_style_bg_color(s_eye[i], shut ? UI_C_PET_INK : UI_C_PET_EYE, 0);
-            show(s_pupil[i], !shut);
-        }
-    }
-    int32_t eye_h = size * open / 100;
-    if (eye_h < EYE_MIN_H) {
-        eye_h = EYE_MIN_H;
-    }
-    const int32_t pupil = size * p->pupil_size / 100;
-    const int32_t travel = (size - pupil) / 2;
-    for (int i = 0; i < 2; i++) {
-        show(s_eye[i], !arcs);
-        show(s_arc[i], arcs);
-        place(s_eye[i], &s_place_eye[i], xs[i] - size / 2, EYE_Y - eye_h / 2, size, eye_h);
-        place(s_pupil[i], &s_place_pupil[i], (size - pupil) / 2 + travel * pdx / 100,
-              (eye_h - pupil) / 2 + travel * pdy / 100, pupil, pupil);
-        const bool brows = abs(p->brow_angle) >= BROW_MIN_ANGLE;
-        show(s_brow[i], brows);
-        if (brows) {
-            set_brow(i, xs[i] - dx, EYE_Y - size / 2 - BROW_GAP, p->brow_angle, dx);
-        }
-    }
-    if (arcs) {
-        set_arcs(s_reaction, dx);
-    }
-
-    int32_t curve = p->mouth_curve;
-    int32_t mouth_open = p->mouth_open;
-    if (s_reaction == UI_PET_REACT_PAT) {
-        curve = 100;
-    } else if (squish) {
-        curve = 0;
-        mouth_open = 30;
-    } else if (s_reaction == UI_PET_REACT_DIZZY) {
-        curve = -40;
-    }
-    const bool hole = mouth_open > MOUTH_SHOW_OPEN;
-    show(s_hole, hole);
-    show(s_mouth, !hole);
-    if (hole) {
-        int32_t h = mouth_open * HOLE_MAX_H / 100;
-        if (h < HOLE_MIN_H) {
-            h = HOLE_MIN_H;
-        }
-        const int32_t w = HOLE_MIN_W + mouth_open / 5;
-        place(s_hole, &s_place_hole, MOUTH_X + dx - w / 2, MOUTH_Y - 2, w, h);
+    if (it->kind == IT_RECT) {
+        it->fill = 1;
+        it->color = 0x000000;
+        it->border = 2;
+        it->border_color = UI_PET_NIGHT;
+    } else if (it->kind == IT_LINE) {
+        it->width = 2;
+        it->color = UI_PET_NIGHT;
     } else {
-        set_mouth(curve, dx);
+        it->kind = IT_LINE;
+        it->p[3] = it->p[0];
+        it->n = 4;
+        it->width = 2;
+        it->color = UI_PET_NIGHT;
     }
-    set_accessory(s_reaction == UI_PET_REACT_NONE ? (pet_accessory_t)p->accessory : PET_ACC_NONE);
+}
 
-    s_state = (ui_pet_state_t){
-        .mood = s_mood,
-        .pose = s_cur,
-        .tween_permille = s_tween_permille,
-        .eye_open = (int16_t)open,
-        .pupil_dx = pdx,
-        .pupil_dy = pdy,
-        .bob_px = s_bob,
-        .jitter_px = s_jitter,
-        .blinking = s_blinking,
-        .reaction = s_reaction,
-        .frozen = s_frozen,
-        .animating = s_visible && s_powered,
+static void hide(item_t *it)
+{
+    if (it != NULL) {
+        it->kind = IT_HIDDEN;
+    }
+}
+
+/* Quadratic Bezier p0 -> p2 with control c, n points, q in and out. */
+static void quad(int32_t (*out)[2], int n, const int32_t p0[2], const int32_t c[2], const int32_t p2[2])
+{
+    for (int i = 0; i < n; i++) {
+        const int32_t t = i * 1000 / (n - 1);
+        const int32_t u = 1000 - t;
+        for (int k = 0; k < 2; k++) {
+            out[i][k] = (u * u / 1000 * p0[k] + 2 * u * t / 1000 * c[k] + t * t / 1000 * p2[k]) / 1000;
+        }
+    }
+}
+
+/* ---- colours ---- */
+
+static uint32_t role_color(const pet_view_t *v, uint8_t role)
+{
+    const uint32_t body = v->col_cur;
+    switch (role) {
+    case PET_PACK_ROLE_BODY:
+        return body;
+    case PET_PACK_ROLE_DARK:
+        return shade(body, UI_PET_INK, UI_PET_DARK_T);
+    case PET_PACK_ROLE_LIGHT:
+        return shade(body, UI_PET_WHITE, UI_PET_LIGHT_T);
+    case PET_PACK_ROLE_CHEEK:
+        return shade(body, UI_PET_CORAL, UI_PET_CHEEK_T);
+    case PET_PACK_ROLE_ACCENT:
+        return v->def.accent;
+    case PET_PACK_ROLE_ACCENT_DARK:
+        return shade(v->def.accent, UI_PET_INK, UI_PET_ACC_DARK_T);
+    case PET_PACK_ROLE_CREAM:
+        return v->def.cream;
+    case PET_PACK_ROLE_INK:
+        return UI_PET_INK;
+    case PET_PACK_ROLE_WHITE:
+        return UI_PET_WHITE;
+    case PET_PACK_ROLE_FLAME:
+        return UI_PET_FLAME;
+    case PET_PACK_ROLE_SURFACE:
+        return UI_PET_SURFACE;
+    case PET_PACK_ROLE_FOG:
+        return UI_PET_FOG;
+    case PET_PACK_ROLE_YELLOW:
+        return UI_PET_YELLOW;
+    default:
+        return body;
+    }
+}
+
+/* ---- frame state ---- */
+
+typedef struct {
+    pet_pose_t p;
+    int32_t eye_open;
+    int16_t pdx, pdy;
+    /* Layer offsets in q. */
+    int32_t sway;
+    int32_t body_dy;
+    int32_t head_dy;
+    int32_t mouth_dy;
+    int32_t hop;
+    int32_t squish;
+    int32_t lift;
+} frame_t;
+
+static void schedule_blink(pet_view_t *v, uint32_t now)
+{
+    const uint32_t wait = pet_blink_next(&v->cur, esp_random());
+    v->blink_at = wait > 0 ? now + wait : 0;
+}
+
+static bool part_shown(const pet_view_t *v, const pet_part_t *part)
+{
+    for (uint8_t d = 0; d < part->n_drv; d++) {
+        const pet_driver_t *drv = &part->drv[d];
+        if (drv->op == PET_DRV_SHOW_NONZERO && v->aux_sel[drv->aux] == 0) {
+            return false;
+        }
+        if (drv->op == PET_DRV_SHOW_EQ && v->aux_sel[drv->aux] != drv->arg) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void build_part(pet_view_t *v, const frame_t *f, int index, int side, item_t *it)
+{
+    const pet_part_t *part = &v->def.parts[index];
+    const int32_t sx = side == 0 ? 1 : -1;
+    int32_t pts[PET_PACK_MAX_POINTS][2];
+    for (uint8_t k = 0; k < part->n_pts; k++) {
+        pts[k][0] = part->pts[k].x * Q * sx;
+        pts[k][1] = part->pts[k].y * Q;
+    }
+    for (uint8_t d = 0; d < part->n_drv; d++) {
+        const pet_driver_t *drv = &part->drv[d];
+        if (drv->op != PET_DRV_MOVE_X && drv->op != PET_DRV_MOVE_Y) {
+            continue;
+        }
+        const int32_t amount = (int32_t)v->aux_cur[drv->aux] * drv->scale * (drv->op == PET_DRV_MOVE_X ? sx : 1);
+        const int axis = drv->op == PET_DRV_MOVE_X ? 0 : 1;
+        for (uint8_t k = 0; k < part->n_pts; k++) {
+            if (drv->arg == PET_DRV_WHOLE || drv->arg == k) {
+                pts[k][axis] += amount;
+            }
+        }
+    }
+    if (part->anchor >= 0) {
+        const int a = part->anchor;
+        const int as = v->def.parts[a].mirrored ? side : 0;
+        const int32_t ax = v->def.parts[a].mirrored ? v->anchor_q[a][as][0] : v->anchor_q[a][0][0] * sx;
+        for (uint8_t k = 0; k < part->n_pts; k++) {
+            pts[k][0] += ax;
+            pts[k][1] += v->anchor_q[a][as][1];
+        }
+    }
+    if (part->shape == PET_SHAPE_LINE) {
+        v->anchor_q[index][side][0] = pts[part->n_pts - 1][0];
+        v->anchor_q[index][side][1] = pts[part->n_pts - 1][1];
+    }
+    int32_t dx = f->sway;
+    int32_t dy = -f->lift;
+    if (part->layer == PET_LAYER_BODY) {
+        dy += f->body_dy;
+    } else if (part->layer == PET_LAYER_HEAD || part->layer == PET_LAYER_FRONT) {
+        dy += f->head_dy;
+    } else {
+        dx = 0;
+    }
+    for (uint8_t k = 0; k < part->n_pts; k++) {
+        pts[k][0] += dx;
+        pts[k][1] += dy;
+    }
+    if (!part_shown(v, part) || (v->outline && part->no_outline)) {
+        hide(it);
+        return;
+    }
+    const uint32_t color = role_color(v, part->role);
+    switch (part->shape) {
+    case PET_SHAPE_RRECT: {
+        int32_t w = part->w * Q;
+        int32_t h = part->h * Q;
+        int32_t cy = pts[0][1];
+        if (part->squash) {
+            h -= f->squish;
+            cy += f->squish / 2;
+        }
+        if (part->layer == PET_LAYER_BEHIND && part->role == PET_PACK_ROLE_SURFACE) {
+            w -= 4 * f->hop;
+        }
+        rect_q(v, it, pts[0][0], cy, w, h, part->r * Q, color);
+        if (part->ring) {
+            ring(v, it, color, 5 * Q / 2);
+        }
+        break;
+    }
+    case PET_SHAPE_LINE:
+        line_q(v, it, (const int32_t(*)[2])pts, part->n_pts, part->width * Q, color);
+        break;
+    case PET_SHAPE_TRI:
+        tri_q(v, it, (const int32_t(*)[2])pts, color);
+        break;
+    }
+    if (v->outline) {
+        to_outline(it);
+    }
+}
+
+/* One eye: 7 items (sclera, pupil, glint, two lid triangles, lid edge, closed / arc / spiral line). */
+static void build_eye(pet_view_t *v, const frame_t *f, int side, item_t **its)
+{
+    const pet_face_t *face = &v->def.face;
+    const int32_t sx = side == 0 ? -1 : 1;
+    const int32_t x = sx * face->eye_dx * Q + f->sway;
+    const int32_t y = face->eye_y * Q + f->head_dy - f->lift;
+    const int32_t w = f->p.eye_size * Q;
+    const int32_t hf = w * 6 / 5;
+    const uint32_t ink = v->outline ? UI_PET_NIGHT : UI_PET_INK;
+    for (int i = 0; i < 7; i++) {
+        hide(its[i]);
+    }
+    item_t *sclera = its[0], *pupil = its[1], *glint = its[2], *lid_a = its[3], *lid_b = its[4], *edge = its[5],
+           *stroke = its[6];
+    const int32_t sw = (v->outline ? 2 : 4) * Q;
+
+    if (v->rf.active && v->rf.eyes == PET_EYES_ARC) {
+        const int32_t p0[2] = {x - w / 2, y + 4 * Q}, c[2] = {x, y - 12 * Q}, p2[2] = {x + w / 2, y + 4 * Q};
+        int32_t pts[5][2];
+        quad(pts, 5, p0, c, p2);
+        line_q(v, stroke, (const int32_t(*)[2])pts, 5, sw, ink);
+        return;
+    }
+    if (v->rf.active && v->rf.eyes == PET_EYES_SPIRAL) {
+        int32_t pts[SPIRAL_POINTS][2];
+        const int32_t phase = (int32_t)v->rf.fx_permille * 360 / 1000 * (sx > 0 ? 1 : -1);
+        for (int i = 0; i < SPIRAL_POINTS; i++) {
+            const int32_t ang = i * 756 / (SPIRAL_POINTS - 1) + phase;
+            const int32_t r = Q + i * (w / 2 - Q) / (SPIRAL_POINTS - 1);
+            pts[i][0] = x + pet_sin(ang + 90, r);
+            pts[i][1] = y + pet_sin(ang, r);
+        }
+        line_q(v, stroke, (const int32_t(*)[2])pts, SPIRAL_POINTS, 3 * Q, ink);
+        return;
+    }
+    const int32_t eo = f->eye_open;
+    if (eo < EYE_SHUT_OPEN) {
+        const int32_t p0[2] = {x - w / 2, y}, c[2] = {x, y + 9 * Q}, p2[2] = {x + w / 2, y};
+        int32_t pts[5][2];
+        quad(pts, 5, p0, c, p2);
+        line_q(v, stroke, (const int32_t(*)[2])pts, 5, sw, ink);
+        return;
+    }
+    int32_t lid = f->p.lid;
+    if (lid == PET_PACK_LID_OFF && !face->brows && eo < 100) {
+        lid = f->p.brow_angle;
+    }
+    const bool has_lid = lid != PET_PACK_LID_OFF && !v->outline;
+    int32_t h = has_lid ? hf : hf * eo / 100;
+    if (h < 4 * Q) {
+        h = 4 * Q;
+    }
+    if (v->outline) {
+        rect_q(v, sclera, x, y + hf / 2 - h / 2, w, h, (w < h ? w : h) / 2, 0);
+        to_outline(sclera);
+        return;
+    }
+    const int32_t r = (w < h ? w : h) / 2;
+    const bool dot = face->eye_style == PET_EYE_DOT;
+    rect_q(v, sclera, x, y, w, h, r, v->def.sclera);
+    const int32_t vis_top = has_lid ? y + hf / 2 - hf * eo / 100 : y - h / 2;
+    const int32_t vis_h = y + h / 2 - vis_top;
+    const int32_t vis_cy = (vis_top + y + h / 2) / 2;
+    const int32_t look_x = f->pdx;
+    const int32_t look_y = f->pdy;
+    if (face->eye_style == PET_EYE_SLIT) {
+        int32_t pw = w * f->p.pupil_size / 100 * 46 / 100;
+        if (pw < 7 * Q / 2) {
+            pw = 7 * Q / 2;
+        }
+        int32_t ph = vis_h - 4 * Q;
+        if (ph > w * 86 / 100) {
+            ph = w * 86 / 100;
+        }
+        const int32_t tx = (w / 2 - pw / 2 - 2 * Q) * look_x / 100;
+        int32_t room = (vis_h - ph) / 2 - Q;
+        const int32_t ty = (room > 0 ? room : 0) * look_y / 100;
+        rect_q(v, pupil, x + tx, vis_cy + ty, pw, ph, pw / 2, UI_PET_INK);
+        circle_q(v, glint, x + tx + pw / 5 + 2 * Q, vis_cy + ty - ph * 26 / 100, 8 * Q / 5, UI_PET_WHITE);
+    } else {
+        const int32_t pr = w * f->p.pupil_size / 200;
+        const int32_t tx = (w / 2 - pr - 2 * Q) * look_x / 100;
+        int32_t room = vis_h / 2 - pr - 2 * Q;
+        const int32_t ty = (room > 0 ? room : 0) * look_y / 100;
+        circle_q(v, pupil, x + tx, vis_cy + ty, dot ? w / 2 : pr, UI_PET_INK);
+        int32_t gr = pr * 28 / 100;
+        if (gr < 3 * Q / 2) {
+            gr = 3 * Q / 2;
+        }
+        circle_q(v, glint, x + tx + pr * 35 / 100, vis_cy + ty - pr * 35 / 100, gr, UI_PET_WHITE);
+    }
+    if (dot) {
+        hide(sclera);
+    } else {
+        pupil->clip = (int8_t)(sclera - v->items);
+        glint->clip = pupil->clip;
+    }
+    if (has_lid) {
+        const int32_t k = pet_sin(lid, w / 2) * 1000 / (pet_sin(90 - lid, 1000) > 0 ? pet_sin(90 - lid, 1000) : 1);
+        const int32_t xi = x - sx * (w / 2 + Q);
+        const int32_t xo = x + sx * (w / 2 + Q);
+        const int32_t yi = vis_top + k;
+        const int32_t yo = vis_top - k;
+        const int32_t top = y - hf / 2 - 3 * Q;
+        const uint32_t body = v->col_cur;
+        const int32_t a[3][2] = {{xi, top}, {xo, top}, {xo, yo}};
+        const int32_t b[3][2] = {{xi, top}, {xo, yo}, {xi, yi}};
+        tri_q(v, lid_a, a, body);
+        tri_q(v, lid_b, b, body);
+        const int32_t e[2][2] = {{xi, yi}, {xo, yo}};
+        line_q(v, edge, e, 2, 4 * Q, shade(body, UI_PET_INK, UI_PET_DARK_T));
+    }
+}
+
+static void build_brow(pet_view_t *v, const frame_t *f, int side, item_t *it)
+{
+    const pet_face_t *face = &v->def.face;
+    const int32_t sx = side == 0 ? -1 : 1;
+    const int32_t angle = f->p.brow_angle + (side == 0 ? f->p.brow_l : f->p.brow_r);
+    const int32_t lift = (side == 0 ? (f->p.brow_lift < 0 ? -f->p.brow_lift : 0) : (f->p.brow_lift > 0 ? f->p.brow_lift : 0));
+    if (!face->brows || v->outline || (v->rf.active && v->rf.eyes != PET_EYES_POSE) || abs(angle) < BROW_MIN_ANGLE ||
+        f->eye_open < EYE_SHUT_OPEN) {
+        hide(it);
+        return;
+    }
+    const int32_t x = sx * face->eye_dx * Q + f->sway;
+    const int32_t y = face->eye_y * Q + f->head_dy - f->lift;
+    const int32_t by = y - f->p.eye_size * Q * 6 / 10 - 9 * Q - lift * Q;
+    const int32_t ang = angle * -sx;
+    const int32_t dx = pet_sin(ang + 90, 11 * Q);
+    const int32_t dy = pet_sin(ang, 11 * Q);
+    const int32_t pts[2][2] = {{x - dx, by - dy}, {x + dx, by + dy}};
+    line_q(v, it, pts, 2, 4 * Q, UI_PET_INK);
+}
+
+/* Mouth: 10 items (tongue, line, 3 open-mouth triangles, a spare, hole, open tongue, 2 fangs). */
+static void build_mouth(pet_view_t *v, const frame_t *f, item_t **its)
+{
+    for (int i = 0; i < 10; i++) {
+        hide(its[i]);
+    }
+    const pet_face_t *face = &v->def.face;
+    const int32_t curve = f->p.mouth_curve;
+    int32_t opened = f->p.mouth_open;
+    const int32_t hw = (f->p.mouth_w > 0 ? f->p.mouth_w : face->mouth_hw) * Q;
+    const int32_t cx = f->p.mouth_dx * Q + f->sway;
+    const int32_t y = face->mouth_y * Q + f->mouth_dy - f->lift;
+    const int32_t sag = curve * hw * 6 / 1000;
+    const int32_t y0 = y - sag / 2;
+    const uint32_t ink = v->outline ? UI_PET_NIGHT : UI_PET_INK;
+    const int32_t sw = (v->outline ? 2 : 4) * Q;
+    if (opened > 5) {
+        if (curve > 40 && !v->outline) {
+            const int32_t hh = 8 * Q + opened * Q * 16 / 100;
+            const int32_t p0[2] = {cx - hw, y0 - 2 * Q}, c[2] = {cx, y0 + 2 * hh}, p2[2] = {cx + hw, y0 - 2 * Q};
+            int32_t pts[5][2];
+            quad(pts, 5, p0, c, p2);
+            /* The open smile: a fan from the left corner between the curve and the chord. */
+            for (int i = 1; i < 4; i++) {
+                const int32_t t[3][2] = {{pts[0][0], pts[0][1]}, {pts[i][0], pts[i][1]}, {pts[i + 1][0], pts[i + 1][1]}};
+                tri_q(v, its[1 + i], t, UI_PET_INK);
+            }
+            rect_q(v, its[7], cx, y0 + hh - Q, 14 * Q, 7 * Q, 7 * Q / 2, UI_PET_TONGUE);
+            return;
+        }
+        const int32_t mh = 6 * Q + opened * Q / 5;
+        const int32_t mw = 14 * Q + opened * Q / 10;
+        rect_q(v, its[6], cx, y, mw, mh, mh / 2 < 7 * Q ? mh / 2 : 7 * Q, UI_PET_INK);
+        if (v->outline) {
+            to_outline(its[6]);
+        }
+        return;
+    }
+    const bool tongue = f->p.accessory == PET_ACC_TONGUE && !(face->acc_mask & (1u << PET_ACC_TONGUE)) && !v->outline;
+    if (tongue) {
+        rect_q(v, its[0], cx + hw - 4 * Q, y0 + sag * 9 / 10 + 7 * Q / 2, 10 * Q, 9 * Q, 9 * Q / 2, UI_PET_TONGUE);
+    }
+    const int32_t p0[2] = {cx - hw, y0}, c[2] = {cx, y0 + 2 * sag}, p2[2] = {cx + hw, y0};
+    int32_t pts[MOUTH_POINTS][2];
+    quad(pts, MOUTH_POINTS, p0, c, p2);
+    line_q(v, its[1], (const int32_t(*)[2])pts, MOUTH_POINTS, sw, ink);
+    if (face->mouth_set == PET_MOUTH_SNOUT && !v->outline) {
+        const int32_t fy = y0 + sag * 45 / 100;
+        for (int s = 0; s < 2; s++) {
+            const int32_t fx = (s == 0 ? -9 : 9) * Q + cx;
+            const int32_t t[3][2] = {{fx - 7 * Q / 2, fy}, {fx, fy + 7 * Q}, {fx + 7 * Q / 2, fy}};
+            tri_q(v, its[8 + s], t, UI_PET_WHITE);
+        }
+    }
+}
+
+static void drop_q(pet_view_t *v, item_t *tri_it, item_t *circ_it, int32_t x, int32_t y, int32_t s)
+{
+    const int32_t t[3][2] = {{x - s * 7 / 10, y + s / 5}, {x, y - s}, {x + s * 7 / 10, y + s / 5}};
+    tri_q(v, tri_it, t, UI_PET_DROP);
+    circle_q(v, circ_it, x, y + s * 35 / 100, s * 7 / 10, UI_PET_DROP);
+}
+
+static void star_q(pet_view_t *v, item_t **its, int32_t x, int32_t y, int32_t r)
+{
+    const int32_t k = r * 28 / 100;
+    const int32_t spikes[4][3][2] = {
+        {{x, y - r}, {x - k, y}, {x + k, y}},
+        {{x, y + r}, {x - k, y}, {x + k, y}},
+        {{x - r, y}, {x, y - k}, {x, y + k}},
+        {{x + r, y}, {x, y - k}, {x, y + k}},
     };
+    for (int i = 0; i < 4; i++) {
+        tri_q(v, its[i], spikes[i], UI_PET_SPARKLE);
+    }
+}
+
+static void heart_q(pet_view_t *v, item_t **its, int32_t x, int32_t y, int32_t s)
+{
+    circle_q(v, its[0], x - s / 2, y - s * 3 / 10, s * 55 / 100, UI_PET_HEART);
+    circle_q(v, its[1], x + s / 2, y - s * 3 / 10, s * 55 / 100, UI_PET_HEART);
+    const int32_t t[3][2] = {{x - s * 105 / 100, y - s / 10}, {x + s * 105 / 100, y - s / 10}, {x, y + s}};
+    tri_q(v, its[2], t, UI_PET_HEART);
+}
+
+#define FX_ITEMS  36
+
+/* Accessories and reaction effects: FX_ITEMS items in a fixed order. */
+static void build_fx(pet_view_t *v, const frame_t *f, uint32_t now, item_t **its)
+{
+    for (int i = 0; i < FX_ITEMS; i++) {
+        hide(its[i]);
+    }
+    const pet_face_t *face = &v->def.face;
+    const int acc = f->p.accessory;
+    const bool own = acc > 0 && acc < PET_ACC_COUNT && (face->acc_mask & (1u << acc));
+    const int32_t lift = f->lift;
+    if (v->outline) {
+        if (acc == PET_ACC_ZZZ && !own) {
+            static const int8_t Z[3][3] = {{62, -52, 8}, {76, -70, 10}, {90, -92, 13}};
+            for (int i = 0; i < 3; i++) {
+                const int32_t x = Z[i][0] * Q, y = Z[i][1] * Q - lift, s = Z[i][2] * Q;
+                const int32_t pts[4][2] = {{x, y}, {x + s, y}, {x, y + s}, {x + s, y + s}};
+                line_q(v, its[i], pts, 4, 2 * Q, UI_PET_NIGHT);
+            }
+        }
+        return;
+    }
+    if (!own) {
+        switch (acc) {
+        case PET_ACC_ZZZ: {
+            static const int8_t Z[3][3] = {{62, -52, 8}, {76, -70, 10}, {90, -92, 13}};
+            for (int i = 0; i < 3; i++) {
+                const int32_t x = Z[i][0] * Q, y = Z[i][1] * Q - lift, s = Z[i][2] * Q;
+                const int32_t pts[4][2] = {{x, y}, {x + s, y}, {x, y + s}, {x + s, y + s}};
+                line_q(v, its[i], pts, 4, 3 * Q, UI_PET_FOG);
+            }
+            break;
+        }
+        case PET_ACC_SWEAT:
+            drop_q(v, its[3], its[4], (face->eye_dx + 37) * Q + f->sway, face->sweat_y * Q + f->head_dy - lift, 8 * Q);
+            break;
+        case PET_ACC_TEAR: {
+            const int32_t fall = v->frozen ? 0 : (int32_t)(now % TEAR_FALL_MS) * 14 * Q / TEAR_FALL_MS;
+            drop_q(v, its[5], its[6], -face->eye_dx * Q + f->sway, (face->eye_y + 26) * Q + f->head_dy - lift + fall,
+                   6 * Q);
+            break;
+        }
+        case PET_ACC_SPARKLES:
+            break;
+        case PET_ACC_DOTS:
+            for (int i = 0; i < 3; i++) {
+                const bool shown = v->frozen || (int32_t)(now % (4 * DOTS_STEP_MS)) >= i * DOTS_STEP_MS;
+                if (shown) {
+                    circle_q(v, its[19 + i], (64 + 13 * i) * Q, (-66 - 9 * i) * Q - lift, (3 + i) * Q, UI_PET_CREAM);
+                }
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    const bool sparkles = (acc == PET_ACC_SPARKLES && !own) || (v->rf.active && v->rf.fx == PET_FX_SPARKLES);
+    if (sparkles) {
+        static const int8_t S[3][3] = {{-88, -44, 9}, {88, -58, 11}, {96, 0, 6}};
+        for (int i = 0; i < 3; i++) {
+            star_q(v, &its[7 + 4 * i], S[i][0] * Q, S[i][1] * Q - lift, S[i][2] * Q);
+        }
+    }
+    if (!v->rf.active) {
+        return;
+    }
+    switch (v->rf.fx) {
+    case PET_FX_HEARTS: {
+        const int32_t t = v->rf.fx_permille;
+        const int32_t rise = 12 * Q * t / 1000;
+        const int32_t k = 1000 - t * 6 / 10;
+        heart_q(v, &its[22], 78 * Q, -62 * Q - rise - lift, 8 * Q * k / 1000);
+        heart_q(v, &its[25], 96 * Q, -38 * Q - rise - lift, 5 * Q * k / 1000);
+        break;
+    }
+    case PET_FX_IMPACT: {
+        static const int8_t T[4][4] = {{-84, -34, -96, -44}, {-90, -14, -104, -14}, {84, -34, 96, -44}, {90, -14, 104, -14}};
+        for (int i = 0; i < 4; i++) {
+            const int32_t pts[2][2] = {{T[i][0] * Q, T[i][1] * Q - lift}, {T[i][2] * Q, T[i][3] * Q - lift}};
+            line_q(v, its[28 + i], pts, 2, 3 * Q, UI_PET_CREAM);
+        }
+        break;
+    }
+    case PET_FX_BANG: {
+        /* Pops in by 2 px steps. */
+        const int32_t r = ((15 * (int32_t)v->rf.fx_permille / 1000) & ~1) * Q;
+        if (r > 0) {
+            circle_q(v, its[32], 80 * Q, -62 * Q - lift, r, UI_PET_YELLOW);
+            if (v->rf.fx_permille >= 1000) {
+                rect_q(v, its[33], 80 * Q, -132 * Q / 2 - lift, 5 * Q, 13 * Q, 5 * Q / 2, UI_PET_INK);
+                circle_q(v, its[34], 80 * Q, -54 * Q - lift, 3 * Q, UI_PET_INK);
+            }
+        }
+        break;
+    }
+    case PET_FX_ZZZ1: {
+        const int32_t x = 66 * Q, y = -56 * Q - lift, s = 9 * Q;
+        const int32_t pts[4][2] = {{x, y}, {x + s, y}, {x, y + s}, {x + s, y + s}};
+        line_q(v, its[35], pts, 4, 3 * Q, UI_PET_SLATE);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+/* ---- the frame ---- */
+
+static void step_animation(pet_view_t *v, uint32_t now, frame_t *f)
+{
+    if (v->tween < 1000) {
+        const uint32_t t = now - v->tween_start;
+        v->tween = v->frozen || t >= PET_TWEEN_MS ? 1000 : (uint16_t)(t * 1000 / PET_TWEEN_MS);
+        pet_pose_lerp(&v->from, &v->to, v->tween, &v->cur);
+        v->col_cur = pet_color_lerp(v->col_from, v->col_to, v->tween);
+        v->drop_cur = (int16_t)(v->drop_from + (v->drop_to - v->drop_from) * (int32_t)pet_ease_out(v->tween) / 1000);
+    }
+    pet_aux_lerp(v->aux_from, v->aux_to, v->tween, v->aux_cur, v->aux_sel);
+
+    /* The reaction blends its pose and aux row over the mood's. */
+    v->rf = (pet_react_frame_t){.lids = 1000};
+    if (v->react != PET_REACT_NONE) {
+        const uint32_t t = v->frozen ? FROZEN_AT[v->react] : now - v->react_start;
+        pet_react_sample(v->react, t, &v->rf);
+        if (!v->rf.active) {
+            v->react = PET_REACT_NONE;
+        }
+    }
+    f->p = v->cur;
+    /* Attention lights a pet at rest in its happy colour (mockup 15). */
+    if (v->rf.active && v->react == PET_REACT_ATTENTION && (v->mood == MOOD_IDLE || v->mood == MOOD_SLEEPING)) {
+        v->col_cur = pet_color_lerp(v->col_to, pet_pack_mood_color(&v->def, MOOD_HAPPY), v->rf.weight);
+    } else if (v->tween >= 1000) {
+        v->col_cur = v->col_to;
+    }
+    if (v->rf.active) {
+        pet_pose_t rp;
+        pet_pose_react(&v->def, v->react, &v->cur, &rp);
+        rp.mouth_open = (int16_t)(rp.mouth_open * v->rf.mouth / 1000);
+        pet_pose_lerp(&v->cur, &rp, v->rf.weight, &f->p);
+        const int row = pet_react_aux_row(v->react);
+        if (row >= 0) {
+            int16_t target[PET_PACK_AUX_COUNT], cur[PET_PACK_AUX_COUNT], sel[PET_PACK_AUX_COUNT];
+            for (int a = 0; a < PET_PACK_AUX_COUNT; a++) {
+                target[a] = v->def.aux[row][a];
+            }
+            pet_aux_lerp(v->aux_cur, target, v->rf.weight, cur, sel);
+            memcpy(v->aux_cur, cur, sizeof(cur));
+            for (int a = 0; a < PET_PACK_AUX_COUNT; a++) {
+                if (v->rf.weight >= 500) {
+                    v->aux_sel[a] = sel[a];
+                }
+            }
+        }
+    }
+
+    /* Blink, glance, bob, jitter. */
+    if (v->frozen) {
+        v->blinking = false;
+    } else if (v->blinking && now - v->blink_start >= PET_BLINK_MS) {
+        v->blinking = false;
+        schedule_blink(v, now);
+    } else if (!v->blinking && v->blink_at != 0 && reached(v->blink_at, now)) {
+        v->blinking = true;
+        v->blink_start = now;
+    } else if (!v->blinking && v->blink_at == 0 && f->p.blink_min_ms > 0) {
+        schedule_blink(v, now);
+    }
+    pet_glance_set_mode(&v->glance, v->frozen ? PET_GLANCE_OFF : (pet_glance_mode_t)f->p.glance, now);
+    pet_glance_update(&v->glance, now);
+
+    v->bob_q = 0;
+    v->bob_permille = 0;
+    if (!v->frozen && f->p.bob_amp_px > 0 && f->p.bob_period_ms > 0) {
+        const uint32_t period = (uint32_t)f->p.bob_period_ms;
+        const int32_t deg = (int32_t)((now % period) * 360 / period);
+        v->bob_permille = (int16_t)pet_sin(deg, 1000);
+        v->bob_q = (int16_t)pet_sin(deg, f->p.bob_amp_px * Q);
+    }
+    if (v->frozen || f->p.jitter_px == 0) {
+        v->jitter = 0;
+    } else if (reached(v->jitter_at, now)) {
+        v->jitter_at = now + JITTER_STEP_MS;
+        v->jitter = (int16_t)((int32_t)(esp_random() % (uint32_t)(2 * f->p.jitter_px + 1)) - f->p.jitter_px);
+    }
+
+    /* Oscillators of the mood, or of the reaction while it shows. */
+    if (!v->frozen) {
+        const uint8_t react_id = v->rf.active && v->rf.weight >= 500 ? pet_react_pack_id(v->react) : 0;
+        const uint8_t id = react_id != 0 ? react_id : (uint8_t)v->mood;
+        const int16_t scan = (int16_t)(v->glance.dx * 1000 / PET_GLANCE_RANGE);
+        for (uint8_t i = 0; i < v->def.n_osc && i < PET_PACK_MAX_OSC; i++) {
+            const pet_osc_t *o = &v->def.osc[i];
+            if (o->mood != id) {
+                continue;
+            }
+            if (o->wave == PET_WAVE_JITTER) {
+                if (reached(v->osc_at[i], now)) {
+                    v->osc_at[i] = now + o->period_ms;
+                    v->osc_jitter[i] = pet_osc_value(o, now, 0, 0, esp_random());
+                }
+                v->aux_cur[o->aux] = (int16_t)(v->aux_cur[o->aux] + v->osc_jitter[i]);
+            } else {
+                v->aux_cur[o->aux] = (int16_t)(v->aux_cur[o->aux] + pet_osc_value(o, now, v->bob_permille, scan, 0));
+            }
+        }
+    }
+
+    /* Lift for the sticky banner, 1 px per step. */
+    if (v->lift_px != v->lift_target && reached(v->lift_at, now)) {
+        v->lift_px = (int16_t)(v->lift_px + (v->lift_target > v->lift_px ? 1 : -1));
+        v->lift_at = now + LIFT_STEP_MS;
+    }
+
+    int32_t open = f->p.eye_open;
+    if (v->blinking) {
+        const int32_t half = PET_BLINK_MS / 2;
+        open = open * abs((int32_t)(now - v->blink_start) - half) / half;
+    }
+    f->eye_open = open * v->rf.lids / 1000;
+    f->pdx = (int16_t)clampi(f->p.pupil_dx + v->glance.dx, -100, 100);
+    f->pdy = (int16_t)clampi(f->p.pupil_dy + v->glance.dy, -100, 100);
+    f->hop = v->rf.hop * Q;
+    f->squish = (v->drop_cur + v->rf.squish) * Q;
+    f->sway = (v->jitter + v->rf.sway) * Q;
+    f->body_dy = v->bob_q - f->hop;
+    f->head_dy = f->body_dy + f->squish * v->def.face.eye_sq / 16;
+    f->mouth_dy = f->body_dy + f->squish * v->def.face.mouth_sq / 16;
+    f->lift = v->lift_px * Q * 16 / (v->scale > 0 ? v->scale : 16);
+}
+
+static uint32_t hash_item(const item_t *it)
+{
+    if (it->kind == IT_HIDDEN) {
+        return 0;
+    }
+    const uint8_t *b = (const uint8_t *)it;
+    uint32_t h = 2166136261u;
+    const size_t n = offsetof(item_t, p) + sizeof(ipt_t) * (it->kind == IT_RECT ? 2 : it->n);
+    for (size_t i = 0; i < n; i++) {
+        h = (h ^ b[i]) * 16777619u;
+    }
+    return h | 1u;
+}
+
+static box_t item_box(const item_t *it)
+{
+    box_t b = {0};
+    if (it->kind == IT_HIDDEN) {
+        return b;
+    }
+    if (it->kind == IT_RECT) {
+        b = (box_t){it->p[0].x, it->p[0].y, it->p[0].x + it->p[1].x - 1, it->p[0].y + it->p[1].y - 1, true};
+        return b;
+    }
+    b = (box_t){INT32_MAX, INT32_MAX, INT32_MIN, INT32_MIN, true};
+    for (int i = 0; i < it->n; i++) {
+        b.x1 = it->p[i].x < b.x1 ? it->p[i].x : b.x1;
+        b.y1 = it->p[i].y < b.y1 ? it->p[i].y : b.y1;
+        b.x2 = it->p[i].x > b.x2 ? it->p[i].x : b.x2;
+        b.y2 = it->p[i].y > b.y2 ? it->p[i].y : b.y2;
+    }
+    const int32_t pad = it->kind == IT_LINE ? it->width / 2 + 1 : 1;
+    b.x1 -= pad;
+    b.y1 -= pad;
+    b.x2 += pad;
+    b.y2 += pad;
+    return b;
+}
+
+static void add_dirty(box_t *d, int *n, box_t b)
+{
+    if (!b.valid) {
+        return;
+    }
+    for (int i = 0; i < *n; i++) {
+        if (b.x1 <= d[i].x2 + DIRTY_JOIN_PX && b.x2 >= d[i].x1 - DIRTY_JOIN_PX && b.y1 <= d[i].y2 + DIRTY_JOIN_PX &&
+            b.y2 >= d[i].y1 - DIRTY_JOIN_PX) {
+            d[i].x1 = b.x1 < d[i].x1 ? b.x1 : d[i].x1;
+            d[i].y1 = b.y1 < d[i].y1 ? b.y1 : d[i].y1;
+            d[i].x2 = b.x2 > d[i].x2 ? b.x2 : d[i].x2;
+            d[i].y2 = b.y2 > d[i].y2 ? b.y2 : d[i].y2;
+            return;
+        }
+    }
+    if (*n < MAX_DIRTY) {
+        d[(*n)++] = b;
+        return;
+    }
+    /* Full: grow the rectangle that grows least. */
+    int best = 0;
+    int64_t best_cost = INT64_MAX;
+    for (int i = 0; i < *n; i++) {
+        const int64_t w = (b.x2 > d[i].x2 ? b.x2 : d[i].x2) - (b.x1 < d[i].x1 ? b.x1 : d[i].x1);
+        const int64_t h = (b.y2 > d[i].y2 ? b.y2 : d[i].y2) - (b.y1 < d[i].y1 ? b.y1 : d[i].y1);
+        const int64_t cost = w * h - (int64_t)(d[i].x2 - d[i].x1) * (d[i].y2 - d[i].y1);
+        if (cost < best_cost) {
+            best_cost = cost;
+            best = i;
+        }
+    }
+    box_t *u = &d[best];
+    u->x1 = b.x1 < u->x1 ? b.x1 : u->x1;
+    u->y1 = b.y1 < u->y1 ? b.y1 : u->y1;
+    u->x2 = b.x2 > u->x2 ? b.x2 : u->x2;
+    u->y2 = b.y2 > u->y2 ? b.y2 : u->y2;
+}
+
+static void render(pet_view_t *v, uint32_t now)
+{
+    frame_t f;
+    step_animation(v, now, &f);
+    v->n_items = 0;
+    for (int i = 0; i < v->def.n_parts; i++) {
+        const int sides = v->def.parts[i].mirrored ? 2 : 1;
+        for (int s = 0; s < sides; s++) {
+            build_part(v, &f, i, s, slot(v));
+        }
+    }
+    item_t *face[7 * 2 + 2 + 10 + FX_ITEMS];
+    for (size_t i = 0; i < sizeof(face) / sizeof(face[0]); i++) {
+        face[i] = slot(v);
+    }
+    if (face[sizeof(face) / sizeof(face[0]) - 1] != NULL) {
+        build_eye(v, &f, 0, &face[0]);
+        build_eye(v, &f, 1, &face[7]);
+        build_brow(v, &f, 0, face[14]);
+        build_brow(v, &f, 1, face[15]);
+        build_mouth(v, &f, &face[16]);
+        build_fx(v, &f, now, &face[26]);
+    }
+
+    box_t dirty[MAX_DIRTY];
+    int n_dirty = 0;
+    uint16_t changed = 0;
+    for (uint16_t i = 0; i < MAX_ITEMS; i++) {
+        const bool used = i < v->n_items;
+        const uint32_t h = used ? hash_item(&v->items[i]) : 0;
+        const box_t b = used ? item_box(&v->items[i]) : (box_t){0};
+        if (h == v->prev_hash[i]) {
+            continue;
+        }
+        changed++;
+        add_dirty(dirty, &n_dirty, v->prev_box[i]);
+        add_dirty(dirty, &n_dirty, b);
+        v->prev_hash[i] = h;
+        v->prev_box[i] = b;
+    }
+    if (n_dirty > 0) {
+        lv_area_t base;
+        lv_obj_get_coords(v->obj, &base);
+        for (int i = 0; i < n_dirty; i++) {
+            lv_area_t a = {base.x1 + dirty[i].x1, base.y1 + dirty[i].y1, base.x1 + dirty[i].x2, base.y1 + dirty[i].y2};
+            lv_obj_invalidate_area(v->obj, &a);
+        }
+    }
+    v->dirty_count = changed;
+
+    v->state = (ui_pet_state_t){
+        .mood = v->mood,
+        .pose = v->cur,
+        .tween_permille = v->tween,
+        .color = v->col_cur,
+        .eye_open = (int16_t)f.eye_open,
+        .pupil_dx = f.pdx,
+        .pupil_dy = f.pdy,
+        .bob_px = (int16_t)px(v, v->bob_q),
+        .jitter_px = v->jitter,
+        .blinking = v->blinking,
+        .reaction = v->react,
+        .frozen = v->frozen,
+        .outline = v->outline,
+        .scale = v->scale,
+        .animating = v->visible && v->powered,
+        .items = v->n_items,
+        .dirty = changed,
+        .slow = v->slow,
+    };
+    memcpy(v->state.id, v->def.id, sizeof(v->state.id));
+    memcpy(v->state.aux, v->aux_cur, sizeof(v->state.aux));
+    memcpy(v->state.aux_sel, v->aux_sel, sizeof(v->state.aux_sel));
+}
+
+/* ---- drawing ---- */
+
+static lv_color_t col(uint32_t rgb)
+{
+    return lv_color_hex(rgb);
+}
+
+static void draw_item(lv_layer_t *layer, const item_t *it, int32_t bx, int32_t by)
+{
+    switch (it->kind) {
+    case IT_RECT: {
+        lv_draw_rect_dsc_t d;
+        lv_draw_rect_dsc_init(&d);
+        d.radius = it->radius;
+        d.bg_opa = it->fill ? LV_OPA_COVER : LV_OPA_TRANSP;
+        d.bg_color = col(it->color);
+        if (it->border > 0) {
+            d.border_width = it->border;
+            d.border_color = col(it->border_color);
+            d.border_opa = LV_OPA_COVER;
+        }
+        const lv_area_t a = {bx + it->p[0].x, by + it->p[0].y, bx + it->p[0].x + it->p[1].x - 1,
+                             by + it->p[0].y + it->p[1].y - 1};
+        lv_draw_rect(layer, &d, &a);
+        break;
+    }
+    case IT_LINE: {
+        lv_draw_line_dsc_t d;
+        lv_draw_line_dsc_init(&d);
+        d.color = col(it->color);
+        d.width = it->width;
+        d.round_start = 1;
+        d.round_end = 1;
+        for (int i = 0; i + 1 < it->n; i++) {
+            d.p1 = (lv_point_precise_t){bx + it->p[i].x, by + it->p[i].y};
+            d.p2 = (lv_point_precise_t){bx + it->p[i + 1].x, by + it->p[i + 1].y};
+            lv_draw_line(layer, &d);
+        }
+        break;
+    }
+    case IT_TRI: {
+        lv_draw_triangle_dsc_t d;
+        lv_draw_triangle_dsc_init(&d);
+        d.color = col(it->color);
+        d.opa = LV_OPA_COVER;
+        for (int i = 0; i < 3; i++) {
+            d.p[i] = (lv_point_precise_t){bx + it->p[i].x, by + it->p[i].y};
+        }
+        lv_draw_triangle(layer, &d);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static bool area_and(lv_area_t *out, const lv_area_t *a, const lv_area_t *b)
+{
+    out->x1 = a->x1 > b->x1 ? a->x1 : b->x1;
+    out->y1 = a->y1 > b->y1 ? a->y1 : b->y1;
+    out->x2 = a->x2 < b->x2 ? a->x2 : b->x2;
+    out->y2 = a->y2 < b->y2 ? a->y2 : b->y2;
+    return out->x1 <= out->x2 && out->y1 <= out->y2;
+}
+
+static void on_draw(lv_event_t *e)
+{
+    pet_view_t *v = lv_event_get_user_data(e);
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t base;
+    lv_obj_get_coords(v->obj, &base);
+    const lv_area_t clip = layer->_clip_area;
+    for (uint16_t i = 0; i < v->n_items; i++) {
+        const item_t *it = &v->items[i];
+        if (it->kind == IT_HIDDEN || !v->prev_box[i].valid) {
+            continue;
+        }
+        const box_t *b = &v->prev_box[i];
+        lv_area_t a = {base.x1 + b->x1, base.y1 + b->y1, base.x1 + b->x2, base.y1 + b->y2};
+        lv_area_t visible;
+        if (!area_and(&visible, &a, &clip)) {
+            continue;
+        }
+        if (it->clip >= 0) {
+            const box_t *cb = &v->prev_box[it->clip];
+            const lv_area_t ca = {base.x1 + cb->x1, base.y1 + cb->y1, base.x1 + cb->x2, base.y1 + cb->y2};
+            lv_area_t clipped;
+            if (!cb->valid || !area_and(&clipped, &ca, &clip)) {
+                continue;
+            }
+            layer->_clip_area = clipped;
+            draw_item(layer, it, base.x1, base.y1);
+            layer->_clip_area = clip;
+        } else {
+            draw_item(layer, it, base.x1, base.y1);
+        }
+    }
 }
 
 static void on_frame(lv_timer_t *t)
 {
-    (void)t;
-    render(lv_tick_get());
+    pet_view_t *v = lv_timer_get_user_data(t);
+    const uint32_t recent = ui_frame_recent_x10();
+    if (!v->slow && recent > SLOW_ABOVE_X10) {
+        v->slow = true;
+        lv_timer_set_period(t, FRAME_SLOW_MS);
+    } else if (v->slow && recent < FAST_BELOW_X10) {
+        v->slow = false;
+        lv_timer_set_period(t, FRAME_MS);
+    }
+    render(v, lv_tick_get());
 }
 
-static void update_timer(void)
+static void update_timer(pet_view_t *v)
 {
-    if (s_visible && s_powered) {
-        const uint32_t now = lv_tick_get();
-        /* Blink and glance restart from now rather than catching up on the time spent hidden. */
-        schedule_blink(now);
-        pet_glance_init(&s_glance, rand_cb, NULL, now);
-        render(now);
-        lv_timer_resume(s_timer);
-    } else {
-        lv_timer_pause(s_timer);
-        s_blinking = false;
-        render(lv_tick_get());
-    }
-}
-
-void pet_view_create(lv_obj_t *parent)
-{
-    s_group = lv_obj_create(parent);
-    lv_obj_remove_style_all(s_group);
-    lv_obj_remove_flag(s_group, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_group, UI_FLAG_NO_TEXT);
-
-    s_body = plain(s_group, UI_C_PET_EYE);
-    lv_obj_set_style_radius(s_body, BODY_RADIUS, 0);
-    for (int i = 0; i < 2; i++) {
-        s_eye[i] = plain(s_body, UI_C_PET_EYE);
-        lv_obj_set_style_radius(s_eye[i], LV_RADIUS_CIRCLE, 0);
-        s_pupil[i] = plain(s_eye[i], UI_C_PET_INK);
-        lv_obj_set_style_radius(s_pupil[i], LV_RADIUS_CIRCLE, 0);
-        s_brow[i] = line(s_body, BROW_W);
-        s_arc[i] = line(s_body, ARC_W);
-        lv_obj_add_flag(s_arc[i], LV_OBJ_FLAG_HIDDEN);
-    }
-    s_hole = plain(s_body, UI_C_PET_INK);
-    lv_obj_set_style_radius(s_hole, LV_RADIUS_CIRCLE, 0);
-    s_mouth = line(s_body, MOUTH_W);
-    s_acc = lv_label_create(s_group);
-    lv_label_set_text_static(s_acc, "");
-    lv_obj_add_flag(s_acc, LV_OBJ_FLAG_HIDDEN);
-
     const uint32_t now = lv_tick_get();
-    pet_glance_init(&s_glance, rand_cb, NULL, now);
-    s_timer = lv_timer_create(on_frame, FRAME_MS, NULL);
-    lv_timer_pause(s_timer);
-    s_has_mood = false;
-    pet_view_set_mood(MOOD_IDLE);
+    if (v->visible && v->powered) {
+        /* Blink and glance restart from now rather than catching up on the time spent hidden. */
+        schedule_blink(v, now);
+        pet_glance_init(&v->glance, rand_cb, NULL, now);
+        render(v, now);
+        lv_timer_resume(v->timer);
+    } else {
+        lv_timer_pause(v->timer);
+        v->blinking = false;
+        render(v, now);
+    }
 }
 
-void pet_view_set_mood(proto_mood_t mood)
+static void place(pet_view_t *v)
 {
+    const int32_t w = BOX_W * v->scale / 16;
+    const int32_t h = BOX_H * v->scale / 16;
+    v->ox = w / 2;
+    v->oy = BOX_CY * v->scale / 16;
+    lv_obj_set_pos(v->obj, v->cx - v->ox, v->cy - v->oy);
+    lv_obj_set_size(v->obj, w, h);
+    memset(v->prev_hash, 0, sizeof(v->prev_hash));
+    memset(v->prev_box, 0, sizeof(v->prev_box));
+    lv_obj_invalidate(v->obj);
+}
+
+static void land_mood(pet_view_t *v, proto_mood_t mood, bool tween, uint32_t now)
+{
+    pet_pose_for_pet(&v->def, mood, &v->to);
+    v->col_to = pet_pack_mood_color(&v->def, (unsigned)mood);
+    for (int a = 0; a < PET_PACK_AUX_COUNT; a++) {
+        v->aux_to[a] = v->def.aux[mood][a];
+    }
+    v->drop_to = mood == MOOD_SLEEPING ? v->def.face.sleep_drop : 0;
+    if (!tween) {
+        v->from = v->cur = v->to;
+        v->col_from = v->col_cur = v->col_to;
+        memcpy(v->aux_from, v->aux_to, sizeof(v->aux_from));
+        v->drop_from = v->drop_cur = v->drop_to;
+        v->tween = 1000;
+    } else {
+        v->from = v->cur;
+        v->col_from = v->col_cur;
+        memcpy(v->aux_from, v->aux_cur, sizeof(v->aux_from));
+        v->drop_from = v->drop_cur;
+        v->tween = 0;
+        v->tween_start = now;
+    }
+}
+
+pet_view_t *pet_view_create(lv_obj_t *parent, int32_t cx, int32_t cy, uint8_t scale)
+{
+    pet_view_t *v = heap_caps_calloc(1, sizeof(*v), MALLOC_CAP_SPIRAM);
+    if (v == NULL) {
+        v = calloc(1, sizeof(*v));
+    }
+    if (v == NULL) {
+        return NULL;
+    }
+    v->obj = lv_obj_create(parent);
+    lv_obj_remove_style_all(v->obj);
+    lv_obj_remove_flag(v->obj, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(v->obj, UI_FLAG_NO_TEXT);
+    lv_obj_add_event_cb(v->obj, on_draw, LV_EVENT_DRAW_MAIN, v);
+    v->cx = cx;
+    v->cy = cy;
+    v->scale = scale;
+    v->powered = s_powered;
+    place(v);
+    for (int i = 0; i < MAX_VIEWS; i++) {
+        if (s_views[i] == NULL) {
+            s_views[i] = v;
+            break;
+        }
+    }
+    v->timer = lv_timer_create(on_frame, FRAME_MS, v);
+    lv_timer_pause(v->timer);
+    pet_glance_init(&v->glance, rand_cb, NULL, lv_tick_get());
+    pet_view_set_def(v, ui_pet_def());
+    return v;
+}
+
+void pet_view_set_def(pet_view_t *v, const pet_def_t *def)
+{
+    if (v == NULL || def == NULL) {
+        return;
+    }
+    v->def = *def;
+    v->react = PET_REACT_NONE;
+    memset(v->anchor_q, 0, sizeof(v->anchor_q));
+    land_mood(v, v->has_mood ? v->mood : MOOD_IDLE, false, lv_tick_get());
+    v->has_mood = true;
+    lv_obj_invalidate(v->obj);
+    render(v, lv_tick_get());
+}
+
+void pet_view_set_scale(pet_view_t *v, uint8_t scale)
+{
+    if (v == NULL || scale < 4 || scale > 16 || scale == v->scale) {
+        return;
+    }
+    v->scale = scale;
+    place(v);
+    render(v, lv_tick_get());
+}
+
+void pet_view_set_mood(pet_view_t *v, proto_mood_t mood)
+{
+    if (v == NULL) {
+        return;
+    }
     if (mood >= MOOD_COUNT) {
         mood = MOOD_IDLE;
     }
-    if (s_has_mood && mood == s_mood) {
+    if (v->has_mood && mood == v->mood) {
         return;
     }
     const uint32_t now = lv_tick_get();
-    s_to = *pet_pose_for_mood(mood);
-    if (!s_has_mood || s_frozen) {
-        s_from = s_to;
-        s_cur = s_to;
-        s_tween_permille = 1000;
-    } else {
-        s_from = s_cur;
-        s_tween_permille = 0;
-        s_tween_start = now;
+    land_mood(v, mood, v->has_mood && !v->frozen, now);
+    v->has_mood = true;
+    v->mood = mood;
+    if (v->cur.blink_min_ms == 0 || v->to.blink_min_ms == 0) {
+        v->blinking = false;
     }
-    s_has_mood = true;
-    s_mood = mood;
-    if (s_cur.blink_min_ms == 0 || s_to.blink_min_ms == 0) {
-        s_blinking = false;
-    }
-    s_blink_at = 0;
-    render(now);
+    v->blink_at = 0;
+    render(v, now);
 }
 
-void pet_view_set_visible(bool visible)
+void pet_view_set_visible(pet_view_t *v, bool visible)
 {
-    show(s_group, visible);
-    if (visible != s_visible) {
-        s_visible = visible;
-        update_timer();
+    if (v == NULL) {
+        return;
+    }
+    ui_set_hidden(v->obj, !visible);
+    if (visible != v->visible) {
+        v->visible = visible;
+        update_timer(v);
     }
 }
 
-void pet_view_set_powered(bool powered)
+void pet_view_set_powered(pet_view_t *v, bool powered)
 {
-    if (powered != s_powered) {
-        s_powered = powered;
-        update_timer();
+    if (v != NULL && powered != v->powered) {
+        v->powered = powered;
+        update_timer(v);
     }
 }
 
-void pet_view_set_frozen(bool frozen)
+void pet_view_set_frozen(pet_view_t *v, bool frozen)
 {
-    s_frozen = frozen;
+    if (v == NULL) {
+        return;
+    }
+    v->frozen = frozen;
     if (frozen) {
-        s_tween_permille = 1000;
-        s_cur = s_to;
+        v->tween = 1000;
+        v->cur = v->to;
+        v->col_cur = v->col_to;
+        v->drop_cur = v->drop_to;
+        memcpy(v->aux_from, v->aux_to, sizeof(v->aux_from));
     }
-    render(lv_tick_get());
+    render(v, lv_tick_get());
 }
 
-void pet_view_react(ui_pet_reaction_t r)
+void pet_view_set_outline(pet_view_t *v, bool outline)
 {
+    if (v != NULL && outline != v->outline) {
+        v->outline = outline;
+        render(v, lv_tick_get());
+    }
+}
+
+void pet_view_set_lift(pet_view_t *v, int16_t px_up)
+{
+    if (v != NULL && px_up != v->lift_target) {
+        v->lift_target = px_up;
+        if (v->frozen || !v->visible || !v->powered) {
+            v->lift_px = px_up;
+        }
+        render(v, lv_tick_get());
+    }
+}
+
+void pet_view_react(pet_view_t *v, pet_react_t r)
+{
+    if (v == NULL || (unsigned)r >= PET_REACT_COUNT) {
+        return;
+    }
     const uint32_t now = lv_tick_get();
-    s_reaction = r;
-    switch (r) {
-    case UI_PET_REACT_NONE:
-        break;
-    case UI_PET_REACT_PAT:
-        s_reaction_until = now + PAT_MS;
-        break;
-    case UI_PET_REACT_POKE:
-        s_reaction_until = now + POKE_MS;
-        break;
-    case UI_PET_REACT_DIZZY:
-        s_reaction_until = now + DIZZY_MS;
-        break;
+    if (r == PET_REACT_NONE && v->react != PET_REACT_NONE) {
+        /* Back to the mood with the usual tween instead of a jump. */
+        v->from = v->cur;
+        v->col_from = v->col_cur;
+        memcpy(v->aux_from, v->aux_cur, sizeof(v->aux_from));
+        v->drop_from = v->drop_cur;
+        v->tween = 0;
+        v->tween_start = now;
     }
-    render(now);
+    v->react = r;
+    v->react_start = now;
+    render(v, now);
 }
 
-void pet_view_get_state(ui_pet_state_t *out)
+void pet_view_get_state(const pet_view_t *v, ui_pet_state_t *out)
 {
-    *out = s_state;
+    if (v == NULL) {
+        *out = (ui_pet_state_t){0};
+        return;
+    }
+    *out = v->state;
+}
+
+void pet_view_follow(pet_view_t *v)
+{
+    if (v != NULL) {
+        v->follow = true;
+        pet_view_set_def(v, ui_pet_def());
+    }
+}
+
+void pet_views_set_powered(bool powered)
+{
+    s_powered = powered;
+    for (int i = 0; i < MAX_VIEWS; i++) {
+        pet_view_set_powered(s_views[i], powered);
+    }
+}
+
+void ui_pet_set_def(const pet_def_t *def)
+{
+    if (def == NULL || !ui_lock()) {
+        return;
+    }
+    s_def = *def;
+    s_def_ready = true;
+    for (int i = 0; i < MAX_VIEWS; i++) {
+        if (s_views[i] != NULL && s_views[i]->follow) {
+            pet_view_set_def(s_views[i], &s_def);
+        }
+    }
+    ui_unlock();
 }

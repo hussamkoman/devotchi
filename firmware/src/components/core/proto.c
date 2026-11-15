@@ -28,6 +28,14 @@ static const char *const TYPE_NAMES[] = {
     [PROTO_QUESTION] = "question",
     [PROTO_PLAN] = "plan",
     [PROTO_DEADLINE] = "deadline",
+    [PROTO_PET_CMD] = "pet_cmd",
+};
+
+static const char *const PET_OP_NAMES[] = {
+    [PROTO_PET_OP_UNKNOWN] = "unknown",
+    [PROTO_PET_OP_INSTALL] = "install",
+    [PROTO_PET_OP_SELECT] = "select",
+    [PROTO_PET_OP_REMOVE] = "remove",
 };
 
 #define TYPE_COUNT  (sizeof(TYPE_NAMES) / sizeof(TYPE_NAMES[0]))
@@ -565,6 +573,46 @@ static bool parse_deadline(const cJSON *obj, proto_deadline_t *out)
     return get_id(obj, FIELD_REQUIRED, &has_id, out->id) && get_timeout(obj, &out->timeout_ms);
 }
 
+/* Always succeeds: a malformed pet_cmd is still answered (with `unknown`), so only the raw fields are kept. */
+static bool parse_pet_cmd(const cJSON *obj, proto_pet_cmd_t *out)
+{
+    const cJSON *op = cJSON_GetObjectItemCaseSensitive(obj, "op");
+    out->op = PROTO_PET_OP_UNKNOWN;
+    if (cJSON_IsString(op) && op->valuestring != NULL) {
+        for (size_t i = PROTO_PET_OP_INSTALL; i < sizeof(PET_OP_NAMES) / sizeof(PET_OP_NAMES[0]); i++) {
+            if (strcmp(op->valuestring, PET_OP_NAMES[i]) == 0) {
+                out->op = (proto_pet_op_t)i;
+            }
+        }
+    }
+    const cJSON *pet = cJSON_GetObjectItemCaseSensitive(obj, "pet");
+    if (cJSON_IsString(pet) && pet->valuestring != NULL) {
+        out->pet_present = true;
+        const size_t n = strlen(pet->valuestring);
+        out->pet_long = n >= sizeof(out->pet);
+        if (!out->pet_long) {
+            memcpy(out->pet, pet->valuestring, n + 1);
+        }
+    }
+    const cJSON *crc = cJSON_GetObjectItemCaseSensitive(obj, "crc32");
+    if (cJSON_IsString(crc) && crc->valuestring != NULL) {
+        const size_t n = strlen(crc->valuestring);
+        out->crc_long = n >= sizeof(out->crc32);
+        if (!out->crc_long) {
+            memcpy(out->crc32, crc->valuestring, n + 1);
+        }
+    }
+    const char *const NUMS[2] = {"rev", "size"};
+    int32_t *const dst[2] = {&out->rev, &out->size};
+    for (int i = 0; i < 2; i++) {
+        const cJSON *n = cJSON_GetObjectItemCaseSensitive(obj, NUMS[i]);
+        const double v = cJSON_IsNumber(n) ? n->valuedouble : -1;
+        *dst[i] = v >= 0 && v <= 65535 && v == (double)(int32_t)v ? (int32_t)v : -1;
+    }
+    out->select = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(obj, "select"));
+    return true;
+}
+
 static bool parse_body(const cJSON *root, proto_msg_t *out)
 {
     switch (out->type) {
@@ -598,6 +646,8 @@ static bool parse_body(const cJSON *root, proto_msg_t *out)
         return parse_plan(root, &out->u.plan);
     case PROTO_DEADLINE:
         return parse_deadline(root, &out->u.deadline);
+    case PROTO_PET_CMD:
+        return parse_pet_cmd(root, &out->u.pet_cmd);
     }
     return false;
 }
@@ -881,8 +931,54 @@ int proto_write_telemetry(char *buf, size_t cap, const proto_telemetry_t *t)
         put(&w, ",\"alert\":");
         put_str(&w, t->alert);
     }
+    if (t->pet != NULL) {
+        put(&w, ",\"pet\":");
+        put_str(&w, t->pet);
+    }
     put(&w, "}");
     if (w.len > PROTO_TELEMETRY_MAX) {
+        w.overflow = true;
+    }
+    return finish(&w);
+}
+
+const char *proto_pet_op_name(proto_pet_op_t op)
+{
+    return (size_t)op < sizeof(PET_OP_NAMES) / sizeof(PET_OP_NAMES[0]) ? PET_OP_NAMES[op] : "unknown";
+}
+
+int proto_write_pets(char *buf, size_t cap, const proto_pets_t *p)
+{
+    if (p == NULL || p->selected == NULL || p->n_installed > PROTO_PETS_MAX) {
+        return -1;
+    }
+    writer_t w = begin(buf, cap);
+    put(&w, "{\"type\":\"pets\",\"selected\":");
+    put_str(&w, p->selected);
+    put_fmt(&w, ",\"slots\":%d", p->slots);
+    put_fmt(&w, ",\"free\":%d", p->free);
+    put(&w, ",\"installed\":[");
+    for (size_t i = 0; i < p->n_installed; i++) {
+        put(&w, i == 0 ? "{\"id\":" : ",{\"id\":");
+        put_str(&w, p->installed[i].id);
+        put_fmt(&w, ",\"rev\":%u", (unsigned)p->installed[i].rev);
+        put(&w, p->installed[i].builtin ? ",\"builtin\":true}" : "}");
+    }
+    put(&w, "]");
+    if (p->result_op != NULL) {
+        put(&w, ",\"result\":{\"op\":");
+        put_str(&w, p->result_op);
+        put(&w, ",\"pet\":");
+        put_str(&w, p->result_pet != NULL ? p->result_pet : "");
+        put(&w, p->result_ok ? ",\"ok\":true" : ",\"ok\":false");
+        if (!p->result_ok && p->result_error != NULL) {
+            put(&w, ",\"error\":");
+            put_str(&w, p->result_error);
+        }
+        put(&w, "}");
+    }
+    put(&w, "}");
+    if (w.len > PROTO_PETS_MAX_BYTES) {
         w.overflow = true;
     }
     return finish(&w);

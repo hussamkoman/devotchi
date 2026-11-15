@@ -154,7 +154,7 @@ class PetRun(FlowRun):
         while time.monotonic() - start < 0.8:
             p = self.pose()
             samples.append((round(time.monotonic() - start, 3), p["tweenPermille"], p["pose"]["mouthCurve"],
-                            p["pose"]["bodyColor"]))
+                            p["bodyColor"]))
         mids = [s for s in samples if 0 < s[1] < 1000]
         check(mids, f"no intermediate pose seen: {samples}")
         check(samples[-1][1] == 1000 and samples[-1][2] == -70, f"tween did not end on sad: {samples[-1]}")

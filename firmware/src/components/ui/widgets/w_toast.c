@@ -227,6 +227,7 @@ static void draw_banner(void)
             lv_obj_add_flag(s_banner.box, LV_OBJ_FLAG_HIDDEN);
         }
         screen_pet_set_attention(false);
+        screen_pet_set_banner(false);
         return;
     }
     if (s_app_banner_attention) {
@@ -241,6 +242,7 @@ static void draw_banner(void)
         slide(s_banner.box, true);
     }
     screen_pet_set_attention(s_app_banner_attention);
+    screen_pet_set_banner(true);
 }
 
 void ui_banner_show(const char *text, bool attention)
@@ -298,6 +300,7 @@ void w_toast_demo(w_toast_demo_t demo)
         /* A demo screen starts without the app's banner; ui demo off brings it back. */
         if (ui_demo_active()) {
             screen_pet_set_attention(false);
+            screen_pet_set_banner(false);
         } else {
             draw_banner();
         }
@@ -310,6 +313,7 @@ void w_toast_demo(w_toast_demo_t demo)
         fill(&s_banner, UI_TOAST_NEGATIVE, "Build failed", "tsc: 3 errors in src/ws.ts");
         lv_obj_remove_flag(s_banner.box, LV_OBJ_FLAG_HIDDEN);
         screen_pet_set_attention(true);
+        screen_pet_set_banner(true);
         return;
     case W_TOAST_DEMO_DESK:
         fill(&s_toast, UI_TOAST_DESK, "Desk mode on", "Requests go to your terminal");

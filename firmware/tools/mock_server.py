@@ -31,6 +31,12 @@ Control, as lines on stdin or as the body of POST /_ctl:
   caps <list|none>                 capabilities named in the next register_ack (comma-separated; default decide)
   send-burst <json array>          every frame of the array as its own text frame, written back to back in one go
   extend-reply <on|off>            answer `extend` with `deadline` 60000 (protocol 14.6; default on)
+  pet-add <id> <hex>               serve this pack at GET /api/pets/<id>/pack (rev, size, CRC read from it)
+  pet-cmd <op> <id> [select] [k=v] send pet_cmd for a served pack; k=v overrides a field (rev=2, crc32=..., size=..);
+                                   the id "" (two quote characters) sends an empty id
+  pet-mode <mode>                  how the pack route answers: normal, truncate (short body, then close),
+                                   drop (half the body, then close), delay:<s> (100 bytes, wait, the rest),
+                                   status:<code>, length:<n> (that Content-Length, the whole body)
   status                           counters and connection state as JSON
   tokens                           the tokens this server accepts (test tokens, for leak checks)
 """
@@ -276,6 +282,13 @@ class State:
         self.counters = {}
         self.caps = [c for c in args.caps.split(",") if c] if args.caps != "none" else []
         self.extend_reply = True
+        self.pets = {}
+        self.pet_mode = "truncate" if args.pet_truncate else "normal"
+        if os.path.isdir(args.pets):
+            for name in sorted(os.listdir(args.pets)):
+                if name.endswith(".pet"):
+                    with open(os.path.join(args.pets, name), "rb") as fh:
+                        self.pets[name[:-4]] = fh.read()
 
     def count(self, name):
         with self.lock:
@@ -399,6 +412,35 @@ class State:
                 with self.lock:
                     self.caps = [] if rest == "none" else [c for c in rest.split(",") if c]
                 return {"ok": True, "caps": self.caps}
+            if command == "pet-add":
+                pid, _, hexdata = rest.partition(" ")
+                data = bytes.fromhex(hexdata.strip())
+                with self.lock:
+                    self.pets[pid] = data
+                return {"ok": True, "pet": pid, "size": len(data), "rev": data[5] if len(data) > 5 else 0,
+                        "crc32": data[-4:][::-1].hex() if len(data) >= 4 else ""}
+            if command == "pet-cmd":
+                parts = rest.split()
+                op, pid = parts[0], parts[1] if len(parts) > 1 else ""
+                pid = "" if pid == '""' else pid
+                cmd = {"type": "pet_cmd", "op": op, "pet": pid}
+                with self.lock:
+                    data = self.pets.get(pid)
+                if op == "install" and data is not None:
+                    cmd.update(rev=data[5], size=len(data), crc32=data[-4:][::-1].hex())
+                for extra in parts[2:]:
+                    if extra == "select":
+                        cmd["select"] = True
+                    elif "=" in extra:
+                        k, _, v = extra.partition("=")
+                        cmd[k] = int(v) if v.lstrip("-").isdigit() and k != "crc32" else v
+                text = json.dumps(cmd, separators=(",", ":"))
+                frame = encode_frame(OP_TEXT, text.encode())
+                return {"ok": True, "sent": sum(1 for c in self.live() if c.send_raw(frame)), "cmd": cmd}
+            if command == "pet-mode":
+                with self.lock:
+                    self.pet_mode = rest or "normal"
+                return {"ok": True, "mode": self.pet_mode}
             if command == "status":
                 return self.status()
             if command == "tokens":
@@ -482,8 +524,62 @@ class Handler(BaseHTTPRequestHandler):
             self.state.count("health")
             log("http", method="GET", path=path, status=200)
             return
+        if path.startswith("/api/pets/") and path.endswith("/pack"):
+            self._pet_pack(path[len("/api/pets/"):-len("/pack")])
+            return
         self._error(404, "not_found", "Not found")
         log("http", method="GET", path=path, status=404)
+
+    def _pet_pack(self, pid):
+        """GET /api/pets/:id/pack (protocol 14.8), with the failure modes of pet-mode."""
+        state = self.state
+        token = self._bearer()
+        with state.lock:
+            known = token in state.tokens
+            data = state.pets.get(pid)
+            mode = state.pet_mode
+        path = f"/api/pets/{pid}/pack"
+        if not known:
+            self._error(401, "unauthorized", "Token required")
+            log("http", method="GET", path=path, status=401)
+            return
+        if data is None:
+            self._error(404, "not_found", "Pet not found")
+            log("http", method="GET", path=path, status=404)
+            return
+        if mode.startswith("status:"):
+            code = int(mode.split(":", 1)[1])
+            self._error(code, "not_found" if code == 404 else "internal", "Pet pack refused")
+            log("http", method="GET", path=path, status=code, mode=mode)
+            return
+        length = int(mode.split(":", 1)[1]) if mode.startswith("length:") else len(data)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(length))
+        self.send_header("ETag", '"%s"' % data[-4:][::-1].hex())
+        self.end_headers()
+        log("http", method="GET", path=path, status=200, mode=mode, size=len(data))
+        try:
+            if mode == "truncate":
+                self.wfile.write(data[:-20])
+            elif mode == "drop":
+                self.wfile.write(data[: len(data) // 2])
+            elif mode.startswith("delay:"):
+                self.wfile.write(data[:100])
+                self.wfile.flush()
+                time.sleep(float(mode.split(":", 1)[1]))
+                self.wfile.write(data[100:])
+            else:
+                self.wfile.write(data[:length] if length < len(data) else data)
+            self.wfile.flush()
+        except OSError:
+            pass
+        if mode in ("truncate", "drop") or length != len(data):
+            self.close_connection = True
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
 
     def do_POST(self):
         path = self.path.partition("?")[0]
@@ -643,6 +739,10 @@ def parse_args(argv):
     parser.add_argument("--code-life", type=int, default=300, metavar="SECONDS")
     parser.add_argument("--poll-ms", type=int, default=2000)
     parser.add_argument("--ping", type=float, default=30.0, metavar="SECONDS", help="protocol ping interval")
+    parser.add_argument("--pets", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "pets",
+                                                       "golden"),
+                        help="directory whose <id>.pet files are served at /api/pets/<id>/pack")
+    parser.add_argument("--pet-truncate", action="store_true", help="start in pet-mode truncate")
     parser.add_argument("--dead-after", type=float, default=70.0, metavar="SECONDS",
                         help="drop a WebSocket that sent no frame for this long")
     args = parser.parse_args(argv)

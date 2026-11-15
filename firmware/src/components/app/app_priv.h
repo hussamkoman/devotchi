@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app.h"
+#include "net_worker.h"
 #include "power_fsm.h"
 #include "storage.h"
 #include "ui.h"
@@ -260,6 +261,9 @@ typedef struct {
     bool active;
     uint8_t cursor;
     bool confirming;
+    /** The pet picker is open on page (0 = the first built-in; the last page is "More pets"). */
+    bool picker;
+    uint8_t page;
 } app_settings_view_t;
 
 void app_settings_get_view(app_settings_view_t *out);
@@ -299,6 +303,8 @@ typedef enum {
     APP_REQUEST_FACTORY_RESET,
     /** text: `stage`, `dry-run` or `sleep`; arg: the stage, on|off, or the timer wake in seconds. */
     APP_REQUEST_POWER,
+    /** text: `use` or `rm`; arg: the pet id. A person's choice, like the picker's Use. */
+    APP_REQUEST_PET,
 } app_request_kind_t;
 
 typedef struct {
@@ -331,3 +337,42 @@ void app_request_complete(bool ok, const char *message);
 
 /** App task: APP_REQUEST_POWER. text: `stage`, `dry-run` or `sleep`; arg: its value. */
 void app_power_on_request(app_request_t *req);
+
+/* ---- pets (app_pets.c): pet_cmd, the `pets` message, the selected pet ---- */
+
+typedef struct {
+    char selected[STORAGE_PET_ID_SIZE];
+    /** The pet drawn (differs from selected when that one does not load). */
+    char shown[STORAGE_PET_ID_SIZE];
+    pet_source_t source;
+    pet_part_state_t partition;
+    size_t slots;
+    size_t stored;
+    storage_pet_entry_t entries[PET_STORE_SLOTS];
+    bool fetching;
+} app_pets_view_t;
+
+/** Loads s_pet (or Devo) into the views; after storage_pets_init and ui_init. */
+void app_pets_init(void);
+/** Sends `pets` after register_ack. */
+void app_pets_on_registered(uint32_t now);
+void app_pets_on_cmd(const proto_pet_cmd_t *cmd, uint32_t now);
+/** The link asks for a pending download; true fills id and marks it started. */
+bool app_pets_take_fetch(char id[NET_JOB_ARG_SIZE]);
+void app_pets_on_fetch(const net_job_result_t *r, uint32_t now);
+/** A pending download could not be submitted (no token): answered with `http`. */
+void app_pets_fetch_failed(uint32_t now);
+/** A person's choice (picker, console): `unknown` for a pet that is not there. */
+pet_result_t app_pets_select(const char *id, uint32_t now);
+pet_result_t app_pets_remove(const char *id, uint32_t now);
+const char *app_pets_selected(void);
+void app_pets_get_view(app_pets_view_t *out);
+/** Built-ins and stored pets, the picker's pages before "More pets". */
+size_t app_pets_count(void);
+/** Decodes pet index (built-ins first) into a buffer that stays valid until the next call; NULL when unreadable. */
+const pet_def_t *app_pets_load(size_t index, bool *builtin);
+
+/* ---- pet picker (app_settings.c, 60-62) ---- */
+
+/** The picker is open on top of the settings list. */
+bool app_settings_picker(void);

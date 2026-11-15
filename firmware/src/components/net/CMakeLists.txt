@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "wifi.c" "prov.c" "tls_cfg.c" "ws.c" "pairing.c" "net_worker.c"
+    SRCS "wifi.c" "prov.c" "tls_cfg.c" "ws.c" "pairing.c" "pet_fetch.c" "net_worker.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "."
     REQUIRES core

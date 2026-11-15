@@ -39,6 +39,8 @@ void app_main(void)
 
     /* A storage failure is reported by storage_is_degraded(); the device runs with defaults. */
     storage_init();
+    /* Stored pets live in their own partition; it may be erased by label, `nvs` never is. */
+    storage_pets_init();
 
     ESP_ERROR_CHECK(display_init());
     display_set_brightness((uint8_t)storage_get_setting(STORAGE_SETTING_BRIGHTNESS));

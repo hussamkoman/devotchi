@@ -19,6 +19,7 @@ lv_obj_t *screen_question_create(void);
 lv_obj_t *screen_plan_create(void);
 lv_obj_t *screen_identify_create(void);
 lv_obj_t *screen_settings_create(void);
+lv_obj_t *screen_picker_create(void);
 lv_obj_t *screen_lowbatt_create(void);
 
 /** Caller holds the ui lock; tells the pet screen whether it is the loaded screen. */
@@ -116,6 +117,10 @@ void screen_approval_demo(int demo);
 void screen_question_demo(int demo);
 void screen_plan_demo(int demo);
 void screen_settings_demo(void);
+/** 0 Devo in use, 1 Ember, 2 More pets. */
+void screen_picker_demo(int variant);
+/** Caller holds the ui lock; the picker is the loaded screen. */
+void screen_picker_set_shown(bool shown);
 void screen_identify_demo(void);
 /** Draws st instead of the app's status; NULL draws the app's again. */
 void w_status_demo(const ui_status_t *st);
@@ -133,16 +138,41 @@ void ui_screen_set_title(ui_screen_id_t id, const char *title);
 /** True while ui demo has the screen: the app's setters are ignored. */
 bool ui_demo_active(void);
 
-/* The animated face; every call below needs the ui lock. */
-void pet_view_create(lv_obj_t *parent);
-void pet_view_set_mood(proto_mood_t mood);
-/** On screen: the pet screen is loaded and shows its face page; the face is hidden otherwise. */
-void pet_view_set_visible(bool visible);
-/** The power stage allows animation. */
-void pet_view_set_powered(bool powered);
-void pet_view_set_frozen(bool frozen);
-void pet_view_react(ui_pet_reaction_t r);
-void pet_view_get_state(ui_pet_state_t *out);
+/*
+ * The animated pet (architecture 7.4): one view per place it is shown, each
+ * drawn from a decoded pack at a scale of n/16. Every call needs the ui lock.
+ */
+typedef struct pet_view pet_view_t;
+
+/** A view whose body centre sits at cx, cy of parent; NULL when out of memory. */
+pet_view_t *pet_view_create(lv_obj_t *parent, int32_t cx, int32_t cy, uint8_t scale);
+void pet_view_set_def(pet_view_t *v, const pet_def_t *def);
+void pet_view_set_scale(pet_view_t *v, uint8_t scale);
+void pet_view_set_mood(pet_view_t *v, proto_mood_t mood);
+/** On screen; only a visible, powered view runs its frame timer. */
+void pet_view_set_visible(pet_view_t *v, bool visible);
+void pet_view_set_powered(pet_view_t *v, bool powered);
+void pet_view_set_frozen(pet_view_t *v, bool frozen);
+void pet_view_set_outline(pet_view_t *v, bool outline);
+/** Lifts the whole pet by px (the sticky banner, pet-animations 3), stepping over 200 ms. */
+void pet_view_set_lift(pet_view_t *v, int16_t px);
+void pet_view_react(pet_view_t *v, pet_react_t r);
+void pet_view_get_state(const pet_view_t *v, ui_pet_state_t *out);
+
+/** The view draws the selected pet and follows ui_pet_set_def (home, start-up screens; not the picker). */
+void pet_view_follow(pet_view_t *v);
+/** Every view: the power stage allows animation. */
+void pet_views_set_powered(bool powered);
+
+/** Caller holds the ui lock: average render time of the last UI_RECENT_FRAMES frames, in 0.1 ms. */
+#define UI_RECENT_FRAMES  8
+uint32_t ui_frame_recent_x10(void);
+
+/** The selected pet (ui_pet_set_def), Devo until the app sets another. */
+const pet_def_t *ui_pet_def(void);
+
+/** Caller holds the ui lock; a banner (sticky toast) is up and the home pet steps up. */
+void screen_pet_set_banner(bool shown);
 
 /** Marks a label whose text ui_get_texts() must not reveal (the provisioning proof-of-possession). */
 #define UI_FLAG_SECRET  LV_OBJ_FLAG_USER_1

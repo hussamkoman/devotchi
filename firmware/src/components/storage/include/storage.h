@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pet_install.h"
+
 #include "esp_err.h"
 
 #include <stdbool.h>
@@ -12,6 +14,7 @@
 #define STORAGE_SSID_SIZE      33
 #define STORAGE_PSK_SIZE       65
 #define STORAGE_DEV_NAME_SIZE  32
+#define STORAGE_PET_ID_SIZE    (PET_PACK_ID_LEN + 1)
 
 typedef enum {
     STORAGE_URL_SOURCE_DEFAULT,
@@ -84,3 +87,44 @@ esp_err_t storage_set_prov_request(bool requested);
 /** Reads the device name given by the server; false (and "") when none is stored. */
 bool storage_get_dev_name(char name[STORAGE_DEV_NAME_SIZE]);
 esp_err_t storage_set_dev_name(const char *name);
+
+/** Selected pet (`s_pet`); false and "devo" when the key is absent. */
+bool storage_get_pet(char id[STORAGE_PET_ID_SIZE]);
+
+/** Writes `s_pet`; only a person or a pet_cmd selects a pet. */
+esp_err_t storage_set_pet(const char *id);
+
+/**
+ * Opens the `pets` partition (architecture 7.3): on an init failure it is
+ * erased by label once and opened again; without the partition (an older
+ * table) or after a second failure there are 0 slots. Never touches `nvs`.
+ */
+pet_part_state_t storage_pets_init(void);
+
+pet_part_state_t storage_pets_state(void);
+
+/** PET_STORE_SLOTS, or 0 when the partition is unusable. */
+size_t storage_pets_slots(void);
+
+typedef struct {
+    char id[STORAGE_PET_ID_SIZE];
+    uint8_t rev;
+} storage_pet_entry_t;
+
+/** Stored packs (id and header rev), at most max; returns the number written. */
+size_t storage_pets_list(storage_pet_entry_t *out, size_t max);
+
+/** Copies a stored pack into buf; returns its length, 0 when missing or larger than cap. */
+size_t storage_pets_get(const char *id, uint8_t *buf, size_t cap);
+
+/** Writes (or atomically replaces) one pack: nvs_set_blob + nvs_commit. */
+esp_err_t storage_pets_put(const char *id, const uint8_t *bytes, size_t len);
+
+esp_err_t storage_pets_remove(const char *id);
+
+bool storage_pets_has(const char *id);
+
+size_t storage_pets_count(void);
+
+/** The install steps' view of this storage (pet_install.h). */
+const pet_store_ops_t *storage_pets_ops(void);
